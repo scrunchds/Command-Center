@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "completedAt": "2026-01-01T00:00:00.000Z",
+  "topology": {
+    "inboxFolders": ["Inbox"],
+    "dailyNotesFolder": "Daily",
+    "dailyNoteNameTemplate": "{{date:YYYY-MM-DD}}"
+  },
+  "capacity": {
+    "rules": [
+      {
+        "metric": "available_minutes",
+        "operator": "below",
+        "threshold": 30,
+        "action": "Limit the day to one priority",
+        "min": 0,
+        "max": 480,
+        "weight": 1,
+        "higherIsBetter": true
+      }
+    ]
+  },
+  "triage": {
+    "defaultAction": "leave",
+    "moveDestination": "Projects",
+    "archiveDestination": "Archive",
+    "frogRolloverThreshold": 3
+  },
+  "compute": {
+    "endpoints": [
+      {
+        "id": "local-example",
+        "tier": "tier1_local",
+        "provider": "ollama",
+        "baseUrl": "http://localhost:11434",
+        "model": "example-model",
+        "timeoutMs": 120000,
+        "completionPath": "/api/chat",
+        "protocol": "openai-compatible",
+        "credentialRef": "plugin-settings:ollama",
+        "enabled": false,
+        "maxRetries": 1,
+        "backoffMs": 500
+      }
+    ]
+  },
+  "lifeDomains": [
+    {
+      "name": "Example Domain",
+      "description": "Replace with a non-sensitive domain description."
+    }
+  ],
+  "activeProjects": [
+    {
+      "name": "Example Project",
+      "timeHorizonDays": 30,
+      "doneDefinition": "A clearly defined example outcome exists.",
+      "domain": "Example Domain"
+    }
+  ],
+  "health": {
+    "trackedMetrics": ["available_minutes"],
+    "inputStyle": "morning-dictation",
+    "capacityRules": [
+      {
+        "metric": "available_minutes",
+        "operator": "below",
+        "threshold": 30,
+        "action": "Limit the day to one priority"
+      }
+    ]
+  },
+  "dailyNotes": {
+    "pathTemplate": "Daily/{{date:YYYY-MM-DD}}.md"
+  },
+  "inbox": {
+    "path": "Inbox",
+    "handling": "summarize-archive",
+    "archivePath": "Archive/Inbox"
+  },
+  "focus": {
+    "defaultPriorityCap": 3,
+    "frogThresholdDays": 3,
+    "frogPolicy": "banner",
+    "quickWinsEnabled": true,
+    "quickWinCount": 2,
+    "quickWinMaxMinutes": 10,
+    "maxDailyPriorities": 3
+  },
+  "style": {
+    "writingStyle": "precise-tactical",
+    "agentPersona": "sober-direct-peer",
+    "termsToUse": ["next action"],
+    "termsToAvoid": ["personal-example-only"],
+    "dailyNoteLayout": ["Priorities", "Log", "Reflection"],
+    "timestampConvention": "24-hour local time",
+    "reflectionPrompts": ["What moved forward?"],
+    "formattingDirectives": ["Use concise Markdown headings."]
+  },
+  "tasks": {
+    "trackingMethod": "yaml-agent-status",
+    "statusProperty": "agent_status"
+  },
+  "managedFolders": [
+    {
+      "path": "Projects",
+      "purpose": "Example project notes",
+      "scope": "Active, non-sensitive project documentation",
+      "contentTypes": ["markdown"]
+    }
+  ],
+  "activeTemplates": [],
+  "enabledWorkflows": []
+}

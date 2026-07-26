@@ -1,5 +1,5 @@
 # vscode
-.vscode 
+.vscode
 
 # Intellij
 *.iml
@@ -8,15 +8,62 @@
 # npm
 node_modules
 
-# Don't include the compiled main.js file in the repo.
-# They should be uploaded to GitHub releases instead.
-main.js
-
-# Exclude sourcemaps
+# Root build outputs (release packaging writes canonical artifacts under release/)
+/main.js
+/styles.css
 *.map
 
-# obsidian
+# Obsidian runtime data and generated Command Center vault state
 data.json
+.command-center/config.json
+.command-center/memory.json
+.command-center/memory/
+.command-center/Audit/
+.command-center/vault-topology.json
+.command-center/style-guide.md
+.command-center/templates/
+.command-center/workflows/
+.command-center/
+**/.command-center/config.json
+**/.command-center/memory.json
+**/.command-center/memory/
+**/.command-center/Audit/
+**/.command-center/vault-topology.json
+**/.command-center/
 
-# Exclude macOS Finder (System Explorer) View States
+# Local logs, test output, coverage, and temporary files
+*.log
+logs/
+coverage/
+.nyc_output/
+.tmp/
+tmp/
+temp/
+test-results/
+playwright-report/
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# Local credentials and environment overrides
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# macOS
 .DS_Store
+
+# Build cache
+dist/
+release/
+*.tsbuildinfo
+
+# Generated benchmark and audit reports (CI artifacts)
+benchmark-results.json
+npm-audit*.json
+sanitize-report*.json

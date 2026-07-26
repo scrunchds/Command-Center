@@ -9,41 +9,55 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = process.argv[2] === 'production';
+const external = [
+	'obsidian',
+	'electron',
+	'@codemirror/autocomplete',
+	'@codemirror/collab',
+	'@codemirror/commands',
+	'@codemirror/language',
+	'@codemirror/lint',
+	'@codemirror/search',
+	'@codemirror/state',
+	'@codemirror/view',
+	'@lezer/common',
+	'@lezer/highlight',
+	'@lezer/lr',
+	...builtinModules,
+];
 
-const context = await esbuild.context({
-	banner: {
-		js: banner,
-	},
+const jsContext = await esbuild.context({
+	banner: { js: banner },
 	entryPoints: ['src/main.ts'],
 	bundle: true,
-	external: [
-		'obsidian',
-		'electron',
-		'@codemirror/autocomplete',
-		'@codemirror/collab',
-		'@codemirror/commands',
-		'@codemirror/language',
-		'@codemirror/lint',
-		'@codemirror/search',
-		'@codemirror/state',
-		'@codemirror/view',
-		'@lezer/common',
-		'@lezer/highlight',
-		'@lezer/lr',
-		...builtinModules,
-	],
+	external,
 	format: 'cjs',
+	charset: 'utf8',
 	target: 'es2021',
 	logLevel: 'info',
 	sourcemap: prod ? false : 'inline',
 	treeShaking: true,
 	outfile: 'main.js',
 	minify: prod,
+	// Keep actionable warnings/errors, but remove development chatter in releases.
+	pure: prod ? ['console.log', 'console.debug'] : [],
+	legalComments: 'none',
+});
+
+const cssContext = await esbuild.context({
+	entryPoints: ['src/styles.css'],
+	bundle: true,
+	charset: 'utf8',
+	logLevel: 'info',
+	sourcemap: prod ? false : 'inline',
+	outfile: 'styles.css',
+	minify: prod,
+	legalComments: 'none',
 });
 
 if (prod) {
-	await context.rebuild();
-	process.exit(0);
+	await Promise.all([jsContext.rebuild(), cssContext.rebuild()]);
+	await Promise.all([jsContext.dispose(), cssContext.dispose()]);
 } else {
-	await context.watch();
+	await Promise.all([jsContext.watch(), cssContext.watch()]);
 }

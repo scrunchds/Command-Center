@@ -1,6 +1,10 @@
 import { readFileSync, writeFileSync } from 'fs';
 
 const targetVersion = process.env.npm_package_version;
+if (!targetVersion) throw new Error('npm_package_version is unavailable. Run this script through npm.');
+// Obsidian accepts a numeric dotted version string. This project intentionally
+// preserves the publication label 1.0.00 rather than normalizing it as SemVer.
+if (!/^\d+\.\d+\.\d+$/.test(targetVersion)) throw new Error(`Invalid Obsidian version: ${targetVersion}`);
 
 // read minAppVersion from manifest.json and bump version to target version
 const manifest = JSON.parse(readFileSync('manifest.json', 'utf8'));

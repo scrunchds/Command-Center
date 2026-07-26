@@ -1,50 +1,144 @@
-name: Release Obsidian plugin
+name: Release
 
 on:
-    push:
-        tags:
-            - '*'
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Create as draft release'
+        type: boolean
+        default: true
+      prerelease:
+        description: 'Mark as prerelease'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
-        permissions:
-            contents: write
-            id-token: write
-            attestations: write
-        steps:
-            - uses: actions/checkout@v6
+  release:
+    runs-on: ubuntu-latest
 
-            - name: Use Node.js
-              uses: actions/setup-node@v6
-              with:
-                  node-version: 24
-                  cache: 'npm'
+    steps:
+      - uses: actions/checkout@v6
 
-            - name: Build plugin
-              run: |
-                  npm ci
-                  npm run build
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'npm'
 
-            - name: Check for optional styles
-              id: styles
-              run: |
-                  [ -f styles.css ] && echo "exists=true" >> "$GITHUB_OUTPUT" || echo "exists=false" >> "$GITHUB_OUTPUT"
+      # ── Gate: full validation ────────────────────
+      - name: Install dependencies
+        run: npm ci
 
-            - name: Attest build provenance
-              uses: actions/attest@v4
-              with:
-                  subject-path: |
-                      main.js
-                      ${{ steps.styles.outputs.exists == 'true' && 'styles.css' || '' }}
+      - name: Verify synchronized release version
+        shell: node {0}
+        run: |
+          const fs = require('node:fs');
+          const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          const versions = JSON.parse(fs.readFileSync('versions.json', 'utf8'));
+          const expected = manifest.version;
+          if (pkg.version !== expected || lock.version !== expected || lock.packages[''].version !== expected) {
+            throw new Error(`version mismatch: manifest=${expected}, package=${pkg.version}, lock=${lock.version}, lockRoot=${lock.packages[''].version}`);
+          }
+          if (versions[expected] !== manifest.minAppVersion) throw new Error(`versions.json is missing ${expected} → ${manifest.minAppVersion}`);
+          if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== `v${expected}`) {
+            throw new Error(`release tag ${process.env.GITHUB_REF_NAME} must equal v${expected}`);
+          }
+          console.log(`Release metadata synchronized at ${expected}.`);
 
-            - name: Create release
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  tag="${GITHUB_REF#refs/tags/}"
+      - name: PII and secret leak audit
+        run: npm run sanitize
 
-                  gh release create "$tag" \
-                    --title="$tag" \
-                    --draft \
-                    main.js manifest.json ${{ steps.styles.outputs.exists == 'true' && 'styles.css' || '' }}
+      - name: TypeScript strict type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Core tests (verify.mjs)
+        run: npx tsx test/verify.mjs
+        timeout-minutes: 3
+
+      - name: ReAct framework tests (react-suite.mjs)
+        run: npx tsx test/react-suite.mjs
+        timeout-minutes: 3
+
+      - name: Benchmarks
+        run: npx tsx test/benchmark.mjs
+        timeout-minutes: 2
+
+      # ── Production build ─────────────────────────
+      - name: Production build and clean package
+        run: npm run package
+
+      - name: Verify release output
+        run: |
+          test -f release/command-center/main.js || { echo "ERROR: main.js not produced"; exit 1; }
+          test -f release/command-center/manifest.json || { echo "ERROR: manifest.json not packaged"; exit 1; }
+          test -f release/command-center/styles.css || { echo "ERROR: styles.css not packaged"; exit 1; }
+          count=$(find release/command-center -maxdepth 1 -type f | wc -l)
+          test "$count" -eq 3 || { echo "ERROR: release must contain exactly 3 files"; exit 1; }
+          size=$(stat -c%s release/command-center/main.js)
+          echo "main.js: ${size} bytes"
+          test "$size" -gt 1000 || { echo "ERROR: main.js too small (${size} bytes)"; exit 1; }
+
+      # ── Attest build provenance ──────────────────
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: release/command-center/*
+
+      # ── Create release ───────────────────────────
+      - name: Determine release tag
+        id: release_params
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            echo "draft_flag=--draft" >> "$GITHUB_OUTPUT"
+            echo "prerelease_flag=" >> "$GITHUB_OUTPUT"
+          else
+            tag="v$(node -p "require('./manifest.json').version")-dev.${{ github.run_number }}"
+            if [ "${{ inputs.draft }}" = "true" ]; then
+              echo "draft_flag=--draft" >> "$GITHUB_OUTPUT"
+            else
+              echo "draft_flag=" >> "$GITHUB_OUTPUT"
+            fi
+            if [ "${{ inputs.prerelease }}" = "true" ]; then
+              echo "prerelease_flag=--prerelease" >> "$GITHUB_OUTPUT"
+            else
+              echo "prerelease_flag=" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.release_params.outputs.tag }}"
+          echo "Creating release: ${tag}"
+
+          gh release create "$tag" \
+            --title="$tag" \
+            ${{ steps.release_params.outputs.draft_flag }} \
+            ${{ steps.release_params.outputs.prerelease_flag }} \
+            --generate-notes \
+            release/command-center/main.js \
+            release/command-center/manifest.json \
+            release/command-center/styles.css
+
+      # ── Upload build artifact for inspection ─────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-artifacts
+          path: release/command-center/

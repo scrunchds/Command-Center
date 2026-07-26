@@ -1,11 +1,10 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
-	"minAppVersion": "1.0.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
-	"isDesktopOnly": false
+	"id": "command-center",
+	"name": "Command Center",
+	"version": "1.0.00",
+	"minAppVersion": "1.10.0",
+	"description": "Autonomous agent orchestration layer for your vault. Spawns pi workers for retrieval, summarization, and structural editing.",
+	"author": "agentic-workspace",
+	"authorUrl": "https://github.com/agentic-workspace",
+	"isDesktopOnly": true
 }

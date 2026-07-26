@@ -1,0 +1,931 @@
+/**
+ * Command Center View — custom ItemView dashboard.
+ * Shows daemon controls, queue stats, task history, and per-task live streaming output.
+ */
+
+import { ItemView, Modal, Notice, TFile, WorkspaceLeaf, normalizePath, type EventRef } from 'obsidian';
+import type CommandCenterPlugin from '../main';
+import type { QueueStats } from '../types';
+import type { StoredTask } from '../persistence';
+import type { ReActTraceEvent, TraceEventCallback } from '../react/react-trace';
+
+const MAX_TRACE_ENTRIES = 50;
+const MAX_COMPLETED_STREAMS = 3;
+const TRACE_ICONS: Partial<Record<ReActTraceEvent['type'], string>> = {
+	'session:start': '🚀', 'session:pause': '⏸', 'session:resume': '▶', 'session:end': '🏁',
+	'cycle:start': '🔄', 'cycle:end': '✅',
+	'agent:role:create': '✨',
+	'agent:think:start': '🧠', 'agent:think:end': '💡',
+	'agent:act:start': '🔧', 'agent:observe': '📋',
+	'agent:correct': '🔄', 'agent:validate': '🔍', 'agent:error': '⚠️',
+};
+
+interface TraceRowSlot {
+	entry: HTMLDivElement;
+	icon: HTMLSpanElement;
+	agent: HTMLSpanElement;
+	label: HTMLSpanElement;
+	content: HTMLSpanElement;
+	badge: HTMLSpanElement;
+	event: ReActTraceEvent | null;
+}
+
+export interface TraceRenderStats {
+	flushes: number;
+	rowsUpdated: number;
+	maxPendingDepth: number;
+	maxFlushMs: number;
+	overBudgetFrames: number;
+}
+
+export const VIEW_TYPE_COMMAND_CENTER = 'command-center-sidebar';
+/** Compatibility alias used by existing commands and plugin lifecycle code. */
+export const COMMAND_CENTER_VIEW_TYPE = VIEW_TYPE_COMMAND_CENTER;
+export const COMMAND_CENTER_VIEW_DISPLAY_TEXT = 'Command Center';
+
+export class CommandCenterView extends ItemView {
+	private plugin: CommandCenterPlugin;
+	private taskListEl!: HTMLElement;
+	private statusIndicator!: HTMLElement;
+	private daemonErrorEl!: HTMLElement;
+	private statsEls!: { pending: HTMLElement; running: HTMLElement; completed: HTMLElement; failed: HTMLElement };
+	private streamContainerEl!: HTMLElement;
+	/** ReAct trace monitor container. */
+	private reactMonitorEl!: HTMLElement;
+	private debugToggleBtn!: HTMLButtonElement;
+	private nextStepBtn!: HTMLButtonElement;
+	private resumeSessionBtn!: HTMLButtonElement;
+	/** Per-task stream buffers. Deltas are coalesced into one DOM write per frame. */
+	private taskStreams = new Map<string, { el: HTMLElement; pre: HTMLElement; pending: string }>();
+	private pendingTraceEvents: ReActTraceEvent[] = [];
+	/** Fixed DOM row pool, filled as a circular buffer. */
+	private traceRows: TraceRowSlot[] = [];
+	private traceNextRow = 0;
+	private traceVisibleCount = 0;
+	private traceFilter: 'all' | 'critical' | 'errors' = 'all';
+	private traceFilterButtons: HTMLButtonElement[] = [];
+	private reactEmptyEl: HTMLElement | null = null;
+	private traceRenderStats: TraceRenderStats = {
+		flushes: 0, rowsUpdated: 0, maxPendingDepth: 0, maxFlushMs: 0, overBudgetFrames: 0,
+	};
+	private renderFrame: number | null = null;
+	private isViewOpen = false;
+	private selectedSessionId: string | null = null;
+	private configStateEl: HTMLElement | null = null;
+	private workflowStateEl: HTMLElement | null = null;
+	private chatMessagesEl: HTMLElement | null = null;
+	private chatInputEl: HTMLTextAreaElement | null = null;
+	private currentDailyFile: TFile | null = null;
+	private viewEventRefs: EventRef[] = [];
+	private monitorTimer: number | null = null;
+	private chatFrame: number | null = null;
+	private pendingChatScroll = false;
+	private readonly traceCallback: TraceEventCallback = (event) => this.queueReActTrace(event);
+
+	constructor(leaf: WorkspaceLeaf, plugin: CommandCenterPlugin) {
+		super(leaf);
+		this.plugin = plugin;
+	}
+
+	getViewType(): string { return COMMAND_CENTER_VIEW_TYPE; }
+	getDisplayText(): string { return COMMAND_CENTER_VIEW_DISPLAY_TEXT; }
+	getIcon(): string { return 'command'; }
+
+	async onOpen(): Promise<void> {
+		this.isViewOpen = true;
+		this.taskStreams.clear();
+		this.pendingTraceEvents.length = 0;
+		this.traceRows.length = 0;
+		this.traceNextRow = 0;
+		this.traceVisibleCount = 0;
+		this.traceFilter = 'all';
+		this.traceFilterButtons = [];
+		this.reactEmptyEl = null;
+		this.traceRenderStats = { flushes: 0, rowsUpdated: 0, maxPendingDepth: 0, maxFlushMs: 0, overBudgetFrames: 0 };
+		const container = this.containerEl.children[1] as HTMLElement;
+		container.empty();
+		container.addClass('command-center-view');
+
+		const title = container.createDiv({ cls: 'command-center-title-row' });
+		title.createEl('h2', { text: 'Command Center' });
+		this.renderHeader(title);
+		this.renderDailyControls(container);
+		this.renderWorkflowMonitor(container);
+		this.renderOrchestratorChat(container);
+
+		/* ─── Daemon Section ──────────────────────── */
+		const daemonSection = container.createEl('section', { cls: 'command-center-section' });
+		daemonSection.createEl('h3', { text: 'Daemon' });
+
+		const controls = daemonSection.createDiv({ cls: 'command-center-daemon-controls' });
+		this.statusIndicator = controls.createSpan({ cls: 'command-center-status-dot' });
+
+		for (const [label, cls, action] of [
+			['Start', 'mod-cta', () => { this.plugin.restartDaemon(); this.updateDaemonStatus(); window.setTimeout(() => { if (this.isViewOpen) this.updateDaemonStatus(); }, 300); }],
+			['Stop', '', () => { this.plugin.daemon.stop(); this.updateDaemonStatus(); }],
+			['Restart', '', () => { this.plugin.daemon.stop(); this.plugin.restartDaemon(); this.updateDaemonStatus(); window.setTimeout(() => { if (this.isViewOpen) this.updateDaemonStatus(); }, 300); }],
+		] as const) {
+			const btn = controls.createEl('button', { text: label });
+			if (cls) btn.addClass(cls);
+			btn.addEventListener('click', action);
+		}
+		this.daemonErrorEl = daemonSection.createDiv({ cls: 'command-center-daemon-error' });
+
+		/* ─── Stats Section ───────────────────────── */
+		const statsSection = container.createEl('section', { cls: 'command-center-section' });
+		statsSection.createEl('h3', { text: 'Task Queue' });
+		const grid = statsSection.createDiv({ cls: 'command-center-stats-grid' });
+		this.statsEls = {
+			pending: this.statCard(grid, 'Pending', '0'),
+			running: this.statCard(grid, 'Running', '0'),
+			completed: this.statCard(grid, 'Completed', '0'),
+			failed: this.statCard(grid, 'Failed', '0'),
+		};
+
+		/* ─── History Section ─────────────────────── */
+		const historySection = container.createEl('section', { cls: 'command-center-section' });
+		const histHeader = historySection.createDiv({ cls: 'command-center-section-header' });
+		histHeader.createEl('h3', { text: 'Task History' });
+		const clearBtn = histHeader.createEl('button', { text: 'Clear' });
+		clearBtn.addEventListener('click', () => {
+			this.taskListEl.empty();
+			this.taskListEl.createEl('p', { text: 'No tasks yet.', cls: 'command-center-empty' });
+		});
+
+		this.taskListEl = historySection.createDiv({ cls: 'command-center-task-list' });
+		this.taskListEl.createEl('p', { text: 'No tasks yet.', cls: 'command-center-empty' });
+
+		/* ─── Live Stream Section ─────────────────── */
+		const streamSection = container.createEl('section', { cls: 'command-center-section' });
+		const streamHeader = streamSection.createDiv({ cls: 'command-center-section-header' });
+		streamHeader.createEl('h3', { text: 'Live Output' });
+		const clearStreamBtn = streamHeader.createEl('button', { text: 'Clear All' });
+		clearStreamBtn.addEventListener('click', () => this.clearAllStreams());
+
+		this.streamContainerEl = streamSection.createDiv({ cls: 'command-center-stream-container' });
+		this.streamContainerEl.createEl('p', { text: 'Waiting for agent output…', cls: 'command-center-empty' });
+
+		/* ─── ReAct Monitor Section ──────────────── */
+		const reactSection = container.createEl('section', { cls: 'command-center-section' });
+		const reactHeader = reactSection.createDiv({ cls: 'command-center-section-header' });
+		reactHeader.createEl('h3', { text: 'ReAct Monitor' });
+		const reactActions = reactHeader.createDiv({ cls: 'cc-react-actions' });
+		this.debugToggleBtn = reactActions.createEl('button', { text: 'Debug / Step Mode' });
+		this.debugToggleBtn.addEventListener('click', () => {
+			this.plugin.daemon.setDebugStepMode(!this.plugin.daemon.isDebugStepMode());
+			this.updateDebugControls();
+		});
+		this.nextStepBtn = reactActions.createEl('button', { text: 'Next Step' });
+		this.nextStepBtn.addEventListener('click', () => {
+			this.plugin.daemon.nextDebugStep();
+			this.updateDebugControls();
+		});
+		this.resumeSessionBtn = reactActions.createEl('button', { text: 'Resume Session' });
+		this.resumeSessionBtn.addEventListener('click', () => {
+			this.plugin.daemon.resumeDebugSession();
+			this.updateDebugControls();
+		});
+		const exportReactBtn = reactActions.createEl('button', { text: 'Export Session Trace' });
+		exportReactBtn.addEventListener('click', () => { void this.exportSessionTrace(); });
+		const clearReactBtn = reactActions.createEl('button', { text: 'Clear' });
+		clearReactBtn.addEventListener('click', () => this.clearReActMonitor());
+		this.updateDebugControls();
+
+		const filters = reactSection.createDiv({ cls: 'cc-react-filters', attr: { role: 'group', 'aria-label': 'ReAct event filters' } });
+		for (const [filter, label] of [['all', 'All'], ['critical', 'Actions & corrections'], ['errors', 'Errors']] as const) {
+			const button = filters.createEl('button', { text: label, attr: { type: 'button', 'aria-pressed': String(filter === this.traceFilter) } });
+			button.dataset.filter = filter;
+			button.toggleClass('mod-cta', filter === this.traceFilter);
+			this.registerDomEvent(button, 'click', () => this.setTraceFilter(filter));
+			this.traceFilterButtons.push(button);
+		}
+
+		this.reactMonitorEl = reactSection.createDiv({ cls: 'cc-react-monitor' });
+		this.initializeTraceRowPool();
+		this.reactEmptyEl = this.reactMonitorEl.createEl('p', { text: 'No active ReAct session.', cls: 'command-center-empty' });
+
+		// Attach one stable listener and replay the retained tail after a tab reopen.
+		this.plugin.daemon.trace.setCallback(this.traceCallback);
+		const retained = this.plugin.daemon.trace.getEvents();
+		this.pendingTraceEvents.push(...retained.slice(-MAX_TRACE_ENTRIES));
+		this.scheduleRender();
+
+		this.updateDaemonStatus();
+		this.bindOperationalRefresh();
+		this.refreshConfigurationState();
+	}
+
+	async onClose(): Promise<void> {
+		this.isViewOpen = false;
+		this.plugin.daemon.trace.clearCallback(this.traceCallback);
+		// Never leave a headless session blocked if its controlling view closes.
+		this.plugin.daemon.resumeDebugSession();
+		if (this.renderFrame !== null) {
+			window.cancelAnimationFrame(this.renderFrame);
+			this.renderFrame = null;
+		}
+		if (this.chatFrame !== null) { window.cancelAnimationFrame(this.chatFrame); this.chatFrame = null; }
+		if (this.monitorTimer !== null) { window.clearInterval(this.monitorTimer); this.monitorTimer = null; }
+		for (const ref of this.viewEventRefs) this.app.vault.offref(ref);
+		this.viewEventRefs = [];
+		this.configStateEl = null; this.workflowStateEl = null; this.chatMessagesEl = null; this.chatInputEl = null; this.currentDailyFile = null;
+		this.pendingTraceEvents.length = 0;
+		for (const row of this.traceRows) row.event = null;
+		this.traceRows.length = 0;
+		this.traceNextRow = 0;
+		this.traceVisibleCount = 0;
+		this.traceFilterButtons = [];
+		this.reactEmptyEl = null;
+		this.taskStreams.clear();
+		if (this.plugin.commandCenterView === this) this.plugin.commandCenterView = null;
+	}
+
+	/* ─── Operational Sidebar ───────────────────────── */
+
+	private renderHeader(title: HTMLElement): void {
+		title.createEl('h2', { text: 'Command Center' });
+		const exportWorkflowBtn = title.createEl('button', { text: 'Export Active Workflow to Canvas' });
+		exportWorkflowBtn.addEventListener('click', () => { void this.plugin.exportActiveWorkflowToCanvas(); });
+	}
+
+	private renderDailyControls(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-daily-controls' });
+		section.createEl('h3', { text: 'Daily Cycle' });
+		const controls = section.createDiv({ cls: 'command-center-daemon-controls' });
+		const morning = controls.createEl('button', { text: '🌅 Morning Start', cls: 'mod-cta' });
+		const midday = controls.createEl('button', { text: '⏱️ Midday Append' });
+		const evening = controls.createEl('button', { text: '🌙 Evening Close' });
+		morning.addEventListener('click', () => void this.runMorningTouchpoint(morning));
+		midday.addEventListener('click', () => void this.openMiddayPrompt(midday));
+		evening.addEventListener('click', () => void this.openEveningPrompt(evening));
+	}
+
+	private renderWorkflowMonitor(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-system-monitor' });
+		section.createEl('h3', { text: 'System & Workflow State' });
+		this.configStateEl = section.createDiv({ cls: 'cc-config-state' });
+		this.workflowStateEl = section.createDiv({ cls: 'cc-workflow-state' });
+	}
+
+	private renderOrchestratorChat(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-orchestrator-chat' });
+		section.createEl('h3', { text: 'Orchestrator' });
+		this.chatMessagesEl = section.createDiv({ cls: 'cc-sidebar-chat-messages' });
+		this.appendChatMessage('assistant', 'Ready. Prompts are routed through the configured reasoning tier.');
+		this.chatInputEl = section.createEl('textarea', { cls: 'cc-sidebar-chat-input', attr: { rows: '3', placeholder: 'Ask the Orchestrator…' } });
+		const send = section.createEl('button', { text: 'Send', cls: 'mod-cta' });
+		const submit = () => void this.submitOrchestratorChat(send);
+		send.addEventListener('click', submit);
+		this.chatInputEl.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit(); } });
+	}
+
+	appendChatMessage(role: 'user' | 'assistant' | 'error', message: string): HTMLElement | null {
+		if (!this.chatMessagesEl) return null;
+		const pinned = this.chatMessagesEl.scrollHeight - this.chatMessagesEl.scrollTop - this.chatMessagesEl.clientHeight < 28;
+		const row = this.chatMessagesEl.createDiv({ cls: `cc-sidebar-chat-message is-${role}` });
+		row.setText(message);
+		if (pinned) { this.pendingChatScroll = true; this.scheduleChatScroll(); }
+		return row;
+	}
+
+	private async submitOrchestratorChat(button: HTMLButtonElement): Promise<void> {
+		const prompt = this.chatInputEl?.value.trim() ?? '';
+		if (!prompt) return;
+		this.plugin.requireInitialized();
+		if (this.chatInputEl) this.chatInputEl.value = '';
+		this.appendChatMessage('user', prompt); button.disabled = true;
+		const responseEl = this.appendChatMessage('assistant', '') as HTMLElement | null;
+		let streamed = '';
+		try {
+			const result = await this.plugin.router.route({
+				id: crypto.randomUUID(), workerProfile: 'Orchestrator', workerRole: 'Orchestrator', preferredTier: 'tier2_reasoning', prompt, status: 'queued', createdAt: Date.now(),
+				onStream: delta => { streamed += delta; responseEl?.appendText(delta); this.pendingChatScroll = true; this.scheduleChatScroll(); },
+			});
+			if (!streamed) responseEl?.setText(result.taskResult.output ?? result.taskResult.summary ?? 'Completed.');
+			if (!result.servedBy) throw new Error(result.taskResult.output || 'No reasoning provider completed the request.');
+		} catch (error) { responseEl?.remove(); this.appendChatMessage('error', (error as Error).message); }
+		finally { button.disabled = false; this.chatInputEl?.focus(); }
+	}
+
+	private async runMorningTouchpoint(button: HTMLButtonElement): Promise<void> {
+		button.disabled = true;
+		try {
+			const metrics = this.configuredMetricInputs();
+			const silent = this.plugin.settings.silentDailyStartup;
+			if (silent) {
+				const summary = await this.plugin.dailyEngine.runMorningStartup(metrics, { silent: true });
+				this.currentDailyFile = summary.assembly.file;
+				await this.app.workspace.getLeaf(false).openFile(summary.assembly.file);
+				const capacity = summary.assembly.capacity;
+				const review = summary.proposalCount ? ` · ${summary.proposalCount} inbox proposal${summary.proposalCount === 1 ? '' : 's'} awaiting review` : '';
+				const missing = summary.missingMetrics.length ? ` · ${summary.missingMetrics.length} metric${summary.missingMetrics.length === 1 ? '' : 's'} unavailable` : '';
+				new Notice(`Morning ready · capacity ${capacity.score.toFixed(2)} · cap ${capacity.priorityCap}${review}${missing}`);
+			} else {
+				const proposals = await this.plugin.dailyEngine.generateInboxProposals();
+				const approved = await this.confirmInboxProposals(proposals);
+				if (approved.length) await this.plugin.dailyEngine.executeApprovedProposals(approved);
+				const assembled = await this.plugin.dailyEngine.assembleDailyNote(metrics);
+				this.currentDailyFile = assembled.file;
+				await this.app.workspace.getLeaf(false).openFile(assembled.file);
+				new Notice(`Morning ready · capacity ${assembled.capacity.score.toFixed(2)} · cap ${assembled.capacity.priorityCap}`);
+			}
+			this.refreshConfigurationState();
+		} catch (error) { new Notice(`Morning start failed: ${(error as Error).message}`); }
+		finally { button.disabled = false; }
+	}
+
+	private async openMiddayPrompt(button: HTMLButtonElement): Promise<void> {
+		const file = await this.resolveDailyFile();
+		if (!file) { new Notice('Create today’s Daily Note with Morning Start first.'); return; }
+		new TextEntryModal(this.app, 'Midday update', 'Append update', async text => {
+			button.disabled = true;
+			try {
+				await this.plugin.dailyEngine.appendTimestampedLog(file, text);
+				const frogs = await this.plugin.dailyEngine.performFrogAudit();
+				new Notice(frogs.length ? `${frogs.length} deferred priorit${frogs.length === 1 ? 'y' : 'ies'} need review.` : 'Midday update appended; no stale deferred priorities.');
+			} finally { button.disabled = false; }
+		}).open();
+	}
+
+	private async openEveningPrompt(button: HTMLButtonElement): Promise<void> {
+		const file = await this.resolveDailyFile();
+		if (!file) { new Notice('Today’s configured Daily Note does not exist.'); return; }
+		const questions = this.reflectionQuestions();
+		new TextEntryModal(this.app, questions.length ? questions.join('\n') : 'Evening reflection', 'Close day', async text => {
+			button.disabled = true;
+			try { const summary = await this.plugin.dailyEngine.closeoutEvening(file, text); new Notice(`Closed · ${summary.completed} completed · ${summary.pending} pending`); }
+			finally { button.disabled = false; }
+		}).open();
+	}
+
+	private confirmInboxProposals(proposals: Awaited<ReturnType<CommandCenterPlugin['dailyEngine']['generateInboxProposals']>>): Promise<Array<{ proposalId: string }>> {
+		if (!proposals.length) return Promise.resolve([]);
+		return new Promise(resolve => new ProposalApprovalModal(this.app, proposals, resolve).open());
+	}
+
+	private configuredMetricInputs(): Record<string, unknown> {
+		const config = this.plugin.configManager.requireConfig();
+		const active = this.app.workspace.getActiveFile();
+		const frontmatter = active ? this.app.metadataCache.getFileCache(active)?.frontmatter as Record<string, unknown> | undefined : undefined;
+		return Object.fromEntries(config.capacity.rules.map(rule => [rule.metric, frontmatter?.[rule.metric]]));
+	}
+
+	private reflectionQuestions(): string[] {
+		const style = this.plugin.configManager.requireStyleGuide();
+		return style.split(/\r?\n/).map(line => line.replace(/^\s*[-*+]\s+/, '').trim()).filter(line => line.endsWith('?'));
+	}
+
+	private async resolveDailyFile(): Promise<TFile | null> {
+		if (this.currentDailyFile && this.app.vault.getAbstractFileByPath(this.currentDailyFile.path) instanceof TFile) return this.currentDailyFile;
+		const assembled = await this.plugin.dailyEngine.assembleDailyNote();
+		this.currentDailyFile = assembled.file; return assembled.file;
+	}
+
+	private bindOperationalRefresh(): void {
+		const refresh = () => this.refreshConfigurationState();
+		this.viewEventRefs.push(this.app.vault.on('create', refresh), this.app.vault.on('delete', refresh), this.app.vault.on('rename', refresh));
+		this.monitorTimer = window.setInterval(refresh, 5_000);
+	}
+
+	private refreshConfigurationState(): void {
+		if (!this.configStateEl || !this.workflowStateEl) return;
+		this.configStateEl.empty(); this.workflowStateEl.empty();
+		if (!this.plugin.configManager.isInitialized()) { this.configStateEl.setText('Configuration required.'); return; }
+		const config = this.plugin.configManager.requireConfig();
+		const list = this.configStateEl.createEl('ul');
+		list.createEl('li', { text: `Inboxes: ${config.topology.inboxFolders.join(', ')}` });
+		list.createEl('li', { text: `Daily Notes: ${config.topology.dailyNotesFolder}/${config.topology.dailyNoteNameTemplate}` });
+		list.createEl('li', { text: `Priority cap: ${config.focus.defaultPriorityCap}` });
+		list.createEl('li', { text: `Tracks: ${config.lifeDomains.map(domain => domain.name).join(', ') || 'None configured'}` });
+		const indexed = config.managedFolders.filter(folder => this.app.vault.getAbstractFileByPath(normalizePath(`${folder.path}/_index.md`)) instanceof TFile).length;
+		list.createEl('li', { text: `Indexes: ${indexed}/${config.managedFolders.length}` });
+		const stats = this.plugin.taskQueue?.getStats();
+		this.workflowStateEl.setText(stats ? `Workflows/tasks · ${stats.running} running · ${stats.pending} pending · ${stats.failed} failed` : 'Workflow queue unavailable.');
+	}
+
+	private scheduleChatScroll(): void {
+		if (this.chatFrame !== null) return;
+		this.chatFrame = window.requestAnimationFrame(() => { this.chatFrame = null; if (this.pendingChatScroll && this.chatMessagesEl) this.chatMessagesEl.scrollTop = this.chatMessagesEl.scrollHeight; this.pendingChatScroll = false; });
+	}
+
+	/* ─── Daemon Status ─────────────────────────────── */
+
+	updateDaemonStatus(): void {
+		if (!this.statusIndicator) return;
+		const running = this.plugin.daemon.isRunning();
+		const err = this.plugin.daemon.startError;
+		this.statusIndicator.removeClass('running', 'stopped', 'busy', 'error');
+		this.statusIndicator.removeAttribute('title');
+		if (running) {
+			this.statusIndicator.addClass('running');
+			this.statusIndicator.textContent = '● Running';
+		} else if (err) {
+			this.statusIndicator.addClass('error');
+			this.statusIndicator.textContent = '✕ Error';
+			this.statusIndicator.setAttribute('title', err);
+		} else {
+			this.statusIndicator.addClass('stopped');
+			this.statusIndicator.textContent = '● Stopped';
+		}
+		if (this.daemonErrorEl) {
+			this.daemonErrorEl.textContent = err ? `Launch error: ${err}` : '';
+			this.daemonErrorEl.style.display = err ? '' : 'none';
+		}
+	}
+
+	updateQueueStats(stats: QueueStats): void {
+		if (!this.statsEls) return;
+		this.statsEls.pending.textContent = String(stats.pending);
+		this.statsEls.running.textContent = String(stats.running);
+		this.statsEls.completed.textContent = String(stats.completed);
+		this.statsEls.failed.textContent = String(stats.failed);
+	}
+
+	/* ─── History ───────────────────────────────────── */
+
+	addTaskToHistory(_task: StoredTask): void {
+		this.taskListEl.empty();
+		for (const t of this.plugin.getTaskHistory()) {
+			const entry = this.taskListEl.createDiv({ cls: `command-center-task-entry ${t.status}` });
+			entry.createSpan({ cls: 'command-center-task-status', text: t.status });
+			const info = entry.createSpan({ cls: 'command-center-task-info' });
+			info.textContent = t.targetPath
+				? `${t.workerProfile} — ${t.targetPath.split('/').pop() ?? t.targetPath}`
+				: t.workerProfile;
+			if (t.error) entry.setAttribute('title', t.error);
+			entry.createSpan({ cls: 'command-center-task-time', text: new Date(t.createdAt).toLocaleTimeString() });
+		}
+	}
+
+	/* ─── Per-Task Streaming ────────────────────────── */
+
+	/**
+	 * Start streaming output for a task. Creates a buffered <pre> block
+	 * with a header showing the worker profile and target path.
+	 * Called by the plugin when a task begins execution.
+	 */
+	startTaskStream(taskId: string, workerProfile: string, targetPath?: string): void {
+		if (!this.isViewOpen || !this.streamContainerEl?.isConnected) return;
+
+		// Remove empty placeholder on first stream
+		const placeholder = this.streamContainerEl.querySelector('.command-center-empty');
+		if (placeholder) placeholder.remove();
+
+		// Remove old completed streams beyond the visible window.
+		const inactive = [...this.taskStreams.entries()].filter(([id]) => id !== taskId);
+		for (const [id] of inactive.slice(0, Math.max(0, inactive.length - MAX_COMPLETED_STREAMS))) {
+			this.taskStreams.get(id)?.el.remove();
+			this.taskStreams.delete(id);
+		}
+
+		// Create stream block
+		const block = this.streamContainerEl.createDiv({ cls: 'cc-stream-block active' });
+		const header = block.createDiv({ cls: 'cc-stream-header' });
+		header.createSpan({
+			cls: 'cc-stream-task-label',
+			text: `${workerProfile}${targetPath ? ' → ' + targetPath : ''}`,
+		});
+		header.createSpan({ cls: 'cc-stream-time', text: new Date().toLocaleTimeString() });
+
+		const pre = block.createEl('pre', { cls: 'cc-stream-content' });
+		pre.textContent = '';
+
+		this.taskStreams.set(taskId, { el: block, pre, pending: '' });
+		this.streamContainerEl.scrollTop = this.streamContainerEl.scrollHeight;
+	}
+
+	/** Whether this view currently has a DOM buffer for the task. */
+	hasTaskStream(taskId: string): boolean {
+		return this.taskStreams.has(taskId);
+	}
+
+	/**
+	 * Append a streaming text delta to the active task's buffer.
+	 * Uses incremental DOM update — only appends the new text.
+	 */
+	appendStreamOutput(delta: string, taskId: string): void {
+		const stream = this.taskStreams.get(taskId);
+		if (!stream) return;
+
+		stream.pending += delta;
+		this.scheduleRender();
+	}
+
+	/**
+	 * Mark a task stream as complete. Adds a completion marker
+	 * and removes the 'active' class.
+	 */
+	finalizeStreamOutput(taskId: string): void {
+		const stream = this.taskStreams.get(taskId);
+		if (!stream) return;
+
+		stream.pending += '\n\n─── Task Complete ───';
+		stream.el.removeClass('active');
+		stream.el.addClass('completed');
+		this.scheduleRender();
+	}
+
+	/**
+	 * Clear a single task's stream from the dashboard.
+	 */
+	clearTaskStream(taskId: string): void {
+		const stream = this.taskStreams.get(taskId);
+		if (stream) { stream.el.remove(); this.taskStreams.delete(taskId); }
+
+		if (this.taskStreams.size === 0) {
+			this.streamContainerEl.createEl('p', { text: 'Waiting for agent output…', cls: 'command-center-empty' });
+		}
+	}
+
+	/** Clear all stream blocks. */
+	clearAllStreams(): void {
+		for (const [, s] of this.taskStreams) s.el.remove();
+		this.taskStreams.clear();
+		this.streamContainerEl.empty();
+		this.streamContainerEl.createEl('p', { text: 'Waiting for agent output…', cls: 'command-center-empty' });
+	}
+
+	/* ─── Helpers ───────────────────────────────────── */
+
+	/** Coalesce model deltas and trace bursts into at most one layout per frame. */
+	private scheduleRender(): void {
+		if (!this.isViewOpen || this.renderFrame !== null) return;
+		this.renderFrame = window.requestAnimationFrame(() => {
+			this.renderFrame = null;
+			if (!this.isViewOpen) return;
+			this.flushStreamOutput();
+			this.flushReActTrace();
+		});
+	}
+
+	private flushStreamOutput(): void {
+		for (const stream of this.taskStreams.values()) {
+			if (!stream.pending) continue;
+			const delta = stream.pending;
+			stream.pending = '';
+			if (!stream.pre.isConnected) continue;
+			stream.pre.appendChild(document.createTextNode(delta));
+			stream.pre.scrollTop = stream.pre.scrollHeight;
+		}
+	}
+
+	private statCard(parent: HTMLElement, label: string, value: string): HTMLElement {
+		const card = parent.createDiv({ cls: 'command-center-stat-card' });
+		card.createSpan({ cls: 'command-center-stat-value', text: value });
+		card.createSpan({ cls: 'command-center-stat-label', text: label });
+		return card;
+	}
+
+	/* ─── ReAct Monitor ──────────────────────────── */
+
+	private queueReActTrace(event: ReActTraceEvent): void {
+		if (!this.isViewOpen) return;
+		if (event.type === 'session:pause' || event.type === 'session:resume' || event.type === 'session:end') {
+			this.updateDebugControls();
+		}
+		if (!this.traceEventVisible(event)) return;
+		this.pendingTraceEvents.push(event);
+		this.traceRenderStats.maxPendingDepth = Math.max(this.traceRenderStats.maxPendingDepth, this.pendingTraceEvents.length);
+		// The DOM is a virtualized rolling tail; events outside it remain in the collector.
+		if (this.pendingTraceEvents.length > MAX_TRACE_ENTRIES) {
+			this.pendingTraceEvents.splice(0, this.pendingTraceEvents.length - MAX_TRACE_ENTRIES);
+		}
+		this.scheduleRender();
+	}
+
+	private updateDebugControls(): void {
+		if (!this.debugToggleBtn) return;
+		const enabled = this.plugin.daemon.isDebugStepMode();
+		const paused = this.plugin.daemon.isDebugStepPaused();
+		this.debugToggleBtn.classList.toggle('mod-cta', enabled);
+		this.debugToggleBtn.setAttribute('aria-pressed', String(enabled));
+		this.debugToggleBtn.setAttribute('title', enabled ? 'Disable cycle-by-cycle debugging' : 'Pause after each completed observation cycle');
+		this.nextStepBtn.hidden = !enabled;
+		this.resumeSessionBtn.hidden = !enabled;
+		this.nextStepBtn.disabled = !paused;
+		this.resumeSessionBtn.disabled = !paused;
+	}
+
+	/** Runtime diagnostics for profiling sustained agent bursts in Obsidian. */
+	getTraceRenderStats(): Readonly<TraceRenderStats> {
+		return { ...this.traceRenderStats };
+	}
+
+	private setTraceFilter(filter: 'all' | 'critical' | 'errors'): void {
+		if (this.traceFilter === filter) return;
+		this.traceFilter = filter;
+		for (const button of this.traceFilterButtons) {
+			const selected = button.dataset.filter === filter;
+			button.setAttribute('aria-pressed', String(selected));
+			button.classList.toggle('mod-cta', selected);
+		}
+		this.rebuildFilteredTraceTail();
+	}
+
+	private traceEventVisible(event: ReActTraceEvent): boolean {
+		if (this.traceFilter === 'all') return true;
+		if (this.traceFilter === 'errors') return event.type === 'agent:error' || Boolean(event.detail?.toolInvocations?.some(tool => tool.error));
+		return event.type === 'agent:act:start' || event.type === 'agent:correct' || event.type === 'agent:error';
+	}
+
+	private rebuildFilteredTraceTail(): void {
+		this.pendingTraceEvents.length = 0;
+		this.traceNextRow = 0;
+		this.traceVisibleCount = 0;
+		for (const row of this.traceRows) this.hideTraceRow(row);
+		const tail = this.plugin.daemon.trace.getEvents().filter(event => this.traceEventVisible(event)).slice(-MAX_TRACE_ENTRIES);
+		this.pendingTraceEvents.push(...tail);
+		if (this.reactEmptyEl) this.reactEmptyEl.hidden = tail.length > 0;
+		this.scheduleRender();
+	}
+
+	private flushReActTrace(): void {
+		if (!this.reactMonitorEl?.isConnected || this.pendingTraceEvents.length === 0) return;
+		const startedAt = performance.now();
+
+		// Read scroll geometry once before mutations. Avoid forcing a post-update layout
+		// unless the user was already following the live tail.
+		const shouldAutoScroll = this.reactMonitorEl.scrollHeight - this.reactMonitorEl.scrollTop
+			- this.reactMonitorEl.clientHeight <= 24;
+		const events = this.pendingTraceEvents.splice(0).filter(event => this.traceEventVisible(event));
+		if (events.length === 0) return;
+		if (this.reactEmptyEl) this.reactEmptyEl.hidden = true;
+
+		// Circular rebinding means a steady-state flush updates only newly arrived
+		// rows—not all 50 rows shifted by a rolling array.
+		for (const event of events) {
+			const row = this.traceRows[this.traceNextRow]!;
+			this.updateTraceRow(row, event);
+			this.traceNextRow = (this.traceNextRow + 1) % MAX_TRACE_ENTRIES;
+			this.traceVisibleCount = Math.min(MAX_TRACE_ENTRIES, this.traceVisibleCount + 1);
+		}
+
+		// CSS order presents the ring chronologically while every node remains fixed.
+		const oldest = this.traceVisibleCount < MAX_TRACE_ENTRIES ? 0 : this.traceNextRow;
+		for (let position = 0; position < this.traceVisibleCount; position++) {
+			const rowIndex = (oldest + position) % MAX_TRACE_ENTRIES;
+			const entry = this.traceRows[rowIndex]!.entry;
+			const order = String(position);
+			if (entry.style.order !== order) entry.style.order = order;
+		}
+		if (shouldAutoScroll) this.reactMonitorEl.scrollTop = this.reactMonitorEl.scrollHeight;
+
+		const elapsed = performance.now() - startedAt;
+		this.traceRenderStats.flushes++;
+		this.traceRenderStats.rowsUpdated += events.length;
+		this.traceRenderStats.maxFlushMs = Math.max(this.traceRenderStats.maxFlushMs, elapsed);
+		if (elapsed > 16.67) this.traceRenderStats.overBudgetFrames++;
+	}
+
+	private initializeTraceRowPool(): void {
+		const fragment = document.createDocumentFragment();
+		for (let index = 0; index < MAX_TRACE_ENTRIES; index++) {
+			const entry = document.createElement('div');
+			entry.className = 'cc-react-entry';
+			entry.hidden = true;
+			entry.tabIndex = 0;
+			entry.setAttribute('role', 'button');
+			entry.dataset.poolIndex = String(index);
+			const icon = this.createTraceSpan(entry, 'cc-react-icon');
+			const agent = this.createTraceSpan(entry, 'cc-react-agent');
+			const label = this.createTraceSpan(entry, 'cc-react-label');
+			const content = this.createTraceSpan(entry, 'cc-react-content');
+			const badge = this.createTraceSpan(entry, 'cc-react-role-badge');
+			const row: TraceRowSlot = { entry, icon, agent, label, content, badge, event: null };
+			const inspect = () => {
+				// Read the slot at activation time: pooled rows may have been rebound since
+				// pointer-down, but the modal must always receive the currently displayed event.
+				const selected = row.event;
+				if (!selected || entry.hidden || entry.dataset.eventId !== selected.id) return;
+				this.selectedSessionId = selected.sessionId;
+				new SessionReplayModal(this.plugin, selected).open();
+			};
+			entry.addEventListener('click', inspect);
+			entry.addEventListener('keydown', keyboardEvent => {
+				if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+					keyboardEvent.preventDefault();
+					inspect();
+				}
+			});
+			this.traceRows.push(row);
+			fragment.appendChild(entry);
+		}
+		this.reactMonitorEl.appendChild(fragment);
+	}
+
+	private createTraceSpan(entry: HTMLDivElement, className: string): HTMLSpanElement {
+		const span = document.createElement('span');
+		span.className = className;
+		entry.appendChild(span);
+		return span;
+	}
+
+	private updateTraceRow(row: TraceRowSlot, event: ReActTraceEvent): void {
+		const isDynamicRole = event.type === 'agent:role:create' || event.meta?.dynamicRole === true;
+		row.event = event;
+		row.entry.hidden = false;
+		const className = `cc-react-entry cc-react-${event.type.replace(/:/g, '-')}${isDynamicRole ? ' cc-react-dynamic-role' : ''}`;
+		if (row.entry.className !== className) row.entry.className = className;
+		row.entry.dataset.eventId = event.id;
+		row.entry.dataset.sessionId = event.sessionId;
+		row.entry.dataset.eventType = event.type;
+		row.entry.setAttribute('aria-label', `Inspect ${event.agent} ${event.label}`);
+		this.setTextIfChanged(row.icon, TRACE_ICONS[event.type] ?? '•');
+		this.setTextIfChanged(row.agent, event.agent);
+		this.setTextIfChanged(row.label, event.label);
+		this.setTextIfChanged(row.content, event.content ? event.content.slice(0, 150) : '');
+		row.content.hidden = !event.content;
+		const depth = String(Math.min(Math.max(event.cycleIndex + 1, 0), 3));
+		if (row.entry.style.getPropertyValue('--cc-trace-depth') !== depth) {
+			row.entry.style.setProperty('--cc-trace-depth', depth);
+		}
+		this.setTextIfChanged(row.badge, isDynamicRole ? (event.type === 'agent:role:create' ? 'NEW ROLE' : 'CUSTOM') : '');
+		row.badge.hidden = !isDynamicRole;
+		if (isDynamicRole) {
+			row.entry.setAttribute('title', this.dynamicRoleTooltip(event));
+			const roleName = typeof event.meta?.roleName === 'string' ? event.meta.roleName : event.agent;
+			row.entry.setAttribute('aria-label', `Dynamic role ${roleName}`);
+		} else {
+			row.entry.removeAttribute('title');
+		}
+	}
+
+	private setTextIfChanged(element: HTMLElement, value: string): void {
+		if (element.textContent !== value) element.textContent = value;
+	}
+
+	private hideTraceRow(row: TraceRowSlot): void {
+		row.event = null;
+		row.entry.hidden = true;
+		delete row.entry.dataset.eventId;
+		delete row.entry.dataset.sessionId;
+		delete row.entry.dataset.eventType;
+	}
+
+	private dynamicRoleTooltip(event: ReActTraceEvent): string {
+		const tools = Array.isArray(event.meta?.allowedTools) ? event.meta.allowedTools.join(', ') : '';
+		const rules = Array.isArray(event.meta?.validationRules) ? event.meta.validationRules.length : 0;
+		return [event.content, tools ? `Allowed tools: ${tools}` : '', rules ? `Validation rules: ${rules}` : '']
+			.filter(Boolean).join('\n');
+	}
+
+	private async exportSessionTrace(): Promise<void> {
+		const allEvents = this.plugin.daemon.trace.getEvents();
+		const sessionId = this.selectedSessionId ?? allEvents[allEvents.length - 1]?.sessionId;
+		if (!sessionId) { new Notice('No ReAct session is available to export.'); return; }
+		const events = this.plugin.daemon.trace.getSessionEvents(sessionId);
+		if (events.length === 0) { new Notice('The selected session is no longer retained.'); return; }
+
+		const memoryNotes: Array<{ path: string; content: string }> = [];
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			if (!file.path.startsWith('Command Center/Memory/')) continue;
+			const content = await this.app.vault.cachedRead(file);
+			if (content.match(/^session:\s*["']?([^"'\r\n]+)["']?/m)?.[1]?.trim() === sessionId) {
+				memoryNotes.push({ path: file.path, content });
+			}
+		}
+
+		const evaluations = events.flatMap(event => event.detail?.evaluation ? [event.detail.evaluation] : []);
+		const totals = events.reduce((sum, event) => {
+			const usage = event.detail?.tokenUsage;
+			sum.prompt += usage?.promptTokens ?? 0;
+			sum.completion += usage?.completionTokens ?? 0;
+			sum.total += usage?.totalTokens ?? ((usage?.promptTokens ?? 0) + (usage?.completionTokens ?? 0));
+			return sum;
+		}, { prompt: 0, completion: 0, total: 0 });
+		const started = events[0]?.timestamp ?? Date.now();
+		const lines = [
+			'---', `session: "${sessionId}"`, 'tags: [command-center-audit, react-trace]', `exportedAt: ${Date.now()}`, '---', '',
+			'# ReAct Session Audit Report', '', `- **Session:** \`${sessionId}\``,
+			`- **Started:** ${new Date(started).toISOString()}`, `- **Events:** ${events.length}`,
+			`- **Token usage:** ${totals.prompt} prompt / ${totals.completion} completion / ${totals.total} total`, '',
+			'## Evaluation Summary', '',
+			evaluations.length ? evaluations.map((evaluation, index) => `### Evaluation ${index + 1}\n\n\`\`\`json\n${JSON.stringify(evaluation, null, 2)}\n\`\`\``).join('\n\n') : '_No evaluation scorecards were recorded._', '',
+			'## Full Trace', '',
+			...events.map((event, index) => formatAuditEvent(event, index)),
+			'## Memory Notes', '',
+			...(memoryNotes.length ? memoryNotes.flatMap(note => [`### ${note.path}`, '', '```markdown', note.content, '```', '']) : ['_No memory notes found for this session._', '']),
+		];
+
+		const folder = normalizePath('Command Center/Audit');
+		if (!this.app.vault.getAbstractFileByPath('Command Center')) await this.app.vault.createFolder('Command Center');
+		if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+		const stamp = new Date(started).toISOString().replace(/[:.]/g, '-');
+		let path = normalizePath(`${folder}/react-audit-${sessionId.slice(0, 8)}-${stamp}.md`);
+		let suffix = 2;
+		while (this.app.vault.getAbstractFileByPath(path)) path = normalizePath(`${folder}/react-audit-${sessionId.slice(0, 8)}-${stamp}-${suffix++}.md`);
+		await this.app.vault.create(path, lines.join('\n'));
+		new Notice(`Session trace exported to ${path}`);
+	}
+
+	clearReActMonitor(): void {
+		if (!this.reactMonitorEl) return;
+		this.pendingTraceEvents.length = 0;
+		this.traceNextRow = 0;
+		this.traceVisibleCount = 0;
+		for (const row of this.traceRows) this.hideTraceRow(row);
+		if (this.reactEmptyEl) this.reactEmptyEl.hidden = false;
+		this.plugin.daemon.trace.clear();
+		this.selectedSessionId = null;
+	}
+}
+
+class TextEntryModal extends Modal {
+	constructor(app: CommandCenterPlugin['app'], private readonly title: string, private readonly actionLabel: string, private readonly submit: (text: string) => void | Promise<void>) { super(app); }
+	onOpen(): void {
+		this.contentEl.createEl('h2', { text: this.title });
+		const input = this.contentEl.createEl('textarea', { attr: { rows: '6', placeholder: 'Enter text…' } });
+		const actions = this.contentEl.createDiv({ cls: 'modal-button-container' });
+		actions.createEl('button', { text: 'Cancel' }).addEventListener('click', () => this.close());
+		const submit = actions.createEl('button', { text: this.actionLabel, cls: 'mod-cta' });
+		submit.addEventListener('click', async () => { const value = input.value.trim(); if (!value) return; submit.disabled = true; try { await this.submit(value); this.close(); } finally { submit.disabled = false; } });
+		input.focus();
+	}
+}
+
+class ProposalApprovalModal extends Modal {
+	private settled = false;
+	constructor(app: CommandCenterPlugin['app'], private readonly proposals: Awaited<ReturnType<CommandCenterPlugin['dailyEngine']['generateInboxProposals']>>, private readonly resolve: (approved: Array<{ proposalId: string }>) => void) { super(app); }
+	onOpen(): void {
+		this.contentEl.createEl('h2', { text: 'Approve inbox proposals' });
+		this.contentEl.createEl('p', { text: 'Review configured proposals. Only checked items will mutate the vault.' });
+		const inputs = this.proposals.map(proposal => {
+			const row = this.contentEl.createEl('label', { cls: 'cc-onboarding-asset-option' });
+			const input = row.createEl('input', { type: 'checkbox' });
+			row.createSpan({ text: `${proposal.action}: ${proposal.filePath}${proposal.targetFolder ? ` → ${proposal.targetFolder}` : ''}` });
+			return { proposal, input };
+		});
+		const actions = this.contentEl.createDiv({ cls: 'modal-button-container' });
+		actions.createEl('button', { text: 'Leave all' }).addEventListener('click', () => { this.settled = true; this.resolve([]); this.close(); });
+		actions.createEl('button', { text: 'Execute checked', cls: 'mod-warning' }).addEventListener('click', () => { this.settled = true; this.resolve(inputs.filter(item => item.input.checked).map(item => ({ proposalId: item.proposal.id }))); this.close(); });
+	}
+	onClose(): void { if (!this.settled) { this.settled = true; this.resolve([]); } }
+}
+
+class SessionReplayModal extends Modal {
+	constructor(private plugin: CommandCenterPlugin, private selected: ReActTraceEvent) {
+		super(plugin.app);
+	}
+
+	onOpen(): void {
+		this.modalEl.addClass('cc-trace-detail-modal');
+		this.contentEl.empty();
+		const events = this.plugin.daemon.trace.getSessionEvents(this.selected.sessionId);
+		const index = Math.max(0, events.findIndex(event => event.id === this.selected.id));
+		const header = this.contentEl.createDiv({ cls: 'cc-trace-detail-header' });
+		header.createEl('h2', { text: 'Session Replay / Log Detail' });
+		header.createEl('p', { text: `Step ${index + 1} of ${events.length} · ${this.selected.agent} · ${this.selected.type}` });
+
+		const nav = this.contentEl.createDiv({ cls: 'cc-trace-detail-nav' });
+		const previous = nav.createEl('button', { text: '← Previous' });
+		previous.disabled = index === 0;
+		previous.addEventListener('click', () => this.select(events[index - 1]));
+		const next = nav.createEl('button', { text: 'Next →' });
+		next.disabled = index >= events.length - 1;
+		next.addEventListener('click', () => this.select(events[index + 1]));
+
+		this.addField('Timestamp', new Date(this.selected.timestamp).toISOString());
+		this.addField('Label', this.selected.label);
+		this.addField('Raw input prompt', this.selected.detail?.inputPrompt);
+		this.addField('Model response', this.selected.detail?.modelResponse ?? this.selected.content);
+		this.addJsonField('Tool arguments and results', this.selected.detail?.toolInvocations);
+		this.addJsonField('Evaluation scores', this.selected.detail?.evaluation);
+		this.addJsonField('Token usage', this.selected.detail?.tokenUsage);
+		this.addJsonField('Event metadata', this.selected.meta);
+	}
+
+	private select(event: ReActTraceEvent | undefined): void {
+		if (!event) return;
+		this.selected = event;
+		this.onOpen();
+	}
+
+	private addField(label: string, value: string | undefined): void {
+		const section = this.contentEl.createEl('section', { cls: 'cc-trace-detail-section' });
+		section.createEl('h3', { text: label });
+		section.createEl('pre', { text: value?.trim() || 'Not recorded for this step.' });
+	}
+
+	private addJsonField(label: string, value: unknown): void {
+		this.addField(label, value === undefined || (Array.isArray(value) && value.length === 0)
+			? undefined : JSON.stringify(value, null, 2));
+	}
+}
+
+function formatAuditEvent(event: ReActTraceEvent, index: number): string {
+	const detail = event.detail;
+	const blocks = [
+		`### ${index + 1}. ${event.label}`, '',
+		`- **Time:** ${new Date(event.timestamp).toISOString()}`,
+		`- **Agent:** ${event.agent}`, `- **Type:** \`${event.type}\``,
+		`- **Cycle/Sub-cycle:** ${event.cycleIndex}/${event.subCycle}`, '',
+		'#### Event Content', '', event.content || '_Empty_', '',
+	];
+	if (detail?.inputPrompt) blocks.push('#### Raw Input Prompt', '', '```text', detail.inputPrompt, '```', '');
+	if (detail?.modelResponse) blocks.push('#### Model Response', '', '```text', detail.modelResponse, '```', '');
+	if (detail?.toolInvocations?.length) blocks.push('#### Tool Arguments and Results', '', '```json', JSON.stringify(detail.toolInvocations, null, 2), '```', '');
+	if (detail?.evaluation) blocks.push('#### Evaluation', '', '```json', JSON.stringify(detail.evaluation, null, 2), '```', '');
+	if (detail?.tokenUsage) blocks.push('#### Token Usage', '', '```json', JSON.stringify(detail.tokenUsage, null, 2), '```', '');
+	if (event.meta) blocks.push('#### Metadata', '', '```json', JSON.stringify(event.meta, null, 2), '```', '');
+	return blocks.join('\n');
+}

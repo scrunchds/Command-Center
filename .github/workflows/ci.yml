@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: [20.x, 22.x, 24.x]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Repository sanitization ──────────────────
+      - name: PII and secret leak audit
+        run: npm run sanitize
+
+      # ── Type-checking ────────────────────────────
+      - name: TypeScript strict type-check
+        run: npx tsc --noEmit
+
+      # ── Linting ──────────────────────────────────
+      - name: Lint
+        run: npm run lint
+
+      # ── Unit + integration tests ─────────────────
+      - name: Core tests (verify.mjs)
+        run: npx tsx test/verify.mjs
+        timeout-minutes: 3
+
+      - name: ReAct framework tests (react-suite.mjs)
+        run: npx tsx test/react-suite.mjs
+        timeout-minutes: 3
+
+      # ── Benchmark suite (regression gate) ────────
+      - name: Benchmarks
+        run: npx tsx test/benchmark.mjs
+        timeout-minutes: 2
+
+      - name: Performance regression gate (25%)
+        run: node test/check-benchmark-regression.mjs
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: benchmark-results-${{ matrix.os }}-node-${{ matrix.node-version }}
+          path: benchmark-results.json
+          if-no-files-found: error
+          retention-days: 14
+
+      # ── Production build check ───────────────────
+      - name: Production build and clean package
+        run: npm run package
+
+      - name: Verify build output
+        shell: node {0}
+        run: |
+          const fs = require('node:fs');
+          const dir = 'release/command-center';
+          const expected = ['main.js', 'manifest.json', 'styles.css'];
+          const files = fs.readdirSync(dir).sort();
+          if (files.join() !== expected.sort().join()) throw new Error(`unexpected release files: ${files}`);
+          const size = fs.statSync(`${dir}/main.js`).size;
+          console.log(`main.js: ${size} bytes`);
+          if (size <= 1000) throw new Error(`main.js too small (${size} bytes)`);
+
+      # ── Upload build artifact (main only for caching) ──
+      - name: Upload build artifact
+        if: matrix.node-version == '24.x' && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v5
+        with:
+          name: dist
+          path: release/command-center/
+          retention-days: 1

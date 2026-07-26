@@ -1,17 +1,27 @@
 {
-	"name": "obsidian-sample-plugin",
-	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"name": "command-center",
+	"version": "1.0.00",
+	"description": "Autonomous agent orchestration layer for your vault. Spawns pi workers for retrieval, summarization, and structural editing.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"package": "npm run build && node scripts/package-release.mjs && npm run sanitize:release",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
-		"lint": "eslint ."
+		"lint": "eslint .",
+		"test": "npx tsx test/verify.mjs && npx tsx test/react-suite.mjs",
+		"test:core": "npx tsx test/verify.mjs",
+		"test:react": "npx tsx test/react-suite.mjs",
+		"benchmark": "npx tsx test/benchmark.mjs",
+		"benchmark:check": "node test/check-benchmark-regression.mjs",
+		"sanitize": "node scripts/sanitize-repo.mjs",
+		"sanitize:staged": "node scripts/sanitize-repo.mjs --staged",
+		"sanitize:release": "node scripts/sanitize-repo.mjs --release",
+		"typecheck": "tsc --noEmit"
 	},
 	"keywords": [],
-	"license": "0-BSD",
+	"license": "MIT",
 	"devDependencies": {
 		"@eslint/js": "^9.39.4",
 		"@types/node": "^22.15.17",

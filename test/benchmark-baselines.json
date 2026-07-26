@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "description": "Portable CI baselines in milliseconds per operation. A core metric fails when its median exceeds baseline by more than 25%.",
+  "allowedRegressionPercent": 25,
+  "metrics": {
+    "trace-collection": {
+      "baseline": 0.015,
+      "unit": "ms/op",
+      "direction": "lower-is-better"
+    },
+    "bm25-cold-index": {
+      "baseline": 0.015,
+      "unit": "ms/op",
+      "direction": "lower-is-better"
+    },
+    "json-parsing": {
+      "baseline": 0.0035,
+      "unit": "ms/op",
+      "direction": "lower-is-better"
+    }
+  }
+}
