@@ -58,7 +58,11 @@ jobs:
         run: npx tsx test/benchmark.mjs
         timeout-minutes: 2
 
-      - name: Performance regression gate (25%)
+      # Wall-clock microbenchmarks vary substantially across hosted OS/Node
+      # runners. Collect every matrix result, but enforce the checked-in 25%
+      # baseline only on the canonical Ubuntu + Node 24 environment.
+      - name: Performance regression gate (25%, canonical runner)
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '24.x'
         run: node test/check-benchmark-regression.mjs
 
       - name: Upload benchmark results

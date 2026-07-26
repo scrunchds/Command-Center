@@ -91,8 +91,17 @@ jobs:
           echo "main.js: ${size} bytes"
           test "$size" -gt 1000 || { echo "ERROR: main.js too small (${size} bytes)"; exit 1; }
 
+      # User-owned private repositories cannot persist GitHub artifact
+      # attestations. Keep provenance for public repositories without blocking
+      # private pre-release validation.
+      - name: Detect repository visibility
+        id: repository
+        shell: bash
+        run: echo "visibility=${{ github.event.repository.visibility }}" >> "$GITHUB_OUTPUT"
+
       # ── Attest build provenance ──────────────────
       - name: Attest build provenance
+        if: steps.repository.outputs.visibility == 'public'
         uses: actions/attest@v4
         with:
           subject-path: release/command-center/*
