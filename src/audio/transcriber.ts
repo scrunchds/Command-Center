@@ -2,7 +2,7 @@
 
 import type { CommandCenterSettings } from '../settings';
 import type { MultiProviderSettings, ProviderId } from '../providers/provider-types';
-import { detectLocalRuntime, isLocalBaseUrl } from '../providers/provider-types';
+import { detectLocalRuntime, isLocalBaseUrl, sanitizeBaseUrl } from '../providers/provider-types';
 import { PROVIDER_REGISTRY } from '../providers/provider-registry';
 import { JitModelManager } from '../providers/jit-manager';
 
@@ -199,7 +199,7 @@ export class TranscriberAdapter {
 	private localRuntime(): ReturnType<typeof detectLocalRuntime> {
 		const settings = this.resolveMultiProviderSettings();
 		const credentials = settings.credentials[this.options.providerId];
-		const baseUrl = credentials?.baseUrl?.trim() || PROVIDER_REGISTRY[this.options.providerId].defaultBaseUrl || '';
+		const baseUrl = sanitizeBaseUrl(credentials?.baseUrl || PROVIDER_REGISTRY[this.options.providerId].defaultBaseUrl || '');
 		return detectLocalRuntime(baseUrl, this.options.providerId);
 	}
 
@@ -221,7 +221,7 @@ export class TranscriberAdapter {
 		if (!credentials?.enabled) throw new TranscriptionError(`${meta.label} is not enabled for transcription.`, undefined, false);
 		const apiKey = credentials.apiKey?.trim() ?? '';
 		if (meta.requiresKey && !apiKey) throw new TranscriptionError(`API key not configured for ${meta.label}.`, undefined, false);
-		const baseUrl = credentials?.baseUrl?.trim() || meta.defaultBaseUrl;
+		const baseUrl = sanitizeBaseUrl(credentials?.baseUrl || meta.defaultBaseUrl || '');
 		if (!baseUrl) throw new TranscriptionError(`Base URL not configured for ${meta.label}.`, undefined, false);
 		return { apiKey, baseUrl, meta };
 	}

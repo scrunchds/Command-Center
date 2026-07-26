@@ -583,8 +583,11 @@ Command Center — Agentic OS for Obsidian
 .cc-key-strength.ok { color: var(--color-yellow); }
 .cc-key-strength.good { color: var(--color-green); }
 
-.cc-url-container { display: flex; align-items: center; gap: 6px; flex: 1; }
+.cc-url-container { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1; }
 .cc-url-default-label { font-size: 9px; color: var(--text-faint); white-space: nowrap; }
+.cc-url-warning { display: none; flex-basis: 100%; font-size: 9px; color: var(--color-yellow); white-space: nowrap; }
+.cc-url-warning.is-visible { display: block; }
+.cc-url-input.cc-url-input-invalid { border-color: var(--color-yellow); box-shadow: 0 0 0 2px hsla(var(--color-yellow-hsl), 0.2); }
 .cc-url-reset {
 	font-size: 9px; color: var(--text-accent); cursor: pointer; white-space: nowrap;
 	padding: 2px 6px; border-radius: 4px;

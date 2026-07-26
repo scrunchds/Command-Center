@@ -10,6 +10,7 @@ import type {
 	IProviderAdapter, ProviderId, MultiProviderSettings,
 	ProviderCredentials,
 } from './provider-types';
+import { sanitizeBaseUrl } from './provider-types';
 import { PROVIDER_REGISTRY } from './provider-registry';
 import { OpenAICompatibleProvider } from './openai-compatible';
 import { LMStudioProvider } from './lm-studio';
@@ -53,7 +54,7 @@ export class ProviderFactory {
 	/** Resolve the current URL lazily so settings edits apply immediately. */
 	getBaseUrl(id: ProviderId): string {
 		const credentials = this.getSettings().credentials[id];
-		return credentials?.baseUrl || PROVIDER_REGISTRY[id].defaultBaseUrl || '';
+		return sanitizeBaseUrl(credentials?.baseUrl || PROVIDER_REGISTRY[id].defaultBaseUrl || '');
 	}
 
 	/** List all available (configured + enabled) providers. */

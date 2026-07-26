@@ -379,6 +379,22 @@ export function detectLocalRuntime(baseUrl: string, providerId?: ProviderId): Lo
 	return 'unknown';
 }
 
+/**
+ * Sanitize a user-entered provider base URL.
+ *
+ * Settings fields accept free text and occasionally receive malformed input
+ * such as comma-separated endpoint lists (e.g.
+ * `http://127.0.0.1:1234, http://localhost:5678`), which would produce
+ * invalid URLs and crash the request boundary. This helper keeps only the
+ * first comma-delimited entry, trims surrounding whitespace, and strips
+ * trailing slashes so downstream endpoint composition (`${base}/path`)
+ * remains correct. Idempotent: sanitizing an already-clean URL is a no-op.
+ */
+export function sanitizeBaseUrl(raw: string): string {
+	if (!raw) return '';
+	return (raw.split(',')[0] ?? '').trim().replace(/\/+$/, '');
+}
+
 export interface ProviderResponse {
 	output: string;
 	success: boolean;

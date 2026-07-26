@@ -609,6 +609,22 @@ export class PluginSettingsTab extends PluginSettingTab {
 				defaultLabel.textContent = `(default: ${meta.defaultBaseUrl ?? 'N/A'})`;
 			}
 
+			// Live advisory: the runtime keeps only the first comma-delimited URL
+			// (sanitizeBaseUrl in provider-types.ts). Surface this so users do
+			// not silently lose endpoints they pasted in bulk. The stored value
+			// is unchanged; only the visual state reflects the runtime behavior.
+			const urlWarning = urlContainer.createSpan({ cls: 'cc-url-warning' });
+			const syncUrlWarning = (): void => {
+				const invalid = urlInput.value.includes(',');
+				urlInput.classList.toggle('cc-url-input-invalid', invalid);
+				urlWarning.classList.toggle('is-visible', invalid);
+				urlWarning.textContent = invalid
+					? '⚠ Multiple URLs detected. Only the first URL will be used for connections.'
+					: '';
+			};
+			syncUrlWarning();
+			urlInput.addEventListener('input', syncUrlWarning);
+
 			urlInput.addEventListener('change',  () => { void (async () => {
 				const c = mp.credentials[pid]!;
 				const val = urlInput.value.trim();
@@ -632,6 +648,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 					const c = mp.credentials[pid]!;
 					c.baseUrl = meta.defaultBaseUrl!;
 					urlInput.value = '';
+					syncUrlWarning();
 					defaultLabel.textContent = `(default: ${meta.defaultBaseUrl})`;
 					this.plugin.providerFactory.invalidate(pid);
 					await this.plugin.saveSettings();

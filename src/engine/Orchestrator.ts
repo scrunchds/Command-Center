@@ -1,7 +1,7 @@
 import type { ProviderDispatcher } from '../dispatcher';
 import { AGENT_TAXONOMY, type ComputeTier, type StepFallbackPolicy } from './AgentTypes';
 import type { ProviderId, ProviderRequest, ProviderResponse, TaskType } from '../providers/provider-types';
-import { isLocalBaseUrl, ProviderError } from '../providers/provider-types';
+import { isLocalBaseUrl, ProviderError, sanitizeBaseUrl } from '../providers/provider-types';
 import type { MultiProviderSettings } from '../providers/provider-types';
 import { WorkflowBuilder, type BoundWorkflowPlan, type BoundWorkflowStep } from '../workflows/WorkflowBuilder';
 
@@ -90,11 +90,11 @@ function localProviderFor(settings: MultiProviderSettings, taskType: TaskType): 
 	const configuredRoute = settings.routing?.[taskType];
 	if (configuredRoute) {
 		const credentials = settings.credentials[configuredRoute.providerId];
-		if (credentials?.enabled && isLocalBaseUrl(credentials.baseUrl)) return { providerId: configuredRoute.providerId, modelId: configuredRoute.modelId };
+		if (credentials?.enabled && isLocalBaseUrl(sanitizeBaseUrl(credentials.baseUrl))) return { providerId: configuredRoute.providerId, modelId: configuredRoute.modelId };
 	}
 	for (const providerId of ['lmstudio', 'ollama', 'custom'] as const) {
 		const credentials = settings.credentials[providerId];
-		if (credentials?.enabled && isLocalBaseUrl(credentials.baseUrl)) return { providerId };
+		if (credentials?.enabled && isLocalBaseUrl(sanitizeBaseUrl(credentials.baseUrl))) return { providerId };
 	}
 	return null;
 }
@@ -102,10 +102,10 @@ function cloudProviderFor(settings: MultiProviderSettings): { providerId: Provid
 	const route = settings.routing?.reasoning;
 	if (route) {
 		const credentials = settings.credentials[route.providerId];
-		if (credentials?.enabled && !isLocalBaseUrl(credentials.baseUrl)) return { providerId: route.providerId, modelId: route.modelId };
+		if (credentials?.enabled && !isLocalBaseUrl(sanitizeBaseUrl(credentials.baseUrl))) return { providerId: route.providerId, modelId: route.modelId };
 	}
 	for (const [id, credentials] of Object.entries(settings.credentials)) {
-		if (credentials?.enabled && !isLocalBaseUrl(credentials.baseUrl)) return { providerId: id as ProviderId, modelId: '' };
+		if (credentials?.enabled && !isLocalBaseUrl(sanitizeBaseUrl(credentials.baseUrl))) return { providerId: id as ProviderId, modelId: '' };
 	}
 	return null;
 }

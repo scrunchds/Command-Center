@@ -16,9 +16,11 @@ import type {
 	ProviderToolCall, ProviderToolResult, ProviderMessage,
 	ProviderError, ProviderCapabilities, ImageContent,
 } from './provider-types';
-import { DEFAULT_PROVIDER_CONFIG, classifyHttpError, classifyThrowError } from './provider-types';
+import {
+	DEFAULT_PROVIDER_CONFIG, classifyHttpError, classifyThrowError,
+	detectLocalRuntime, isLocalBaseUrl, sanitizeBaseUrl,
+} from './provider-types';
 import { getDefaultModelForProvider } from './provider-registry';
-import { detectLocalRuntime, isLocalBaseUrl } from './provider-types';
 import { JitModelManager } from './jit-manager';
 
 /* ─── Constructor Options ──────────────────────────────── */
@@ -46,7 +48,12 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 		this.id = opts.id;
 		this.meta = opts.meta;
 		this.getApiKey = opts.getApiKey;
-		this.getBaseUrl = opts.getBaseUrl;
+		// Sanitize at the provider boundary so malformed user input (e.g.
+		// comma-separated endpoint lists pasted into a Base URL field) never
+		// reaches requestUrl/fetch. Wrapping the callback centralizes
+		// sanitization for every subclass call site: endpoint builders, JIT
+		// payload decisions, and isLocalBaseUrl/detectLocalRuntime checks.
+		this.getBaseUrl = () => sanitizeBaseUrl(opts.getBaseUrl());
 		this.timeoutMs = opts.timeoutMs ?? 120_000;
 	}
 

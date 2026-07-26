@@ -2015,6 +2015,95 @@ pass('32b: headless commands enforce configuration and reject credential argumen
 }
 }
 
+/* ═══ 33. Base URL Sanitization ═══ */
+async function verifyBaseUrlSanitization() {
+console.log('\n─── 33. Base URL Sanitization ───');
+const { sanitizeBaseUrl, isLocalBaseUrl } = await import(pathToFileURL(SRC + '/providers/provider-types.ts').href);
+const { OpenAICompatibleProvider } = await import(pathToFileURL(SRC + '/providers/openai-compatible.ts').href);
+const { LMStudioProvider } = await import(pathToFileURL(SRC + '/providers/lm-studio.ts').href);
+const { AnthropicProvider } = await import(pathToFileURL(SRC + '/providers/anthropic.ts').href);
+const { GeminiProvider } = await import(pathToFileURL(SRC + '/providers/google-gemini.ts').href);
+const { CohereProvider } = await import(pathToFileURL(SRC + '/providers/cohere.ts').href);
+const { ProviderFactory } = await import(pathToFileURL(SRC + '/providers/provider-factory.ts').href);
+const { PROVIDER_REGISTRY } = await import(pathToFileURL(SRC + '/providers/provider-registry.ts').href);
+const { TranscriberAdapter } = await import(pathToFileURL(SRC + '/audio/transcriber.ts').href);
+{
+// Helper: comma-split keeps only the first entry, trims whitespace, strips trailing slashes.
+assert.equal(sanitizeBaseUrl('http://10.5.0.2:1234, http://localhost:1234'), 'http://10.5.0.2:1234'); // SANITIZE_ALLOW: synthetic RFC 1918 fixture
+assert.equal(sanitizeBaseUrl('  http://10.5.0.2:1234/  , http://localhost:1234/'), 'http://10.5.0.2:1234'); // SANITIZE_ALLOW: synthetic RFC 1918 fixture
+assert.equal(sanitizeBaseUrl('https://api.openai.com/v1/'), 'https://api.openai.com/v1');
+assert.equal(sanitizeBaseUrl('https://api.openai.com/v1'), 'https://api.openai.com/v1');
+assert.equal(sanitizeBaseUrl('http://localhost:1234/v1/'), 'http://localhost:1234/v1');
+assert.equal(sanitizeBaseUrl(''), '');
+assert.equal(sanitizeBaseUrl('   '), '');
+assert.equal(sanitizeBaseUrl('only-one-entry'), 'only-one-entry');
+// Idempotent: sanitizing an already-clean URL is a no-op.
+assert.equal(sanitizeBaseUrl(sanitizeBaseUrl('http://10.5.0.2:1234, http://localhost:1234')), 'http://10.5.0.2:1234'); // SANITIZE_ALLOW: synthetic RFC 1918 fixture
+pass('33a: sanitizeBaseUrl splits comma lists, trims whitespace, and strips trailing slashes');
+}
+{
+// BaseHttpProvider wraps getBaseUrl so malformed settings never reach endpoints.
+class InspectableProvider extends OpenAICompatibleProvider {
+  endpoint() { return this.getEndpoint(); }
+  modelListEndpoint() { return this.getModelListEndpoint(); }
+}
+const comma = 'http://10.5.0.2:1234, http://localhost:1234/v1/'; // SANITIZE_ALLOW: synthetic RFC 1918 fixture
+const p = new InspectableProvider({ id: 'custom', meta: PROVIDER_REGISTRY.custom, getApiKey: () => '', getBaseUrl: () => comma });
+assert.equal(p.endpoint(), 'http://10.5.0.2:1234/chat/completions'); // SANITIZE_ALLOW: synthetic RFC 1918 fixture
+assert.equal(p.modelListEndpoint(), 'http://10.5.0.2:1234/models'); // SANITIZE_ALLOW: synthetic RFC 1918 fixture
+// isLocalBaseUrl sees the sanitized first entry, so the local/JIT classification is correct.
+assert.equal(isLocalBaseUrl(p.getEndpoint()), true);
+pass('33b: BaseHttpProvider sanitizes comma-separated base URLs at every endpoint call site');
+}
+{
+// Each protocol-specific provider endpoint resolves against the first URL only.
+class AnthropicProbe extends AnthropicProvider { endpoint() { return this.getEndpoint(); } }
+class GeminiProbe extends GeminiProvider { endpoint(model) { return this.resolveEndpoint(model); } listEndpoint() { return this.getModelListEndpoint(); } }
+class CohereProbe extends CohereProvider { endpoint() { return this.getEndpoint(); } }
+const aComma = 'https://api.anthropic.com/v1, https://duplicate.example';
+const a = new AnthropicProbe({ id: 'anthropic', meta: PROVIDER_REGISTRY.anthropic, getApiKey: () => 'key', getBaseUrl: () => aComma });
+assert.equal(a.endpoint(), 'https://api.anthropic.com/v1/messages');
+const gComma = 'https://generativelanguage.googleapis.com/v1beta, https://duplicate.example';
+const g = new GeminiProbe({ id: 'google-gemini', meta: PROVIDER_REGISTRY['google-gemini'], getApiKey: () => 'key', getBaseUrl: () => gComma });
+assert.equal(g.endpoint('gemini-1.5-pro'), 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=key');
+assert.equal(g.listEndpoint(), 'https://generativelanguage.googleapis.com/v1beta/models?key=key');
+const cComma = 'https://api.cohere.com/v2, https://duplicate.example';
+const c = new CohereProbe({ id: 'cohere', meta: PROVIDER_REGISTRY.cohere, getApiKey: () => 'key', getBaseUrl: () => cComma });
+assert.equal(c.endpoint(), 'https://api.cohere.com/v2/chat');
+pass('33c: Anthropic, Gemini, and Cohere endpoints resolve only the first comma-delimited URL');
+}
+{
+// LM Studio serverRoot strips /v1 and /api/v1 after taking the first comma entry.
+class LMStudioProbe extends LMStudioProvider { endpoint() { return this.getEndpoint(); } }
+const comma = 'http://10.5.0.2:1234/v1, http://localhost:1234'; // SANITIZE_ALLOW: synthetic RFC 1918 fixture
+const lm = new LMStudioProbe({ id: 'lmstudio', meta: PROVIDER_REGISTRY.lmstudio, getApiKey: () => '', getBaseUrl: () => comma });
+assert.equal(lm.endpoint(), 'http://10.5.0.2:1234/v1/chat/completions'); // SANITIZE_ALLOW: synthetic RFC 1918 fixture
+pass('33d: LM Studio serverRoot normalizes the first comma-delimited entry only');
+}
+{
+// ProviderFactory.getBaseUrl returns the sanitized first entry for direct callers (ModelRouter JIT).
+const daemon = {};
+const settings = () => ({ credentials: { custom: { providerId: 'custom', apiKey: '', baseUrl: 'http://10.5.0.2:1234/v1/, http://localhost:1234', enabled: true } }, routing: {}, fallback: {}, defaults: {} }); // SANITIZE_ALLOW: synthetic RFC 1918 fixture
+const factory = new ProviderFactory(daemon, settings);
+assert.equal(factory.getBaseUrl('custom'), 'http://10.5.0.2:1234/v1'); // SANITIZE_ALLOW: synthetic RFC 1918 fixture
+// Missing credential falls back to the registry default, also sanitized.
+const factory2 = new ProviderFactory(daemon, () => ({ credentials: {}, routing: {}, fallback: {}, defaults: {} }));
+assert.equal(factory2.getBaseUrl('openai'), sanitizeBaseUrl(PROVIDER_REGISTRY.openai.defaultBaseUrl));
+pass('33e: ProviderFactory.getBaseUrl sanitizes settings and registry-default base URLs');
+}
+{
+// TranscriberAdapter.resolveConnection sanitizes comma-separated base URLs before building endpoint URLs.
+const settings = () => ({ credentials: { groq: { providerId: 'groq', apiKey: 'key', baseUrl: 'https://api.groq.com/openai/v1, https://duplicate.example', enabled: true } }, routing: {}, fallback: {}, defaults: {} });
+let captured;
+const fetchFn = async (url) => { captured = url; return new Response('{"text":"hello"}', { status: 200, headers: { 'content-type': 'application/json' } }); };
+const transcriber = new TranscriberAdapter({ providerId: 'groq', getSettings: settings, fetch: fetchFn });
+const transcript = await transcriber.transcribe(new Blob(['audio'], { type: 'audio/webm' }));
+assert.equal(transcript, 'hello');
+assert.equal(captured, 'https://api.groq.com/openai/v1/audio/transcriptions');
+pass('33f: TranscriberAdapter transcribes against only the first comma-delimited base URL');
+}
+}
+
 async function main(){
 console.log("═══════════════════════════════════════════");
 console.log("  Command Center — ReAct Framework Suite");
@@ -2046,6 +2135,7 @@ await verifyHybridRag();
 await verifyAgentMemory();
 await verifyRagAgentIntegration();
 await verifyHeadlessCliBridge();
+await verifyBaseUrlSanitization();
 console.log("");
 console.log("═══════════════════════════════════════════");
 console.log("  Results:  "+results.pass+" passed, "+results.fail+" failed, "+results.skip+" skipped");

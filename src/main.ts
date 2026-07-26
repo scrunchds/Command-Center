@@ -38,6 +38,7 @@ import { DEFAULT_REACT_CONFIG } from './react';
 import type { ReActContext, ReActTermination } from './react';
 import { ReActMemoryBank } from './react/react-memory';
 import { ProviderFactory } from './providers/provider-factory';
+import { sanitizeBaseUrl } from './providers/provider-types';
 import { ProviderDispatcher } from './dispatcher';
 import { ModelRouter } from './routing/ModelRouter';
 import { WorkflowEngine } from './workflows/workflow-engine';
@@ -535,7 +536,7 @@ export default class CommandCenterPlugin extends Plugin {
 				this.settings.multiProvider.credentials[providerId];
 			if (!credentials?.enabled || !credentials.baseUrl) continue;
 			return {
-				baseUrl: credentials.baseUrl,
+				baseUrl: sanitizeBaseUrl(credentials.baseUrl),
 				apiKey: credentials.apiKey,
 				providerId,
 				ttl: this.settings.multiProvider.defaults.ttl,
