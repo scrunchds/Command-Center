@@ -1,6 +1,6 @@
 {
 	"name": "command-center",
-	"version": "1.0.4",
+	"version": "1.0.5",
 	"description": "Autonomous agent orchestration layer for your vault. Spawns pi workers for retrieval, summarization, and structural editing.",
 	"main": "main.js",
 	"type": "module",
@@ -33,5 +33,9 @@
 		"obsidian": "latest",
 		"typescript": "^5.8.3",
 		"typescript-eslint": "^8.59.1"
+	},
+	"overrides": {
+		"minimatch": "^10.2.5",
+		"brace-expansion": "^5.0.8"
 	}
 }
