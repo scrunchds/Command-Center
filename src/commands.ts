@@ -33,13 +33,13 @@ export async function workflowForBase(baseFile: TFile, plugin: CommandCenterPlug
 
 export function registerCommands(plugin: CommandCenterPlugin) {
 	plugin.addCommand({
-		id: 'open-command-center',
+		id: 'open-dashboard',
 		name: 'Open Command Center',
 		callback: () => plugin.activateCommandCenterView(),
 	});
 
 	plugin.addCommand({
-		id: 'open-command-center-chat-panel',
+		id: 'open-chat-panel',
 		name: 'Command Center: Open Chat Panel',
 		callback: () => plugin.activateCommandCenterChatView(),
 	});

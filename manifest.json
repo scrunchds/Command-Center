@@ -1,10 +1,10 @@
 {
 	"id": "command-center",
 	"name": "Command Center",
-	"version": "1.0.00",
+	"version": "1.0.0",
 	"minAppVersion": "1.10.0",
-	"description": "Autonomous agent orchestration layer for your vault. Spawns pi workers for retrieval, summarization, and structural editing.",
-	"author": "agentic-workspace",
-	"authorUrl": "https://github.com/agentic-workspace",
+	"description": "Orchestrate AI agents, workflows, retrieval, memory, and daily operations across your vault.",
+	"author": "Dustin Stringer",
+	"authorUrl": "https://github.com/scrunchds",
 	"isDesktopOnly": true
 }

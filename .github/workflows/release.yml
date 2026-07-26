@@ -50,8 +50,8 @@ jobs:
             throw new Error(`version mismatch: manifest=${expected}, package=${pkg.version}, lock=${lock.version}, lockRoot=${lock.packages[''].version}`);
           }
           if (versions[expected] !== manifest.minAppVersion) throw new Error(`versions.json is missing ${expected} → ${manifest.minAppVersion}`);
-          if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== `v${expected}`) {
-            throw new Error(`release tag ${process.env.GITHUB_REF_NAME} must equal v${expected}`);
+          if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== expected) {
+            throw new Error(`release tag ${process.env.GITHUB_REF_NAME} must equal ${expected}`);
           }
           console.log(`Release metadata synchronized at ${expected}.`);
 
@@ -112,7 +112,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             tag="${GITHUB_REF#refs/tags/}"
-            echo "draft_flag=--draft" >> "$GITHUB_OUTPUT"
+            echo "draft_flag=" >> "$GITHUB_OUTPUT"
             echo "prerelease_flag=" >> "$GITHUB_OUTPUT"
           else
             tag="v$(node -p "require('./manifest.json').version")-dev.${{ github.run_number }}"

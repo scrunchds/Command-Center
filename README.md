@@ -434,7 +434,11 @@ The URI and CLI boundaries reject credential arguments, unsafe vault paths, malf
 
 ## Privacy and security model
 
-Command Center is local software, but cloud-provider requests leave the device when you select a cloud route.
+Command Center is local software, but it uses the network when you select a cloud model or transcription provider, refresh a remote model catalog, or connect to a network-hosted custom endpoint. Supported remote services include OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, DeepInfra, Mistral AI, and Cohere; requests are used only to provide the model, embedding, discovery, or transcription feature you invoke.
+
+The desktop-only plugin also accesses files outside the vault in two explicit cases: it launches the separately installed Pi CLI as a child process, and it may read image attachments referenced by absolute paths so they can be sent to your selected vision provider. Ordinary note, configuration, memory, workflow, and index operations use Obsidian's vault APIs.
+
+No client-side telemetry or advertising is included. Command Center does not self-update; installation and updates are handled by Obsidian and GitHub releases.
 
 ### Data that may be sent to a model
 
@@ -483,7 +487,7 @@ npm run sanitize:release  # repository plus current build/release assets
 ### Setup
 
 ```bash
-git clone https://github.com/agentic-workspace/command-center.git
+git clone https://github.com/scrunchds/Command-Center.git
 cd command-center
 npm ci
 npm run dev
@@ -535,7 +539,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Artifact upload
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are both currently `1.0.00`.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are both currently `1.0.0`.
 
 ## Troubleshooting
 
