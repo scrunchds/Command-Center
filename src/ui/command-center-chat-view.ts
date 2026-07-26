@@ -269,7 +269,7 @@ export class CommandCenterChatView extends ItemView {
 		resolved.attachments.forEach((attachment, index) => {
 			if (this.dismissedAttachments.has(this.attachmentKey(attachment))) return;
 			keptAttachments.push(attachment);
-			if (sections[index]) keptSections.push(sections[index]!);
+			if (sections[index]) keptSections.push(sections[index]);
 		});
 		return {
 			cleanedPrompt: resolved.cleanedPrompt,
@@ -279,8 +279,8 @@ export class CommandCenterChatView extends ItemView {
 	}
 
 	private resizeTextarea(): void {
-		this.textareaEl.style.height = 'auto';
-		this.textareaEl.style.height = `${Math.min(this.textareaEl.scrollHeight, 160)}px`;
+		this.textareaEl.setCssStyles({ height: 'auto' });
+		this.textareaEl.setCssStyles({ height: `${Math.min(this.textareaEl.scrollHeight, 160)}px` });
 	}
 
 	private async toggleRecording(): Promise<void> {
@@ -479,7 +479,7 @@ export class CommandCenterChatView extends ItemView {
 
 	private async renderMessage(message: ChatMessageElements): Promise<void> {
 		const version = ++message.renderVersion;
-		const staging = document.createElement('div');
+		const staging = createEl('div');
 		await MarkdownRenderer.render(this.plugin.app, message.markdown, staging, this.contextFile?.path ?? '', this);
 		if (!this.isOpen || version !== message.renderVersion) return;
 		message.content.replaceChildren(...Array.from(staging.childNodes));

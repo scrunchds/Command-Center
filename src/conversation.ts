@@ -200,7 +200,7 @@ export class ConversationManager {
 			existingContext: this.memoryStore?.getSystemMemoryPrompt(query) ?? '',
 			limit: 5,
 			charBudget: this.contextCharLimit,
-			logger: { warn: (message, error) => console.warn(message.replace('Passive RAG', 'Passive chat retrieval'), error) },
+			logger: { warn: (message: string, error: unknown) => console.warn(message.replace('Passive RAG', 'Passive chat retrieval'), error) },
 		});
 		return context ? `\n\n${context}` : '';
 	}

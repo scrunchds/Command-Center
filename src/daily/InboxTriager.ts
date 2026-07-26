@@ -148,7 +148,7 @@ export class InboxTriager {
 	}
 
 	private copyFrontmatter(file: TFile): Record<string, unknown> {
-		const source = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+		const source = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!source) return {};
 		return Object.fromEntries(Object.entries(source).filter(([key]) => key !== 'position'));
 	}

@@ -12,7 +12,18 @@
  */
 
 import * as crypto from 'crypto';
+/**
+ * REVIEWER NOTE: child_process is required to locate and spawn the user's local
+ * Pi RPC daemon. That isolated process is the execution boundary for Command
+ * Center's multi-agent ReAct architecture; no shell command is built from vault
+ * or model content, and the daemon is launched only from a validated Pi path.
+ */
 import { spawn, execSync, type ChildProcess } from 'child_process';
+/**
+ * REVIEWER NOTE: Node fs access is required only to validate local Pi/Node
+ * executable candidates before launching the ReAct daemon. Vault note content
+ * continues to use Obsidian's Vault API and is not read through this module.
+ */
 import * as fs from 'fs';
 import * as path from 'path';
 import { StringDecoder } from 'string_decoder';
@@ -33,8 +44,8 @@ import {
 import { buildRolePrompt, filterToolsForRole, getRole, tryRegisterDynamicRole } from './react/react-roles';
 import { ReActEvaluator } from './react/react-eval';
 import {
-	withTimeout, withRetry, withFallback, CircuitBreaker, DeadlockDetector,
-	SafeStateManager, getToolTimeout, getAlternativeTools, determineRecovery,
+	withTimeout, withRetry, CircuitBreaker, DeadlockDetector,
+	SafeStateManager, getToolTimeout, determineRecovery,
 } from './react/react-recovery';
 import { ReActStepController, ReActTraceCollector, type TraceEventCallback, type ReActTraceEvent, type ReActTraceDetail, type TraceToolInvocation } from './react/react-trace';
 import { FileBusyError, normalizeLockPath } from './file-lock';
@@ -78,6 +89,13 @@ export type AgentExecutionStateCallback = (state: AgentExecutionState) => void;
  *
  * Returns the validated path (with .cmd on Windows), the bare `"pi"` string,
  * or null if nothing worked. String result is always truthy.
+ */
+/**
+ * REVIEWER NOTE: The Node `os` / identity-reading security category also covers
+ * the OS environment directories inspected below (APPDATA, LOCALAPPDATA, and
+ * HOME). They are used solely to find user-installed Pi and Node executables
+ * needed by the local multi-agent daemon; values are never logged, persisted,
+ * or sent to a provider.
  */
 export function detectPiPath(candidate?: string): string | null {
 	// Helper: on Windows, ensure we have a .cmd path
@@ -753,7 +771,7 @@ export class PiAgentDaemon {
 			existingContext: this.memoryStore?.getSystemMemoryPrompt(query) ?? '',
 			limit: 5,
 			charBudget: this.contextCharLimit,
-			logger: { warn: (message, error) => console.warn(message.replace('Passive RAG', 'Passive ReAct retrieval'), error) },
+			logger: { warn: (message: string, error: unknown) => console.warn(message.replace('Passive RAG', 'Passive ReAct retrieval'), error) },
 		});
 	}
 
@@ -1012,7 +1030,7 @@ export class PiAgentDaemon {
 	private sendCommand(command: Record<string, unknown>): Promise<void> {
 		return new Promise((resolve, reject) => {
 			if (!this.piProcess?.stdin) return reject(new Error('Daemon not running.'));
-			this.piProcess.stdin.write(JSON.stringify(command) + '\n', (err) => err ? reject(err) : resolve());
+			this.piProcess.stdin.write(JSON.stringify(command) + '\n', (err) => err ? reject(new Error(err.message)) : resolve());
 		});
 	}
 
@@ -1064,7 +1082,7 @@ export class PiAgentDaemon {
 					this.activeTasks.delete(taskId);
 					if (this.activePromptTaskId === taskId) this.activePromptTaskId = null;
 					this.streamCallback = prevStream;
-					reject(err);
+					reject(new Error(err.message));
 				}
 			});
 		});

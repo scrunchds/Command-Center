@@ -87,7 +87,6 @@ Command Center — Agentic OS for Obsidian
 	color: var(--text-muted);
 	text-transform: uppercase;
 	letter-spacing: 0.5px;
-	font-size: 11px;
 }
 
 /* Daemon controls */
@@ -713,6 +712,7 @@ Command Center — Agentic OS for Obsidian
 }
 .cc-chat-heading { min-width: 0; flex: 1 1 150px; }
 .cc-chat-status { display: flex; align-items: center; gap: 6px; font-size: var(--font-small); font-weight: var(--font-semibold); }
+.command-center-daemon-error.is-hidden { display: none; }
 .cc-chat-status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-faint); flex: 0 0 auto; }
 .cc-chat-status-dot.ready { background: var(--color-green); box-shadow: 0 0 5px hsla(var(--color-green-hsl), 0.5); }
 .cc-chat-status-dot.busy { background: var(--color-yellow); animation: cc-pulse 0.8s infinite; }

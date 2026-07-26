@@ -163,7 +163,7 @@ export class AgentMemoryStore {
 	private readonly debounceMs: number;
 	private readonly contextCharLimit: number;
 	private loadPromise: Promise<void>;
-	private flushTimer: ReturnType<typeof setTimeout> | null = null;
+	private flushTimer: number | null = null;
 	private flushChain: Promise<void> = Promise.resolve();
 	private dirty = false;
 
@@ -292,7 +292,7 @@ export class AgentMemoryStore {
 
 	async flushToDisk(): Promise<void> {
 		await this.ready();
-		if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+		if (this.flushTimer) { window.clearTimeout(this.flushTimer); this.flushTimer = null; }
 		if (!this.dirty && this.app.vault.getAbstractFileByPath(MEMORY_PATH)) {
 			await this.flushChain;
 			return;
@@ -318,8 +318,8 @@ export class AgentMemoryStore {
 	async forceFlush(): Promise<void> { await this.flushToDisk(); }
 
 	private scheduleFlush(): void {
-		if (this.flushTimer) clearTimeout(this.flushTimer);
-		this.flushTimer = setTimeout(() => {
+		if (this.flushTimer) window.clearTimeout(this.flushTimer);
+		this.flushTimer = window.setTimeout(() => {
 			void this.flushToDisk().catch(error =>
 				console.warn('[Command Center] Unable to persist agent memory:', error));
 		}, this.debounceMs);

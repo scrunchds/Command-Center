@@ -12,18 +12,26 @@
  *   • Cost-tier badges, capability badges, and context-window labels
  */
 
-import { App, PluginSettingTab, Setting, Notice, ButtonComponent } from 'obsidian';
+import {
+	App,
+	PluginSettingTab,
+	Setting,
+	Notice,
+	ButtonComponent,
+	type TextComponent,
+} from 'obsidian';
 import CommandCenterPlugin from '../main';
 import type {
-	ProviderId, TaskType, ProviderCredentials, MultiProviderSettings,
-	RoutingTable, ProviderFallbackConfig, ProviderModel,
+	ProviderId,
+	TaskType,
+	ProviderModel,
 } from '../providers/provider-types';
+import { TASK_TYPE_LABELS, TASK_TYPE_ICONS } from '../providers/provider-types';
 import {
-	TASK_TYPE_LABELS, TASK_TYPE_ICONS,
-} from '../providers/provider-types';
-import { PROVIDER_REGISTRY, getDefaultModelForProvider } from '../providers/provider-registry';
+	PROVIDER_REGISTRY,
+	getDefaultModelForProvider,
+} from '../providers/provider-registry';
 import { DEFAULT_ROUTING } from '../routing';
-import { DEFAULT_SETTINGS, DEFAULT_MULTI_PROVIDER } from '../settings';
 import { detectPiPath, clearPiDetectionCache } from '../daemon';
 
 /* ═══════════════════════════════════════════════════════════
@@ -33,15 +41,34 @@ import { detectPiPath, clearPiDetectionCache } from '../daemon';
 const DEVELOPER_SUPPORT_URL = 'https://buymeacoffee.com/DustinS';
 
 const COST_TIER_LABELS: Record<string, string> = {
-	free: '🆓 Free', cheap: '💸 Cheap', moderate: '💰 Moderate', expensive: '💎 Expensive',
+	free: '🆓 Free',
+	cheap: '💸 Cheap',
+	moderate: '💰 Moderate',
+	expensive: '💎 Expensive',
 };
 
 const PROVIDER_ORDER: ProviderId[] = [
-	'pi-daemon', 'openai', 'anthropic', 'google-gemini', 'openrouter',
-	'groq', 'deepinfra', 'mistral', 'cohere', 'ollama', 'lmstudio', 'custom',
+	'pi-daemon',
+	'openai',
+	'anthropic',
+	'google-gemini',
+	'openrouter',
+	'groq',
+	'deepinfra',
+	'mistral',
+	'cohere',
+	'ollama',
+	'lmstudio',
+	'custom',
 ];
 
-const TASK_TYPE_ORDER: TaskType[] = ['coding', 'vision', 'reading', 'reasoning', 'fast'];
+const TASK_TYPE_ORDER: TaskType[] = [
+	'coding',
+	'vision',
+	'reading',
+	'reasoning',
+	'fast',
+];
 
 /** Background sync interval in milliseconds (5 minutes). */
 const MODEL_SYNC_INTERVAL_MS = 5 * 60 * 1000;
@@ -71,7 +98,10 @@ export class PluginSettingsTab extends PluginSettingTab {
 	plugin: CommandCenterPlugin;
 
 	/* ─── Transient UI state (not persisted) ─────────── */
-	private healthStatus = new Map<ProviderId, 'idle' | 'checking' | 'ok' | 'error'>();
+	private healthStatus = new Map<
+		ProviderId,
+		'idle' | 'checking' | 'ok' | 'error'
+	>();
 	private healthErrors = new Map<ProviderId, string>();
 	private collapsedSections = new Set<string>();
 	private saveIndicator: HTMLElement | null = null;
@@ -91,13 +121,17 @@ export class PluginSettingsTab extends PluginSettingTab {
 	   ═══════════════════════════════════════════════════════ */
 
 	display(): void {
+		this.update();
+	}
+
+	/** Refresh the imperative settings UI after an interaction. */
+	private update(): void {
 		const { containerEl } = this;
 		containerEl.empty();
 		containerEl.addClass('cc-settings');
 
-		// ── Header ────────────────────────────────────
+		// ── Save status ───────────────────────────────
 		const header = containerEl.createDiv({ cls: 'cc-settings-header' });
-		header.createEl('h1', { text: '⚙️ Command Center Settings' });
 		this.saveIndicator = header.createDiv({ cls: 'cc-save-indicator' });
 
 		// ── Section 1: Core Settings ───────────────────
@@ -134,66 +168,94 @@ export class PluginSettingsTab extends PluginSettingTab {
 		// Worker profile
 		new Setting(body)
 			.setName('Active Worker Profile')
-			.setDesc('Default agent profile used when no explicit profile is specified.')
-			.addDropdown(d => {
+			.setDesc(
+				'Default agent profile used when no explicit profile is specified.',
+			)
+			.addDropdown((d) => {
 				d.addOption('default-orchestrator', 'Orchestrator');
 				d.addOption('retriever', 'Retriever');
 				d.addOption('summarizer', 'Summarizer');
 				d.addOption('editor', 'Editor');
 				d.addOption('react-orchestrator', 'ReAct Orchestrator');
-				d.setValue(this.plugin.settings.activeProfile)
-					.onChange(v => this.saveSetting('activeProfile', v));
+				d.setValue(this.plugin.settings.activeProfile).onChange((v) =>
+					this.saveSetting('activeProfile', v),
+				);
 				return d;
 			});
 
 		// Max tokens
 		new Setting(body)
 			.setName('Max Tokens')
-			.setDesc('Token budget ceiling for agent responses (legacy; per-provider settings override this).')
-			.addSlider(slider =>
-				slider.setLimits(512, 16384, 512)
+			.setDesc(
+				'Token budget ceiling for agent responses (legacy; per-provider settings override this).',
+			)
+			.addSlider((slider) =>
+				slider
+					.setLimits(512, 16384, 512)
 					.setValue(this.plugin.settings.maxTokens)
-					.setDynamicTooltip()
-					.onChange(v => this.saveSetting('maxTokens', v)),
+					.onChange((v) => this.saveSetting('maxTokens', v)),
 			);
 
 		// Pi path with auto-detect button and status
 		let piDebounce: number | null = null;
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		let piTextInput: any = null;
+		let piTextInput: TextComponent | null = null;
 
 		const piSetting = new Setting(body)
 			.setName('Pi Harness Path')
-			.setDesc('Path to the pi CLI binary. Use "Detect" to auto-find it, or type a custom path.');
+			.setDesc(
+				'Path to the pi CLI binary. Use "Detect" to auto-find it, or type a custom path.',
+			);
 
 		// Status indicator showing whether the path is valid
 		const isMissing = this.plugin.daemon.isBinaryMissing();
 		const isRunning = this.plugin.daemon.isRunning();
 		const statusEl = piSetting.descEl.createSpan({ cls: 'cc-pi-status' });
 		if (isMissing) {
-			statusEl.createSpan({ cls: 'cc-pi-status-badge error', text: '⚠️ Not found' });
+			statusEl.createSpan({
+				cls: 'cc-pi-status-badge error',
+				text: '⚠️ Not found',
+			});
 		} else if (isRunning) {
-			statusEl.createSpan({ cls: 'cc-pi-status-badge ok', text: '✅ Running' });
-		} else if (this.plugin.settings.piPath && this.plugin.settings.piPath !== 'pi') {
-			statusEl.createSpan({ cls: 'cc-pi-status-badge idle', text: '◽ Configured' });
+			statusEl.createSpan({
+				cls: 'cc-pi-status-badge ok',
+				text: '✅ Running',
+			});
+		} else if (
+			this.plugin.settings.piPath &&
+			this.plugin.settings.piPath !== 'pi'
+		) {
+			statusEl.createSpan({
+				cls: 'cc-pi-status-badge idle',
+				text: '◽ Configured',
+			});
 		} else {
-			statusEl.createSpan({ cls: 'cc-pi-status-badge idle', text: '◽ Default (pi)' });
+			statusEl.createSpan({
+				cls: 'cc-pi-status-badge idle',
+				text: '◽ Default (pi)',
+			});
 		}
 
-		piSetting.addText(text => {
+		piSetting
+			.addText((text) => {
 			piTextInput = text;
 			text.setPlaceholder('pi')
 				.setValue(this.plugin.settings.piPath)
-				.onChange(value => {
+					.onChange((value) => {
 					if (piDebounce) window.clearTimeout(piDebounce);
-					piDebounce = window.setTimeout(async () => {
+					piDebounce = window.setTimeout( () => { void (async () => {
 						piDebounce = null;
 						const trimmed = value.trim();
-						if (!trimmed || trimmed === this.plugin.settings.piPath) return;
+							if (
+								!trimmed ||
+								trimmed === this.plugin.settings.piPath
+							)
+								return;
 						const wasRunning = this.plugin.daemon.isRunning();
 						const ok = this.plugin.setDaemonPath(trimmed);
 						if (!ok) {
-							new Notice('Cannot change pi path while a task is active.');
+								new Notice(
+									'Cannot change pi path while a task is active.',
+								);
 							text.setValue(this.plugin.settings.piPath);
 							return;
 						}
@@ -204,14 +266,14 @@ export class PluginSettingsTab extends PluginSettingTab {
 							new Notice(`Daemon restarted with: ${trimmed}`);
 						}
 						this.showSaved();
-					}, 1000);
+					})(); }, 1000);
 				});
 			return text;
 		})
-		.addButton(btn => {
+			.addButton((btn) => {
 			btn.setButtonText('🔍 Detect');
 			btn.setTooltip('Auto-detect pi binary location');
-			btn.onClick(async () => {
+			btn.onClick( () => { void (async () => {
 				clearPiDetectionCache();
 				btn.setDisabled(true);
 				btn.setButtonText('⏳ Detecting...');
@@ -221,35 +283,44 @@ export class PluginSettingsTab extends PluginSettingTab {
 						const wasRunning = this.plugin.daemon.isRunning();
 						const ok = this.plugin.setDaemonPath(detected);
 						if (!ok) {
-							new Notice('Cannot change pi path while a task is active.');
+								new Notice(
+									'Cannot change pi path while a task is active.',
+								);
 							return;
 						}
 						this.plugin.settings.piPath = detected;
 						await this.plugin.saveSettings();
 						// Always start (or restart) the daemon with the detected path
 						this.plugin.restartDaemon();
-						new Notice(`✅ Pi detected and daemon ${wasRunning ? 'restarted' : 'started'}: ${detected}`);
+							new Notice(
+								`✅ Pi detected and daemon ${wasRunning ? 'restarted' : 'started'}: ${detected}`,
+							);
 						this.showSaved();
 						if (piTextInput) piTextInput.setValue(detected);
-						this.display();
+						this.update();
 					} else {
-						new Notice('❌ Could not auto-detect pi. Install it via: npm i -g pi');
+							new Notice(
+								'❌ Could not auto-detect pi. Install it via: npm i -g pi',
+							);
 					}
 				} finally {
 					btn.setDisabled(false);
 					btn.setButtonText('🔍 Detect');
 				}
-			});
+			})(); });
 			return btn;
 		});
 
 		// Enable daemon
 		new Setting(body)
 			.setName('Auto-start Daemon')
-			.setDesc('Launch the pi agent daemon automatically when the plugin loads.')
-			.addToggle(toggle =>
-				toggle.setValue(this.plugin.settings.enableDaemon)
-					.onChange(async v => {
+			.setDesc(
+				'Launch the pi agent daemon automatically when the plugin loads.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableDaemon)
+					.onChange( (v) => { void (async () => {
 						this.plugin.settings.enableDaemon = v;
 						await this.plugin.saveSettings();
 						if (v && !this.plugin.daemon.isRunning()) {
@@ -259,26 +330,29 @@ export class PluginSettingsTab extends PluginSettingTab {
 							this.plugin.daemon.stop();
 							this.plugin.statusBar.setState('stopped');
 						}
-					}),
+					})(); }),
 			);
 
 		new Setting(body)
 			.setName('Silent Daily Startup')
-			.setDesc('Morning Start evaluates capacity and assembles today’s note without intermediate approval prompts. Inbox proposals remain unapproved and are summarized for later review.')
-			.addToggle(toggle =>
-				toggle.setValue(this.plugin.settings.silentDailyStartup)
-					.onChange(v => this.saveSetting('silentDailyStartup', v)),
+			.setDesc(
+				'Morning Start evaluates capacity and assembles today’s note without intermediate approval prompts. Inbox proposals remain unapproved and are summarized for later review.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.silentDailyStartup)
+					.onChange((v) => this.saveSetting('silentDailyStartup', v)),
 			);
 
 		// Memory bank limit
 		new Setting(body)
 			.setName('Memory Bank Limit')
 			.setDesc('Maximum memory notes to retain before auto-pruning.')
-			.addSlider(slider =>
-				slider.setLimits(20, 500, 20)
+			.addSlider((slider) =>
+				slider
+					.setLimits(20, 500, 20)
 					.setValue(this.plugin.settings.memoryMaxNotes)
-					.setDynamicTooltip()
-					.onChange(v => this.saveSetting('memoryMaxNotes', v)),
+					.onChange((v) => this.saveSetting('memoryMaxNotes', v)),
 			);
 	}
 
@@ -287,7 +361,10 @@ export class PluginSettingsTab extends PluginSettingTab {
 	   ═══════════════════════════════════════════════════════ */
 
 	private renderProviderCredentials(containerEl: HTMLElement): void {
-		const headerRow = this.renderSectionHeader(containerEl, 'providers', '🌐 Provider Credentials',
+		const headerRow = this.renderSectionHeader(
+			containerEl,
+			'providers',
+			'🌐 Provider Credentials',
 			'Configure API keys and endpoints. Providers without credentials are skipped during routing.',
 		);
 
@@ -313,12 +390,14 @@ export class PluginSettingsTab extends PluginSettingTab {
 			syncBtn.disabled = false;
 		});
 		this.createButton(actionBar, 'Collapse All', () => {
-			for (const pid of PROVIDER_ORDER) this.collapsedSections.add(`provider-${pid}`);
-			this.display();
+			for (const pid of PROVIDER_ORDER)
+				this.collapsedSections.add(`provider-${pid}`);
+			this.update();
 		});
 		this.createButton(actionBar, 'Expand All', () => {
-			for (const pid of PROVIDER_ORDER) this.collapsedSections.delete(`provider-${pid}`);
-			this.display();
+			for (const pid of PROVIDER_ORDER)
+				this.collapsedSections.delete(`provider-${pid}`);
+			this.update();
 		});
 
 		const body = this.getSectionBody(containerEl, 'providers');
@@ -335,7 +414,10 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		const mp = this.plugin.settings.multiProvider;
 		const cred = mp.credentials[pid] ?? {
-			providerId: pid, apiKey: '', baseUrl: meta.defaultBaseUrl ?? '', enabled: false,
+			providerId: pid,
+			apiKey: '',
+			baseUrl: meta.defaultBaseUrl ?? '',
+			enabled: false,
 		};
 		if (!mp.credentials[pid]) mp.credentials[pid] = cred;
 
@@ -352,24 +434,39 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Health dot
 		const dot = cardHeader.createSpan({ cls: `cc-health-dot ${health}` });
-		dot.setAttribute('title', health === 'ok' ? 'Connected' : health === 'error' ? (this.healthErrors.get(pid) ?? 'Error') : health === 'checking' ? 'Checking...' : 'Not tested');
+		dot.setAttribute(
+			'title',
+			health === 'ok'
+				? 'Connected'
+				: health === 'error'
+					? (this.healthErrors.get(pid) ?? 'Error')
+					: health === 'checking'
+						? 'Checking...'
+						: 'Not tested',
+		);
 
 		// Provider icon + name
 		cardHeader.createSpan({ cls: 'cc-provider-icon', text: meta.icon });
 		const info = cardHeader.createSpan({ cls: 'cc-provider-info' });
 		info.createSpan({ cls: 'cc-provider-name', text: meta.label });
 		if (meta.requiresKey) {
-			info.createSpan({ cls: 'cc-provider-key-badge', text: '🔑 Key Required' });
+			info.createSpan({
+				cls: 'cc-provider-key-badge',
+				text: '🔑 Key Required',
+			});
 		} else {
-			info.createSpan({ cls: 'cc-provider-key-badge free', text: '🆓 No Key' });
+			info.createSpan({
+				cls: 'cc-provider-key-badge free',
+				text: '🆓 No Key',
+			});
 		}
 
 		// Enable toggle (in header)
-		const toggleContainer = cardHeader.createDiv({ cls: 'cc-provider-toggle' });
-		new Setting(toggleContainer)
-			.addToggle(toggle => {
-				toggle.setValue(enabled)
-					.onChange(async v => {
+		const toggleContainer = cardHeader.createDiv({
+			cls: 'cc-provider-toggle',
+		});
+		new Setting(toggleContainer).addToggle((toggle) => {
+			toggle.setValue(enabled).onChange( (v) => { void (async () => {
 						const c = mp.credentials[pid]!;
 						c.enabled = v;
 						this.plugin.providerFactory.invalidate(pid);
@@ -380,14 +477,18 @@ export class PluginSettingsTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 						this.showSaved();
 						// Update card class without full re-render
-						if (v) { card.addClass('enabled'); card.removeClass('unhealthy'); }
-						else card.removeClass('enabled', 'healthy', 'unhealthy');
-					});
+				if (v) {
+					card.addClass('enabled');
+					card.removeClass('unhealthy');
+				} else card.removeClass('enabled', 'healthy', 'unhealthy');
+					})(); });
 				return toggle;
 			});
 
 		// Collapse toggle
-		const collapseBtn = cardHeader.createSpan({ cls: 'cc-collapse-toggle' });
+		const collapseBtn = cardHeader.createSpan({
+			cls: 'cc-collapse-toggle',
+		});
 		collapseBtn.textContent = collapsed ? '▶' : '▼';
 		collapseBtn.addEventListener('click', () => {
 			if (collapsed) {
@@ -395,7 +496,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			} else {
 				this.collapsedSections.add(`provider-${pid}`);
 			}
-			this.display();
+			this.update();
 		});
 
 		// ── Card Body (collapsible) ───────────────────
@@ -407,32 +508,52 @@ export class PluginSettingsTab extends PluginSettingTab {
 		const cardBody = card.createDiv({ cls: 'cc-provider-card-body' });
 
 		// Description
-		cardBody.createEl('p', { cls: 'cc-provider-desc', text: meta.description });
+		cardBody.createEl('p', {
+			cls: 'cc-provider-desc',
+			text: meta.description,
+		});
 
 		// Capability badges
 		const capsRow = cardBody.createDiv({ cls: 'cc-capability-badges' });
 		const caps = meta.capabilities;
-		if (caps.streaming) capsRow.createSpan({ cls: 'cc-cap-badge', text: '📡 Streaming' });
-		if (caps.toolCalling) capsRow.createSpan({ cls: 'cc-cap-badge', text: '🔧 Tools' });
-		if (caps.vision) capsRow.createSpan({ cls: 'cc-cap-badge', text: '👁️ Vision' });
-		if (caps.promptCaching) capsRow.createSpan({ cls: 'cc-cap-badge', text: '💾 Caching' });
-		if (caps.embeddings) capsRow.createSpan({ cls: 'cc-cap-badge', text: '📊 Embeddings' });
-		capsRow.createSpan({ cls: 'cc-cap-badge ctx', text: `📐 ${this.formatContext(caps.maxContextWindow)} ctx` });
+		if (caps.streaming)
+			capsRow.createSpan({ cls: 'cc-cap-badge', text: '📡 Streaming' });
+		if (caps.toolCalling)
+			capsRow.createSpan({ cls: 'cc-cap-badge', text: '🔧 Tools' });
+		if (caps.vision)
+			capsRow.createSpan({ cls: 'cc-cap-badge', text: '👁️ Vision' });
+		if (caps.promptCaching)
+			capsRow.createSpan({ cls: 'cc-cap-badge', text: '💾 Caching' });
+		if (caps.embeddings)
+			capsRow.createSpan({ cls: 'cc-cap-badge', text: '📊 Embeddings' });
+		capsRow.createSpan({
+			cls: 'cc-cap-badge ctx',
+			text: `📐 ${this.formatContext(caps.maxContextWindow)} ctx`,
+		});
 
 		// API Key (only for providers that require it)
 		if (meta.requiresKey) {
 			const keyRow = cardBody.createDiv({ cls: 'cc-credential-row' });
 			keyRow.createSpan({ cls: 'cc-credential-label', text: 'API Key' });
 
-			const keyInputContainer = keyRow.createDiv({ cls: 'cc-key-input-container' });
+			const keyInputContainer = keyRow.createDiv({
+				cls: 'cc-key-input-container',
+			});
 			const keyInput = keyInputContainer.createEl('input', {
 				type: 'password',
 				cls: 'cc-key-input',
-				attr: { placeholder: 'sk-...', autocomplete: 'off', spellcheck: 'false' },
-			}) as HTMLInputElement;
+				attr: {
+					placeholder: 'sk-...',
+					autocomplete: 'off',
+					spellcheck: 'false',
+				},
+			});
 			keyInput.value = cred.apiKey;
 
-			const eyeBtn = keyInputContainer.createSpan({ cls: 'cc-eye-toggle', text: '👁️' });
+			const eyeBtn = keyInputContainer.createSpan({
+				cls: 'cc-eye-toggle',
+				text: '👁️',
+			});
 			eyeBtn.setAttribute('title', 'Show/hide API key');
 			let keyVisible = false;
 			eyeBtn.addEventListener('click', () => {
@@ -441,7 +562,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 				eyeBtn.textContent = keyVisible ? '🙈' : '👁️';
 			});
 
-			keyInput.addEventListener('change', async () => {
+			keyInput.addEventListener('change',  () => { void (async () => {
 				const c = mp.credentials[pid]!;
 				c.apiKey = keyInput.value.trim();
 				this.plugin.providerFactory.invalidate(pid);
@@ -449,7 +570,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 				this.healthErrors.delete(pid);
 				await this.plugin.saveSettings();
 				this.showSaved();
-			});
+			})(); });
 
 			// Key strength indicator
 			const strengthEl = keyRow.createSpan({ cls: 'cc-key-strength' });
@@ -468,31 +589,42 @@ export class PluginSettingsTab extends PluginSettingTab {
 			const urlInput = urlContainer.createEl('input', {
 				type: 'text',
 				cls: 'cc-url-input',
-				attr: { placeholder: meta.defaultBaseUrl ?? '', spellcheck: 'false' },
-			}) as HTMLInputElement;
-			const currentUrl = cred.baseUrl !== meta.defaultBaseUrl ? cred.baseUrl : '';
+				attr: {
+					placeholder: meta.defaultBaseUrl ?? '',
+					spellcheck: 'false',
+				},
+			});
+			const currentUrl =
+				cred.baseUrl !== meta.defaultBaseUrl ? cred.baseUrl : '';
 			urlInput.value = currentUrl;
 
-			const defaultLabel = urlContainer.createSpan({ cls: 'cc-url-default-label' });
+			const defaultLabel = urlContainer.createSpan({
+				cls: 'cc-url-default-label',
+			});
 			if (!currentUrl) {
 				defaultLabel.textContent = `(default: ${meta.defaultBaseUrl ?? 'N/A'})`;
 			}
 
-			urlInput.addEventListener('change', async () => {
+			urlInput.addEventListener('change',  () => { void (async () => {
 				const c = mp.credentials[pid]!;
 				const val = urlInput.value.trim();
 				c.baseUrl = val || (meta.defaultBaseUrl ?? '');
-				defaultLabel.textContent = val ? '(custom)' : `(default: ${meta.defaultBaseUrl ?? 'N/A'})`;
+				defaultLabel.textContent = val
+					? '(custom)'
+					: `(default: ${meta.defaultBaseUrl ?? 'N/A'})`;
 				this.plugin.providerFactory.invalidate(pid);
 				this.healthStatus.set(pid, 'idle');
 				this.healthErrors.delete(pid);
 				await this.plugin.saveSettings();
 				this.showSaved();
-			});
+			})(); });
 
 			if (meta.defaultBaseUrl && cred.baseUrl !== meta.defaultBaseUrl) {
-				const resetBtn = urlContainer.createSpan({ cls: 'cc-url-reset', text: '↩ Reset' });
-				resetBtn.addEventListener('click', async () => {
+				const resetBtn = urlContainer.createSpan({
+					cls: 'cc-url-reset',
+					text: '↩ Reset',
+				});
+				resetBtn.addEventListener('click',  () => { void (async () => {
 					const c = mp.credentials[pid]!;
 					c.baseUrl = meta.defaultBaseUrl!;
 					urlInput.value = '';
@@ -500,19 +632,26 @@ export class PluginSettingsTab extends PluginSettingTab {
 					this.plugin.providerFactory.invalidate(pid);
 					await this.plugin.saveSettings();
 					this.showSaved();
-				});
+				})(); });
 			}
 		}
 
 		// ── Available Models ──────────────────────────
 		if (meta.models.length > 0 || pid !== 'pi-daemon') {
 			const modelsRow = cardBody.createDiv({ cls: 'cc-models-row' });
-			const modelsLabel = modelsRow.createDiv({ cls: 'cc-models-header' });
-			modelsLabel.createSpan({ cls: 'cc-credential-label', text: 'Models' });
+			const modelsLabel = modelsRow.createDiv({
+				cls: 'cc-models-header',
+			});
+			modelsLabel.createSpan({
+				cls: 'cc-credential-label',
+				text: 'Models',
+			});
 
 			// Sync state indicator
 			const syncState = this.modelSyncStates.get(pid) ?? makeSyncState();
-			const syncIndicator = modelsLabel.createSpan({ cls: `cc-sync-indicator ${syncState.status}` });
+			const syncIndicator = modelsLabel.createSpan({
+				cls: `cc-sync-indicator ${syncState.status}`,
+			});
 			this.updateSyncIndicator(syncIndicator, syncState);
 
 			// Refresh Models button
@@ -521,23 +660,27 @@ export class PluginSettingsTab extends PluginSettingTab {
 				cls: 'cc-refresh-models-btn',
 				attr: { title: 'Fetch live models from provider' },
 			});
-			if (syncState.status === 'syncing' || (!enabled && meta.requiresKey)) {
+			if (
+				syncState.status === 'syncing' ||
+				(!enabled && meta.requiresKey)
+			) {
 				refreshBtn.disabled = true;
 			}
-			refreshBtn.addEventListener('click', async () => {
+			refreshBtn.addEventListener('click',  () => { void (async () => {
 				await this.syncProviderModels(pid);
-				this.display();
-			});
+				this.update();
+			})(); });
 
 			// Determine which models to display: live (synced) or static (fallback)
 			const mp = this.plugin.settings.multiProvider;
 			const liveModels = mp.liveModels?.[pid];
-			const displayModels = (liveModels && liveModels.length > 0) ? liveModels : meta.models;
+			const displayModels =
+				liveModels && liveModels.length > 0 ? liveModels : meta.models;
 			const isLive = liveModels && liveModels.length > 0;
 
 			// Model count + source label
 			if (displayModels.length > 0) {
-				const sourceLabel = modelsLabel.createSpan({
+				modelsLabel.createSpan({
 					cls: 'cc-models-source',
 					text: isLive
 						? `${displayModels.length} live`
@@ -547,12 +690,31 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 			const modelsList = modelsRow.createDiv({ cls: 'cc-models-list' });
 			for (const m of displayModels) {
-				const modelChip = modelsList.createSpan({ cls: 'cc-model-chip' });
-				modelChip.createSpan({ cls: 'cc-model-chip-name', text: m.label });
-				if (m.supportsVision) modelChip.createSpan({ cls: 'cc-model-chip-cap', text: '👁️' });
-				if (m.supportsCaching) modelChip.createSpan({ cls: 'cc-model-chip-cap', text: '💾' });
-				modelChip.createSpan({ cls: 'cc-model-chip-cost', text: COST_TIER_LABELS[m.costTier] ?? m.costTier });
-				modelChip.createSpan({ cls: 'cc-model-chip-ctx', text: `${this.formatContext(m.contextWindow)} ctx` });
+				const modelChip = modelsList.createSpan({
+					cls: 'cc-model-chip',
+				});
+				modelChip.createSpan({
+					cls: 'cc-model-chip-name',
+					text: m.label,
+				});
+				if (m.supportsVision)
+					modelChip.createSpan({
+						cls: 'cc-model-chip-cap',
+						text: '👁️',
+					});
+				if (m.supportsCaching)
+					modelChip.createSpan({
+						cls: 'cc-model-chip-cap',
+						text: '💾',
+					});
+				modelChip.createSpan({
+					cls: 'cc-model-chip-cost',
+					text: COST_TIER_LABELS[m.costTier] ?? m.costTier,
+				});
+				modelChip.createSpan({
+					cls: 'cc-model-chip-ctx',
+					text: `${this.formatContext(m.contextWindow)} ctx`,
+				});
 			}
 
 			// Show sync error if present
@@ -565,43 +727,60 @@ export class PluginSettingsTab extends PluginSettingTab {
 		}
 
 		// ── Test Connection & Actions ──────────────────
-		const actionsRow = cardBody.createDiv({ cls: 'cc-provider-actions-row' });
+		const actionsRow = cardBody.createDiv({
+			cls: 'cc-provider-actions-row',
+		});
 
 		// For pi-daemon with missing binary, show a prominent fix-it message
 		if (pid === 'pi-daemon' && this.plugin.daemon.isBinaryMissing()) {
-			const fixMsg = cardBody.createDiv({ cls: 'cc-missing-binary-notice' });
+			const fixMsg = cardBody.createDiv({
+				cls: 'cc-missing-binary-notice',
+			});
 			fixMsg.createSpan({ cls: 'cc-missing-binary-icon', text: '⚠️' });
-			fixMsg.createSpan({ cls: 'cc-missing-binary-text',
+			fixMsg.createSpan({
+				cls: 'cc-missing-binary-text',
 				text: 'Pi binary not detected. To fix: install pi via npm (npm i -g pi) or update the path above.',
 			});
 		}
 
 		// Test button
 		const testBtn = actionsRow.createEl('button', {
-			text: health === 'checking' ? '⏳ Testing...' : '🔍 Test Connection',
+			text:
+				health === 'checking' ? '⏳ Testing...' : '🔍 Test Connection',
 			cls: 'cc-test-btn',
 		});
-		if (health === 'checking' || (!enabled && meta.requiresKey && !cred.apiKey)) {
+		if (
+			health === 'checking' ||
+			(!enabled && meta.requiresKey && !cred.apiKey)
+		) {
 			testBtn.disabled = true;
 		}
-		testBtn.addEventListener('click', async () => {
+		testBtn.addEventListener('click',  () => { void (async () => {
 			await this.runHealthCheck(pid);
-			this.display();
-		});
+			this.update();
+		})(); });
 
 		// Copy key button (only if key exists)
 		if (cred.apiKey) {
-			const copyBtn = actionsRow.createEl('button', { text: '📋 Copy Key', cls: 'cc-copy-btn' });
-			copyBtn.addEventListener('click', async () => {
+			const copyBtn = actionsRow.createEl('button', {
+				text: '📋 Copy Key',
+				cls: 'cc-copy-btn',
+			});
+			copyBtn.addEventListener('click',  () => { void (async () => {
 				await navigator.clipboard.writeText(cred.apiKey);
 				copyBtn.textContent = '✅ Copied!';
-				setTimeout(() => { copyBtn.textContent = '📋 Copy Key'; }, 2000);
-			});
+				window.setTimeout(() => {
+					copyBtn.textContent = '📋 Copy Key';
+				}, 2000);
+			})(); });
 		}
 
 		// Clear credentials button
-		const clearBtn = actionsRow.createEl('button', { text: '🗑 Clear', cls: 'cc-clear-btn' });
-		clearBtn.addEventListener('click', async () => {
+		const clearBtn = actionsRow.createEl('button', {
+			text: '🗑 Clear',
+			cls: 'cc-clear-btn',
+		});
+		clearBtn.addEventListener('click',  () => { void (async () => {
 			const c = mp.credentials[pid]!;
 			c.apiKey = '';
 			c.baseUrl = meta.defaultBaseUrl ?? '';
@@ -610,8 +789,8 @@ export class PluginSettingsTab extends PluginSettingTab {
 			this.healthStatus.set(pid, 'idle');
 			this.healthErrors.delete(pid);
 			await this.plugin.saveSettings();
-			this.display();
-		});
+			this.update();
+		})(); });
 	}
 
 	/* ═══════════════════════════════════════════════════════
@@ -619,7 +798,10 @@ export class PluginSettingsTab extends PluginSettingTab {
 	   ═══════════════════════════════════════════════════════ */
 
 	private renderRoutingMatrix(containerEl: HTMLElement): void {
-		const headerRow = this.renderSectionHeader(containerEl, 'routing', '🔀 Task Routing Matrix',
+		const headerRow = this.renderSectionHeader(
+			containerEl,
+			'routing',
+			'🔀 Task Routing Matrix',
 			'Assign each task type to a provider and model. Routing determines which AI handles your requests.',
 		);
 
@@ -628,18 +810,29 @@ export class PluginSettingsTab extends PluginSettingTab {
 			this.plugin.settings.multiProvider.routing = { ...DEFAULT_ROUTING };
 			await this.plugin.saveSettings();
 			this.showSaved();
-			this.display();
+			this.update();
 		});
 
 		const body = this.getSectionBody(containerEl, 'routing');
 		this.routesContainer = body.createDiv({ cls: 'cc-routing-matrix' });
 
 		// Table header
-		const headerRow2 = this.routesContainer.createDiv({ cls: 'cc-routing-header' });
-		headerRow2.createSpan({ cls: 'cc-routing-cell task', text: 'Task Type' });
-		headerRow2.createSpan({ cls: 'cc-routing-cell provider', text: 'Provider' });
+		const headerRow2 = this.routesContainer.createDiv({
+			cls: 'cc-routing-header',
+		});
+		headerRow2.createSpan({
+			cls: 'cc-routing-cell task',
+			text: 'Task Type',
+		});
+		headerRow2.createSpan({
+			cls: 'cc-routing-cell provider',
+			text: 'Provider',
+		});
 		headerRow2.createSpan({ cls: 'cc-routing-cell model', text: 'Model' });
-		headerRow2.createSpan({ cls: 'cc-routing-cell status', text: 'Status' });
+		headerRow2.createSpan({
+			cls: 'cc-routing-cell status',
+			text: 'Status',
+		});
 
 		const mp = this.plugin.settings.multiProvider;
 
@@ -647,21 +840,33 @@ export class PluginSettingsTab extends PluginSettingTab {
 			const route = mp.routing[tt] ?? DEFAULT_ROUTING[tt];
 			if (!mp.routing[tt]) mp.routing[tt] = { ...route };
 
-			const row = this.routesContainer.createDiv({ cls: 'cc-routing-row' });
+			const row = this.routesContainer.createDiv({
+				cls: 'cc-routing-row',
+			});
 
 			// Task type label
 			const taskCell = row.createDiv({ cls: 'cc-routing-cell task' });
-			taskCell.createSpan({ cls: 'cc-routing-task-icon', text: TASK_TYPE_ICONS[tt] });
-			taskCell.createSpan({ cls: 'cc-routing-task-label', text: TASK_TYPE_LABELS[tt] });
-
-			// Provider dropdown
-			const providerCell = row.createDiv({ cls: 'cc-routing-cell provider' });
-			const enabledProviders = PROVIDER_ORDER.filter(pid => {
-				const cred = mp.credentials[pid];
-				return pid === 'pi-daemon' || (cred?.enabled);
+			taskCell.createSpan({
+				cls: 'cc-routing-task-icon',
+				text: TASK_TYPE_ICONS[tt],
+			});
+			taskCell.createSpan({
+				cls: 'cc-routing-task-label',
+				text: TASK_TYPE_LABELS[tt],
 			});
 
-			const providerSelect = providerCell.createEl('select', { cls: 'cc-routing-select' });
+			// Provider dropdown
+			const providerCell = row.createDiv({
+				cls: 'cc-routing-cell provider',
+			});
+			const enabledProviders = PROVIDER_ORDER.filter((pid) => {
+				const cred = mp.credentials[pid];
+				return pid === 'pi-daemon' || cred?.enabled;
+			});
+
+			const providerSelect = providerCell.createEl('select', {
+				cls: 'cc-routing-select',
+			});
 			for (const pid of enabledProviders) {
 				const meta = PROVIDER_REGISTRY[pid];
 				const opt = providerSelect.createEl('option', {
@@ -673,55 +878,81 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 			// Model dropdown
 			const modelCell = row.createDiv({ cls: 'cc-routing-cell model' });
-			const modelSelectContainer = modelCell.createDiv({ cls: 'cc-routing-model-container' });
-			const modelSelect = modelSelectContainer.createEl('select', { cls: 'cc-routing-select' });
+			const modelSelectContainer = modelCell.createDiv({
+				cls: 'cc-routing-model-container',
+			});
+			const modelSelect = modelSelectContainer.createEl('select', {
+				cls: 'cc-routing-select',
+			});
 			this.populateModelDropdown(
-				modelSelect, route.providerId, route.modelId, mp.liveModels?.[route.providerId],
+				modelSelect,
+				route.providerId,
+				route.modelId,
+				mp.liveModels?.[route.providerId],
 			);
 
 			// Refresh models button for this provider
-			const syncState = this.modelSyncStates.get(route.providerId) ?? makeSyncState();
+			const syncState =
+				this.modelSyncStates.get(route.providerId) ?? makeSyncState();
 			const modelRefreshBtn = modelSelectContainer.createEl('button', {
 				text: syncState.status === 'syncing' ? '⏳' : '🔄',
 				cls: 'cc-routing-refresh-btn',
-				attr: { title: syncState.status === 'synced' ? `Synced ${this.formatTimeAgo(syncState.lastSyncAt)}` : 'Fetch live models' },
+				attr: {
+					title:
+						syncState.status === 'synced'
+							? `Synced ${this.formatTimeAgo(syncState.lastSyncAt)}`
+							: 'Fetch live models',
+				},
 			});
 			if (syncState.status === 'syncing') modelRefreshBtn.disabled = true;
-			modelRefreshBtn.addEventListener('click', async () => {
+			modelRefreshBtn.addEventListener('click',  () => { void (async () => {
 				await this.syncProviderModels(route.providerId);
 				// Re-populate with live (or fallback) models
 				const mp = this.plugin.settings.multiProvider;
 				const liveModels = mp.liveModels?.[route.providerId];
 				modelSelect.empty();
-				this.populateModelDropdown(modelSelect, route.providerId, route.modelId, liveModels);
-				const count = liveModels?.length ?? PROVIDER_REGISTRY[route.providerId]?.models.length ?? 0;
+				this.populateModelDropdown(
+					modelSelect,
+					route.providerId,
+					route.modelId,
+					liveModels,
+				);
+				const count =
+					liveModels?.length ??
+					PROVIDER_REGISTRY[route.providerId]?.models.length ??
+					0;
 				new Notice(`Models updated: ${count} available`);
-			});
+			})(); });
 
 			// Status indicator
 			const statusCell = row.createDiv({ cls: 'cc-routing-cell status' });
 			this.updateRouteStatus(statusCell, route.providerId, tt);
 
 			// Provider change → update model list
-			providerSelect.addEventListener('change', async () => {
+			providerSelect.addEventListener('change',  () => { void (async () => {
 				const newPid = providerSelect.value as ProviderId;
-				const rt = mp.routing[tt]!;
+				const rt = mp.routing[tt];
 				rt.providerId = newPid;
 				rt.modelId = getDefaultModelForProvider(newPid, tt);
 				await this.plugin.saveSettings();
 				this.showSaved();
 				// Update model dropdown in-place
 				modelSelect.empty();
-				this.populateModelDropdown(modelSelect, newPid, rt.modelId, mp.liveModels?.[newPid]);
+				this.populateModelDropdown(
+					modelSelect,
+					newPid,
+					rt.modelId,
+					mp.liveModels?.[newPid],
+				);
 				this.updateRouteStatus(statusCell, newPid, tt);
-			});
+			})(); });
 
-			modelSelect.addEventListener('change', async () => {
-				const rt = mp.routing[tt]!;
+			modelSelect.addEventListener('change',  () => { void (async () => {
+				const rt = mp.routing[tt];
 				rt.modelId = modelSelect.value;
 				await this.plugin.saveSettings();
 				this.showSaved();
-			});
+			})(); });
 		}
 	}
 
@@ -731,17 +962,23 @@ export class PluginSettingsTab extends PluginSettingTab {
 	 * Live models are merged with registry models for known metadata.
 	 */
 	private populateModelDropdown(
-		select: HTMLSelectElement, providerId: ProviderId,
-		selectedId: string, liveModels?: ProviderModel[],
+		select: HTMLSelectElement,
+		providerId: ProviderId,
+		selectedId: string,
+		liveModels?: ProviderModel[],
 	): void {
 		const meta = PROVIDER_REGISTRY[providerId];
 		const staticModels = meta?.models ?? [];
 
 		// Choose which model list to show
-		const models = (liveModels && liveModels.length > 0) ? liveModels : staticModels;
+		const models =
+			liveModels && liveModels.length > 0 ? liveModels : staticModels;
 
 		if (models.length === 0) {
-			select.createEl('option', { text: 'No models available', value: 'unknown' });
+			select.createEl('option', {
+				text: 'No models available',
+				value: 'unknown',
+			});
 			return;
 		}
 
@@ -749,17 +986,11 @@ export class PluginSettingsTab extends PluginSettingTab {
 		const registryMap = new Map<string, ProviderModel>();
 		for (const m of staticModels) registryMap.set(m.id, m);
 
-		// Track live models added vs registry models
-		let liveAdded = 0;
-		let registryAdded = 0;
-
 		for (const m of models) {
 			// If we have live models, prefix them to distinguish from registry
-			const isLive = liveModels && liveModels.length > 0 && !registryMap.has(m.id);
+			const isLive =
+				liveModels && liveModels.length > 0 && !registryMap.has(m.id);
 			const prefix = isLive ? '🌐 ' : '';
-			if (isLive) liveAdded++;
-			else if (!liveModels) registryAdded++;
-
 			const opt = select.createEl('option', {
 				text: `${prefix}${m.label} (${this.formatContext(m.contextWindow)})`,
 				value: m.id,
@@ -769,29 +1000,54 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// If no live models were returned, show a note
 		if (liveModels && liveModels.length === 0) {
-			select.createEl('option', { text: '⚠️ No models found', value: 'unknown' });
+			select.createEl('option', {
+				text: '⚠️ No models found',
+				value: 'unknown',
+			});
 		}
 	}
 
-	private updateRouteStatus(cell: HTMLElement, providerId: ProviderId, taskType: TaskType): void {
+	private updateRouteStatus(
+		cell: HTMLElement,
+		providerId: ProviderId,
+		taskType: TaskType,
+	): void {
 		cell.empty();
 		const provider = this.plugin.providerFactory.get(providerId);
 		const caps = PROVIDER_REGISTRY[providerId]?.capabilities;
 
 		if (!provider.isAvailable()) {
-			cell.createSpan({ cls: 'cc-route-status error', text: '⚠️ Unavailable' });
+			cell.createSpan({
+				cls: 'cc-route-status error',
+				text: '⚠️ Unavailable',
+			});
 		} else if (taskType === 'vision' && caps && !caps.vision) {
-			cell.createSpan({ cls: 'cc-route-status warn', text: '⚠️ No vision' });
+			cell.createSpan({
+				cls: 'cc-route-status warn',
+				text: '⚠️ No vision',
+			});
 		} else if (taskType === 'coding' && caps && !caps.toolCalling) {
-			cell.createSpan({ cls: 'cc-route-status warn', text: '⚠️ No tools' });
+			cell.createSpan({
+				cls: 'cc-route-status warn',
+				text: '⚠️ No tools',
+			});
 		} else {
 			const health = this.healthStatus.get(providerId);
 			if (health === 'ok') {
-				cell.createSpan({ cls: 'cc-route-status ok', text: '✅ Ready' });
+				cell.createSpan({
+					cls: 'cc-route-status ok',
+					text: '✅ Ready',
+				});
 			} else if (health === 'error') {
-				cell.createSpan({ cls: 'cc-route-status warn', text: '⚠️ Unhealthy' });
+				cell.createSpan({
+					cls: 'cc-route-status warn',
+					text: '⚠️ Unhealthy',
+				});
 			} else {
-				cell.createSpan({ cls: 'cc-route-status idle', text: '◽ Untested' });
+				cell.createSpan({
+					cls: 'cc-route-status idle',
+					text: '◽ Untested',
+				});
 			}
 		}
 	}
@@ -801,7 +1057,10 @@ export class PluginSettingsTab extends PluginSettingTab {
 	   ═══════════════════════════════════════════════════════ */
 
 	private renderFallbackPipeline(containerEl: HTMLElement): void {
-		this.renderSectionHeader(containerEl, 'fallback', '🛟 Fallback Pipeline',
+		this.renderSectionHeader(
+			containerEl,
+			'fallback',
+			'🛟 Fallback Pipeline',
 			'When the primary provider fails, the dispatcher cascades through fallback providers in order.',
 		);
 
@@ -813,42 +1072,74 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		new Setting(togglesRow)
 			.setName('Fallback on rate-limit errors')
-			.addToggle(t => t.setValue(fb.fallbackOnRateLimit).onChange(async v => {
-				this.plugin.settings.multiProvider.fallback.fallbackOnRateLimit = v;
+			.addToggle((t) =>
+				t.setValue(fb.fallbackOnRateLimit).onChange( (v) => { void (async () => {
+					this.plugin.settings.multiProvider.fallback.fallbackOnRateLimit =
+						v;
 				await this.plugin.saveSettings();
-			}));
+				})(); }),
+			);
 
 		new Setting(togglesRow)
 			.setName('Fallback on timeout errors')
-			.addToggle(t => t.setValue(fb.fallbackOnTimeout).onChange(async v => {
-				this.plugin.settings.multiProvider.fallback.fallbackOnTimeout = v;
+			.addToggle((t) =>
+				t.setValue(fb.fallbackOnTimeout).onChange( (v) => { void (async () => {
+					this.plugin.settings.multiProvider.fallback.fallbackOnTimeout =
+						v;
 				await this.plugin.saveSettings();
-			}));
+				})(); }),
+			);
 
 		new Setting(togglesRow)
 			.setName('Max fallback attempts')
 			.setDesc('Total providers to try before giving up (1–5)')
-			.addSlider(s => s.setLimits(1, 5, 1).setValue(fb.maxAttempts).setDynamicTooltip().onChange(async v => {
-				this.plugin.settings.multiProvider.fallback.maxAttempts = v;
+			.addSlider((s) =>
+				s
+					.setLimits(1, 5, 1)
+					.setValue(fb.maxAttempts)
+					.onChange( (v) => { void (async () => {
+						this.plugin.settings.multiProvider.fallback.maxAttempts =
+							v;
 				await this.plugin.saveSettings();
-			}));
+					})(); }),
+			);
 
 		// Fallback chain visual
-		body.createEl('h4', { text: 'Fallback Chain Order', cls: 'cc-subsection-title' });
+		new Setting(body)
+			.setName('Fallback Chain Order')
+			.setHeading()
+			.setClass('cc-subsection-title');
 
 		const chainContainer = body.createDiv({ cls: 'cc-fallback-chain' });
 
 		const allProviderIds: ProviderId[] = [
-			'pi-daemon', 'openai', 'anthropic', 'google-gemini', 'openrouter',
-			'groq', 'deepinfra', 'mistral', 'cohere', 'ollama', 'lmstudio', 'custom',
+			'pi-daemon',
+			'openai',
+			'anthropic',
+			'google-gemini',
+			'openrouter',
+			'groq',
+			'deepinfra',
+			'mistral',
+			'cohere',
+			'ollama',
+			'lmstudio',
+			'custom',
 		];
 
 		for (let i = 0; i < fb.fallbacks.length; i++) {
 			const idx = i;
-			const chainLink = chainContainer.createDiv({ cls: 'cc-fallback-link' });
-			chainLink.createSpan({ cls: 'cc-fallback-position', text: `#${i + 1}` });
+			const chainLink = chainContainer.createDiv({
+				cls: 'cc-fallback-link',
+			});
+			chainLink.createSpan({
+				cls: 'cc-fallback-position',
+				text: `#${i + 1}`,
+			});
 
-			const select = chainLink.createEl('select', { cls: 'cc-fallback-select' });
+			const select = chainLink.createEl('select', {
+				cls: 'cc-fallback-select',
+			});
 			for (const pid of allProviderIds) {
 				const opt = select.createEl('option', {
 					text: `${PROVIDER_REGISTRY[pid]?.icon ?? ''} ${PROVIDER_REGISTRY[pid]?.label ?? pid}`,
@@ -856,36 +1147,50 @@ export class PluginSettingsTab extends PluginSettingTab {
 				});
 				if (pid === fb.fallbacks[idx]) opt.selected = true;
 			}
-			select.addEventListener('change', async () => {
-				this.plugin.settings.multiProvider.fallback.fallbacks[idx] = select.value as ProviderId;
+			select.addEventListener('change',  () => { void (async () => {
+				this.plugin.settings.multiProvider.fallback.fallbacks[idx] =
+					select.value as ProviderId;
 				await this.plugin.saveSettings();
-			});
+			})(); });
 
 			// Remove button
 			if (fb.fallbacks.length > 1) {
-				const removeBtn = chainLink.createSpan({ cls: 'cc-fallback-remove', text: '✕' });
-				removeBtn.addEventListener('click', async () => {
-					const newFallbacks = [...this.plugin.settings.multiProvider.fallback.fallbacks];
-					newFallbacks.splice(idx, 1);
-					this.plugin.settings.multiProvider.fallback.fallbacks = newFallbacks;
-					await this.plugin.saveSettings();
-					this.display();
+				const removeBtn = chainLink.createSpan({
+					cls: 'cc-fallback-remove',
+					text: '✕',
 				});
+				removeBtn.addEventListener('click',  () => { void (async () => {
+					const newFallbacks = [
+						...this.plugin.settings.multiProvider.fallback
+							.fallbacks,
+					];
+					newFallbacks.splice(idx, 1);
+					this.plugin.settings.multiProvider.fallback.fallbacks =
+						newFallbacks;
+					await this.plugin.saveSettings();
+					this.update();
+				})(); });
 			}
 
 			// Arrow between links
 			if (i < fb.fallbacks.length - 1) {
-				chainContainer.createSpan({ cls: 'cc-fallback-arrow', text: '↓' });
+				chainContainer.createSpan({
+					cls: 'cc-fallback-arrow',
+					text: '↓',
+				});
 			}
 		}
 
 		// Add fallback button
-		const addBtn = body.createEl('button', { text: '+ Add Fallback', cls: 'cc-add-fallback-btn' });
-		addBtn.addEventListener('click', async () => {
+		const addBtn = body.createEl('button', {
+			text: '+ Add Fallback',
+			cls: 'cc-add-fallback-btn',
+		});
+		addBtn.addEventListener('click',  () => { void (async () => {
 			fb.fallbacks.push('openrouter');
 			await this.plugin.saveSettings();
-			this.display();
-		});
+			this.update();
+		})(); });
 	}
 
 	/* ═══════════════════════════════════════════════════════
@@ -893,7 +1198,10 @@ export class PluginSettingsTab extends PluginSettingTab {
 	   ═══════════════════════════════════════════════════════ */
 
 	private renderHealthDashboard(containerEl: HTMLElement): void {
-		const headerRow = this.renderSectionHeader(containerEl, 'health', '🏥 Health Dashboard',
+		const headerRow = this.renderSectionHeader(
+			containerEl,
+			'health',
+			'🏥 Health Dashboard',
 			'Real-time connection status for all configured providers.',
 		);
 
@@ -904,7 +1212,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			refreshBtn.textContent = '⏳ Refreshing...';
 			refreshBtn.disabled = true;
 			await this.healthCheckAll();
-			this.display();
+			this.update();
 		});
 
 		const body = this.getSectionBody(containerEl, 'health');
@@ -917,10 +1225,12 @@ export class PluginSettingsTab extends PluginSettingTab {
 			if (!meta) continue;
 
 			const cred = mp.credentials[pid];
-			const enabled = cred?.enabled ?? (pid === 'pi-daemon');
+			const enabled = cred?.enabled ?? pid === 'pi-daemon';
 			const health = this.healthStatus.get(pid) ?? 'idle';
 
-			const card = body.createDiv({ cls: `cc-health-card ${enabled ? '' : 'disabled'} ${health}` });
+			const card = body.createDiv({
+				cls: `cc-health-card ${enabled ? '' : 'disabled'} ${health}`,
+			});
 
 			// Left: icon + name
 			const left = card.createDiv({ cls: 'cc-health-left' });
@@ -930,26 +1240,45 @@ export class PluginSettingsTab extends PluginSettingTab {
 			// Center: status text
 			const center = card.createDiv({ cls: 'cc-health-center' });
 			if (!enabled) {
-				center.createSpan({ cls: 'cc-health-status muted', text: 'Disabled' });
+				center.createSpan({
+					cls: 'cc-health-status muted',
+					text: 'Disabled',
+				});
 			} else if (health === 'checking') {
-				center.createSpan({ cls: 'cc-health-status checking', text: '⏳ Checking...' });
+				center.createSpan({
+					cls: 'cc-health-status checking',
+					text: '⏳ Checking...',
+				});
 			} else if (health === 'ok') {
-				center.createSpan({ cls: 'cc-health-status ok', text: '✅ Connected' });
+				center.createSpan({
+					cls: 'cc-health-status ok',
+					text: '✅ Connected',
+				});
 			} else if (health === 'error') {
-				const errMsg = this.healthErrors.get(pid) ?? 'Connection failed';
-				center.createSpan({ cls: 'cc-health-status error', text: `❌ ${errMsg.slice(0, 60)}` });
+				const errMsg =
+					this.healthErrors.get(pid) ?? 'Connection failed';
+				center.createSpan({
+					cls: 'cc-health-status error',
+					text: `❌ ${errMsg.slice(0, 60)}`,
+				});
 			} else {
-				center.createSpan({ cls: 'cc-health-status idle', text: '◽ Not tested' });
+				center.createSpan({
+					cls: 'cc-health-status idle',
+					text: '◽ Not tested',
+				});
 			}
 
 			// Right: action
 			const right = card.createDiv({ cls: 'cc-health-right' });
-			const testBtn = right.createEl('button', { text: 'Test', cls: 'cc-health-test-btn' });
-			if (health === 'checking') testBtn.disabled = true;
-			testBtn.addEventListener('click', async () => {
-				await this.runHealthCheck(pid);
-				this.display();
+			const testBtn = right.createEl('button', {
+				text: 'Test',
+				cls: 'cc-health-test-btn',
 			});
+			if (health === 'checking') testBtn.disabled = true;
+			testBtn.addEventListener('click',  () => { void (async () => {
+				await this.runHealthCheck(pid);
+				this.update();
+			})(); });
 		}
 	}
 
@@ -959,11 +1288,16 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 	private renderFooter(containerEl: HTMLElement): void {
 		const support = containerEl.createDiv({ cls: 'cc-developer-support' });
-		const supportCopy = support.createDiv({ cls: 'cc-developer-support-copy' });
-		supportCopy.createEl('h3', { text: 'Thank the developer' });
-		supportCopy.createEl('p', {
-			text: 'If Command Center helps your workflow, you can support its continued development.',
+		const supportCopy = support.createDiv({
+			cls: 'cc-developer-support-copy',
 		});
+		new Setting(supportCopy)
+			.setName('Thank the developer')
+			.setDesc(
+				'If Command Center helps your workflow, you can support its continued development.',
+			)
+			.setHeading()
+			.setClass('cc-developer-support-heading');
 		const donate = support.createEl('a', {
 			text: '☕ Buy Dustin a coffee',
 			cls: 'mod-cta cc-developer-support-button',
@@ -971,7 +1305,10 @@ export class PluginSettingsTab extends PluginSettingTab {
 		});
 		donate.setAttribute('target', '_blank');
 		donate.setAttribute('rel', 'noopener noreferrer');
-		donate.setAttribute('aria-label', 'Support Dustin on Buy Me a Coffee (opens in a browser)');
+		donate.setAttribute(
+			'aria-label',
+			'Support Dustin on Buy Me a Coffee (opens in a browser)',
+		);
 
 		const footer = containerEl.createDiv({ cls: 'cc-settings-footer' });
 		footer.createEl('p', {
@@ -986,19 +1323,26 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 	/** Render a collapsible section header and return the header row for action buttons. */
 	private renderSectionHeader(
-		containerEl: HTMLElement, sectionId: string, title: string, description?: string,
+		containerEl: HTMLElement,
+		sectionId: string,
+		title: string,
+		description?: string,
 	): HTMLElement {
 		const collapsed = this.collapsedSections.has(sectionId);
 		const headerDiv = containerEl.createDiv({ cls: 'cc-section-header' });
 
 		const leftDiv = headerDiv.createDiv({ cls: 'cc-section-header-left' });
-		const collapseBtn = leftDiv.createSpan({ cls: 'cc-section-collapse', text: collapsed ? '▶' : '▼' });
+		const collapseBtn = leftDiv.createSpan({
+			cls: 'cc-section-collapse',
+			text: collapsed ? '▶' : '▼',
+		});
 
-		const titleDiv = leftDiv.createDiv({ cls: 'cc-section-title-group' });
-		titleDiv.createEl('h2', { text: title });
+		const sectionHeading = new Setting(leftDiv)
+			.setName(title)
+			.setHeading()
+			.setClass('cc-section-title-group');
 		if (description) {
-			// Store description for collapsed tooltip
-			titleDiv.createEl('p', { cls: 'cc-section-desc', text: description });
+			sectionHeading.setDesc(description);
 		}
 
 		collapseBtn.addEventListener('click', () => {
@@ -1007,7 +1351,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			} else {
 				this.collapsedSections.add(sectionId);
 			}
-			this.display();
+			this.update();
 		});
 
 		if (collapsed) {
@@ -1018,18 +1362,20 @@ export class PluginSettingsTab extends PluginSettingTab {
 	}
 
 	/** Get the body container for a section, respecting collapsed state. */
-	private getSectionBody(containerEl: HTMLElement, sectionId: string): HTMLElement {
+	private getSectionBody(
+		containerEl: HTMLElement,
+		sectionId: string,
+	): HTMLElement {
 		const collapsed = this.collapsedSections.has(sectionId);
-		const body = containerEl.createDiv({ cls: `cc-section-body ${collapsed ? 'cc-collapsed' : ''}` });
-		if (collapsed) {
-			body.style.display = 'none';
-		}
-		return body;
+		return containerEl.createDiv({
+			cls: `cc-section-body ${collapsed ? 'cc-collapsed' : ''}`,
+		});
 	}
 
 	/** Create a small action button in a parent container. */
 	private createButton(
-		parent: HTMLElement, text: string,
+		parent: HTMLElement,
+		text: string,
 		onClick: () => void | Promise<void>,
 	): ButtonComponent {
 		const btn = new ButtonComponent(parent);
@@ -1040,9 +1386,11 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 	/** Save a single settings key and show the save indicator. */
 	private async saveSetting<K extends keyof CommandCenterPlugin['settings']>(
-		key: K, value: CommandCenterPlugin['settings'][K],
+		key: K,
+		value: CommandCenterPlugin['settings'][K],
 	): Promise<void> {
-		(this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
+		(this.plugin.settings as unknown as Record<string, unknown>)[key] =
+			value;
 		await this.plugin.saveSettings();
 		this.showSaved();
 	}
@@ -1052,7 +1400,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		if (!this.saveIndicator) return;
 		this.saveIndicator.textContent = '✅ Saved';
 		this.saveIndicator.addClass('visible');
-		setTimeout(() => {
+		window.setTimeout(() => {
 			if (this.saveIndicator) {
 				this.saveIndicator.removeClass('visible');
 				this.saveIndicator.textContent = '';
@@ -1101,18 +1449,29 @@ export class PluginSettingsTab extends PluginSettingTab {
 	private async syncProviderModels(pid: ProviderId): Promise<void> {
 		const provider = this.plugin.providerFactory.get(pid);
 		if (!provider.fetchLiveModels) {
-			this.modelSyncStates.set(pid, { status: 'idle', lastSyncAt: null, modelCount: 0 });
+			this.modelSyncStates.set(pid, {
+				status: 'idle',
+				lastSyncAt: null,
+				modelCount: 0,
+			});
 			return;
 		}
 
 		// Throttle: don't re-sync if recently synced
 		const existing = this.modelSyncStates.get(pid);
-		if (existing?.lastSyncAt && Date.now() - existing.lastSyncAt < MODEL_SYNC_THROTTLE_MS) {
+		if (
+			existing?.lastSyncAt &&
+			Date.now() - existing.lastSyncAt < MODEL_SYNC_THROTTLE_MS
+		) {
 			if (existing.status === 'synced') return;
 		}
 
 		// Mark syncing
-		const syncState: ModelSyncState = { status: 'syncing', lastSyncAt: null, modelCount: 0 };
+		const syncState: ModelSyncState = {
+			status: 'syncing',
+			lastSyncAt: null,
+			modelCount: 0,
+		};
 		this.modelSyncStates.set(pid, syncState);
 
 		try {
@@ -1127,9 +1486,12 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 				// Replace stale static placeholders (notably LM Studio's `local-model`)
 				// or server models that no longer exist with a model reported live.
-				const liveIds = new Set(merged.map(model => model.id));
+				const liveIds = new Set(merged.map((model) => model.id));
 				for (const route of Object.values(mp.routing)) {
-					if (route.providerId === pid && !liveIds.has(route.modelId)) {
+					if (
+						route.providerId === pid &&
+						!liveIds.has(route.modelId)
+					) {
 						route.modelId = merged[0]!.id;
 					}
 				}
@@ -1160,7 +1522,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 	 */
 	private async syncAllModels(): Promise<void> {
 		const mp = this.plugin.settings.multiProvider;
-		const toSync = PROVIDER_ORDER.filter(pid => {
+		const toSync = PROVIDER_ORDER.filter((pid) => {
 			if (pid === 'pi-daemon') return false; // no live listing
 			const provider = this.plugin.providerFactory.get(pid);
 			if (!provider.fetchLiveModels) return false;
@@ -1175,7 +1537,11 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Mark all as syncing
 		for (const pid of toSync) {
-			this.modelSyncStates.set(pid, { status: 'syncing', lastSyncAt: null, modelCount: 0 });
+			this.modelSyncStates.set(pid, {
+				status: 'syncing',
+				lastSyncAt: null,
+				modelCount: 0,
+			});
 		}
 
 		// Sync with concurrency of 3
@@ -1185,7 +1551,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		for (let i = 0; i < toSync.length; i += concurrency) {
 			const batch = toSync.slice(i, i + concurrency);
 			const results = await Promise.allSettled(
-				batch.map(pid => this.syncProviderModels(pid)),
+				batch.map((pid) => this.syncProviderModels(pid)),
 			);
 			for (const r of results) {
 				if (r.status === 'fulfilled') synced++;
@@ -1193,14 +1559,19 @@ export class PluginSettingsTab extends PluginSettingTab {
 			}
 		}
 
-		new Notice(`Model sync complete: ${synced} synced${failed > 0 ? `, ${failed} failed` : ''}`);
+		new Notice(
+			`Model sync complete: ${synced} synced${failed > 0 ? `, ${failed} failed` : ''}`,
+		);
 	}
 
 	/**
 	 * Merge live models with static registry for enriched metadata.
 	 * Registry entries take precedence for known model IDs.
 	 */
-	private _mergeLiveWithRegistry(pid: ProviderId, liveModels: ProviderModel[]): ProviderModel[] {
+	private _mergeLiveWithRegistry(
+		pid: ProviderId,
+		liveModels: ProviderModel[],
+	): ProviderModel[] {
 		if (!liveModels || liveModels.length === 0) return [];
 
 		const meta = PROVIDER_REGISTRY[pid];
@@ -1208,7 +1579,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		const registryMap = new Map<string, ProviderModel>();
 		for (const m of staticModels) registryMap.set(m.id, m);
 
-		return liveModels.map(lm => {
+		return liveModels.map((lm) => {
 			const registered = registryMap.get(lm.id);
 			if (registered) return { ...registered };
 			return lm;
@@ -1235,19 +1606,20 @@ export class PluginSettingsTab extends PluginSettingTab {
 				const provider = this.plugin.providerFactory.get(pid);
 				if (!provider.fetchLiveModels) continue;
 				// Don't re-sync if we already have persisted models
-				if (mp.liveModels?.[pid] && mp.liveModels[pid]!.length > 0) continue;
+				if (mp.liveModels?.[pid] && mp.liveModels[pid].length > 0)
+					continue;
 				// Fire-and-forget for responsiveness
 				this.syncProviderModels(pid).catch(() => {});
 			}
 		};
 
 		// Delay initial sync to allow UI to render
-		setTimeout(initialSync, 1000);
+		window.setTimeout(initialSync, 1000);
 
 		// Set up periodic background sync
-		this.backgroundSyncTimer = window.setInterval(async () => {
+		this.backgroundSyncTimer = window.setInterval( () => { void (async () => {
 			const mp = this.plugin.settings.multiProvider;
-			const toSync = PROVIDER_ORDER.filter(pid => {
+			const toSync = PROVIDER_ORDER.filter((pid) => {
 				if (pid === 'pi-daemon') return false;
 				const cred = mp.credentials[pid];
 				if (!cred?.enabled) return false;
@@ -1255,7 +1627,11 @@ export class PluginSettingsTab extends PluginSettingTab {
 				if (!provider.fetchLiveModels) return false;
 				// Throttle: only sync if last sync was > interval ago
 				const state = this.modelSyncStates.get(pid);
-				if (state?.lastSyncAt && Date.now() - state.lastSyncAt < MODEL_SYNC_INTERVAL_MS) return false;
+				if (
+					state?.lastSyncAt &&
+					Date.now() - state.lastSyncAt < MODEL_SYNC_INTERVAL_MS
+				)
+					return false;
 				return true;
 			});
 
@@ -1264,12 +1640,14 @@ export class PluginSettingsTab extends PluginSettingTab {
 			// Sync with concurrency 2 (gentle)
 			for (let i = 0; i < toSync.length; i += 2) {
 				const batch = toSync.slice(i, i + 2);
-				await Promise.allSettled(batch.map(pid => this.syncProviderModels(pid)));
+				await Promise.allSettled(
+					batch.map((pid) => this.syncProviderModels(pid)),
+				);
 			}
 
 			// Re-render to show updated sync states (debounced)
-			this.display();
-		}, MODEL_SYNC_INTERVAL_MS);
+			this.update();
+		})(); }, MODEL_SYNC_INTERVAL_MS);
 	}
 
 	/**
@@ -1298,11 +1676,17 @@ export class PluginSettingsTab extends PluginSettingTab {
 				break;
 			case 'synced':
 				el.textContent = '✅';
-				el.setAttribute('title', `Synced ${this.formatTimeAgo(state.lastSyncAt)} — ${state.modelCount} models`);
+				el.setAttribute(
+					'title',
+					`Synced ${this.formatTimeAgo(state.lastSyncAt)} — ${state.modelCount} models`,
+				);
 				break;
 			case 'error':
 				el.textContent = '⚠️';
-				el.setAttribute('title', `Sync failed: ${state.error ?? 'Unknown error'}`);
+				el.setAttribute(
+					'title',
+					`Sync failed: ${state.error ?? 'Unknown error'}`,
+				);
 				break;
 		}
 	}
@@ -1348,9 +1732,9 @@ export class PluginSettingsTab extends PluginSettingTab {
 	/** Run health checks for all enabled providers. */
 	private async healthCheckAll(): Promise<void> {
 		const mp = this.plugin.settings.multiProvider;
-		const toCheck = PROVIDER_ORDER.filter(pid => {
+		const toCheck = PROVIDER_ORDER.filter((pid) => {
 			const cred = mp.credentials[pid];
-			return pid === 'pi-daemon' || (cred?.enabled);
+			return pid === 'pi-daemon' || cred?.enabled;
 		});
 
 		// Mark all as checking
@@ -1358,13 +1742,15 @@ export class PluginSettingsTab extends PluginSettingTab {
 			this.healthStatus.set(pid, 'checking');
 			this.healthErrors.delete(pid);
 		}
-		this.display();
+		this.update();
 
 		// Run in parallel with a concurrency limit of 3
 		const concurrency = 3;
 		for (let i = 0; i < toCheck.length; i += concurrency) {
 			const batch = toCheck.slice(i, i + concurrency);
-			await Promise.all(batch.map(pid => this.runHealthCheck(pid).catch(() => {})));
+			await Promise.all(
+				batch.map((pid) => this.runHealthCheck(pid).catch(() => {})),
+			);
 		}
 	}
 }

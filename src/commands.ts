@@ -31,6 +31,10 @@ export async function workflowForBase(baseFile: TFile, plugin: CommandCenterPlug
 		: loadWorkflowFromNote(workflowFile, plugin.app);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
 export function registerCommands(plugin: CommandCenterPlugin) {
 	plugin.addCommand({
 		id: 'open-dashboard',
@@ -40,13 +44,13 @@ export function registerCommands(plugin: CommandCenterPlugin) {
 
 	plugin.addCommand({
 		id: 'open-chat-panel',
-		name: 'Command Center: Open Chat Panel',
+		name: 'Open Chat Panel',
 		callback: () => plugin.activateCommandCenterChatView(),
 	});
 
 	plugin.addCommand({
 		id: 'quick-voice-prompt',
-		name: 'Command Center: Quick Voice Prompt',
+		name: 'Quick Voice Prompt',
 		callback: () => new VoicePromptModal(plugin).open(),
 	});
 
@@ -112,9 +116,10 @@ export function registerCommands(plugin: CommandCenterPlugin) {
 				if (file.extension === 'canvas') {
 					workflow = await loadWorkflowFromCanvas(file, plugin.app);
 				} else {
-					const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
-					const workflowMetadata = frontmatter?.workflow;
-					const hasWorkflowMetadata = Array.isArray(frontmatter?.steps) ||
+					const frontmatter: unknown = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
+					const metadata = isRecord(frontmatter) ? frontmatter : undefined;
+					const workflowMetadata = metadata?.workflow;
+					const hasWorkflowMetadata = Array.isArray(metadata?.steps) ||
 						(workflowMetadata !== null && typeof workflowMetadata === 'object');
 					if (!hasWorkflowMetadata) {
 						new Notice('The active Markdown note does not contain workflow frontmatter.');

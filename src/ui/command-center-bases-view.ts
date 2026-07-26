@@ -32,7 +32,7 @@ export class CommandCenterBasesView extends BasesView {
 	}
 
 	private async render(version: number): Promise<void> {
-		const nativeFiles = filesFromNativeBaseEntries(this.data.data as BasesEntry[], this.plugin.app);
+		const nativeFiles = filesFromNativeBaseEntries(this.data.data, this.plugin.app);
 		const rows = await this.rank(nativeFiles);
 		if (version !== this.renderVersion) return;
 

@@ -259,8 +259,8 @@ export class AnthropicProvider extends BaseHttpProvider {
 		let cacheCreationTokens: number | undefined;
 		let cacheReadTokens: number | undefined;
 		if (usageRaw) {
-			cacheCreationTokens = usageRaw.cache_creation_input_tokens as number | undefined;
-			cacheReadTokens = usageRaw.cache_read_input_tokens as number | undefined;
+			cacheCreationTokens = usageRaw.cache_creation_input_tokens;
+			cacheReadTokens = usageRaw.cache_read_input_tokens;
 
 			// Track cache hits/misses
 			if (cacheCreationTokens && cacheCreationTokens > 0) {
@@ -341,8 +341,8 @@ export class AnthropicProvider extends BaseHttpProvider {
 				const usage = event.usage as Record<string, number> | undefined;
 				if (usage) {
 					// Track cache stats from streaming response
-					const cacheCreation = usage.cache_creation_input_tokens as number | undefined;
-					const cacheRead = usage.cache_read_input_tokens as number | undefined;
+					const cacheCreation = usage.cache_creation_input_tokens;
+					const cacheRead = usage.cache_read_input_tokens;
 					if (cacheCreation) this.cacheStats.recordCreation(cacheCreation);
 					if (cacheRead) this.cacheStats.recordRead(cacheRead);
 
@@ -363,8 +363,8 @@ export class AnthropicProvider extends BaseHttpProvider {
 			if (event.type === 'message_start') {
 				const msgUsage = (event.message as Record<string, unknown> | undefined)?.usage as Record<string, number> | undefined;
 				if (msgUsage) {
-					const cacheCreation = msgUsage.cache_creation_input_tokens as number | undefined;
-					const cacheRead = msgUsage.cache_read_input_tokens as number | undefined;
+					const cacheCreation = msgUsage.cache_creation_input_tokens;
+					const cacheRead = msgUsage.cache_read_input_tokens;
 					if (cacheCreation) this.cacheStats.recordCreation(cacheCreation);
 					if (cacheRead) this.cacheStats.recordRead(cacheRead);
 				}

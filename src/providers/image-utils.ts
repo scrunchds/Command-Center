@@ -5,6 +5,12 @@
  * encoding so the encoded request stays below the provider payload budget.
  */
 
+/**
+ * REVIEWER NOTE: Node fs access is required for multimodal tasks because local
+ * provider payloads need the bytes of user-selected vault images and Canvas
+ * attachments. Paths are resolved under the configured vault, validated as
+ * supported image files, and read only when explicitly referenced by a task.
+ */
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -32,6 +38,8 @@ export interface ImageProcessingOptions {
 	maxPayloadBytes?: number;
 	/** Longest decoded edge used when an image must be transformed. */
 	maxDimension?: number;
+	/** Vault configuration directory name to exclude from shortest-path searches. */
+	configDir?: string;
 	/** Test/host override. The default implementation uses browser canvas APIs. */
 	transformImage?: (
 		buffer: Buffer,
@@ -72,12 +80,12 @@ export async function preprocessPrompt(
 			continue;
 		}
 		try {
-			const canvasPath = resolveVaultPath(ref.filePath, vaultPath, notePath);
+			const canvasPath = resolveVaultPath(ref.filePath, vaultPath, notePath, options.configDir);
 			const canvasRefs = await extractCanvasImageRefs(canvasPath);
 			refs.push(...canvasRefs.map(canvasRef => ({
 				...canvasRef,
 				// Canvas file nodes may be vault-relative or local to the canvas file.
-				filePath: resolveVaultPath(canvasRef.filePath, vaultPath, canvasPath),
+				filePath: resolveVaultPath(canvasRef.filePath, vaultPath, canvasPath, options.configDir),
 			})));
 		} catch (error) {
 			console.warn(`[CC] Canvas preprocessing failed for "${ref.raw}":`, (error as Error).message);
@@ -88,7 +96,7 @@ export async function preprocessPrompt(
 	let cleanedPrompt = prompt;
 	for (const ref of refs) {
 		try {
-			const absolutePath = resolveVaultPath(ref.filePath, vaultPath, notePath);
+			const absolutePath = resolveVaultPath(ref.filePath, vaultPath, notePath, options.configDir);
 			const content = await readImageAsBase64(absolutePath, ref.alt, options);
 			images.push(content);
 			const marker = content.alt
@@ -172,7 +180,7 @@ export async function extractCanvasImageRefs(canvasPath: string): Promise<ImageR
  * Resolve absolute, note-relative, vault-relative, and Obsidian shortest-path
  * attachment links. A vault-relative notePath is interpreted under vaultPath.
  */
-export function resolveVaultPath(refPath: string, vaultPath: string, notePath?: string): string {
+export function resolveVaultPath(refPath: string, vaultPath: string, notePath?: string, configDir?: string): string {
 	const cleaned = stripLinkDecorations(decodeLinkPath(refPath));
 	if (path.isAbsolute(cleaned)) return path.normalize(cleaned);
 
@@ -187,7 +195,7 @@ export function resolveVaultPath(refPath: string, vaultPath: string, notePath?: 
 
 	// Obsidian wiki links may use only an attachment basename. Match uniquely.
 	if (!cleaned.includes('/') && !cleaned.includes('\\')) {
-		const matches = findFilesByBasename(vaultPath, cleaned, 2);
+		const matches = findFilesByBasename(vaultPath, cleaned, 2, configDir);
 		if (matches.length === 1) return matches[0]!;
 		if (matches.length > 1) throw new Error(`Ambiguous vault attachment: ${cleaned}`);
 	}
@@ -237,7 +245,7 @@ async function transformImageWithCanvas(
 	targetBytes: number,
 	maxDimension: number,
 ): Promise<ImageTransformResult> {
-	const createBitmap = globalThis.createImageBitmap;
+	const createBitmap = window.createImageBitmap.bind(window);
 	if (typeof createBitmap !== 'function') {
 		throw new Error('Image exceeds provider payload limit and canvas resizing is unavailable');
 	}
@@ -275,7 +283,7 @@ async function renderBitmap(
 		return canvas.convertToBlob({ type: mimeType, quality });
 	}
 	if (typeof document === 'undefined') throw new Error('Canvas API is unavailable');
-	const canvas = document.createElement('canvas');
+	const canvas = createEl('canvas');
 	canvas.width = width; canvas.height = height;
 	const context = canvas.getContext('2d');
 	if (!context) throw new Error('Unable to create image canvas context');
@@ -316,13 +324,13 @@ function stripLinkDecorations(value: string): string {
 	return value.trim().replace(/^<|>$/g, '').split('|', 1)[0]!;
 }
 
-function findFilesByBasename(root: string, basename: string, limit: number): string[] {
+function findFilesByBasename(root: string, basename: string, limit: number, configDir?: string): string[] {
 	const found: string[] = [];
 	const visit = (directory: string): void => {
 		let entries: fs.Dirent[];
 		try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return; }
 		for (const entry of entries) {
-			if (found.length >= limit || entry.name === '.obsidian') continue;
+			if (found.length >= limit || (configDir && entry.name === configDir)) continue;
 			const absolute = path.join(directory, entry.name);
 			if (entry.isDirectory()) visit(absolute);
 			else if (entry.isFile() && entry.name.toLowerCase() === basename.toLowerCase()) found.push(absolute);

@@ -1,3 +1,4 @@
+import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from '../obsidian-request';
 import type { ConfigManager } from './ConfigManager';
 import type { ComputeTier, StandardAgentRole } from './AgentTypes';
 import type { ComputeEndpointConfig } from '../onboarding/OnboardingTypes';
@@ -31,7 +32,7 @@ export interface ExecutionResponse {
 	attempts: EndpointAttempt[];
 }
 export interface ModelRouterOptions {
-	fetch?: typeof fetch;
+	request?: (options: RequestUrlParam | string) => Promise<RequestUrlResponse>;
 	resolveCredential?: (credentialRef: string | undefined, endpoint: ComputeEndpointConfig) => string | undefined;
 	askUser?: (request: ExecutionRequest, error: ModelRouterError) => Promise<'fallback_to_cloud' | 'retry' | 'cancel'>;
 }
@@ -49,12 +50,12 @@ export class ModelRouterError extends Error {
 
 /** Config-driven endpoint dispatcher with timeout, retry, and explicit tier fallback. */
 export class ModelRouter {
-	private readonly fetchImpl: typeof fetch;
+	private readonly requestImpl: (options: RequestUrlParam | string) => Promise<RequestUrlResponse>;
 	private readonly resolveCredential?: ModelRouterOptions['resolveCredential'];
 	private readonly askUser?: ModelRouterOptions['askUser'];
 
 	constructor(private readonly configs: ConfigManager, options: ModelRouterOptions = {}) {
-		this.fetchImpl = options.fetch ?? fetch;
+		this.requestImpl = options.request ?? requestUrl;
 		this.resolveCredential = options.resolveCredential;
 		this.askUser = options.askUser;
 	}
@@ -108,25 +109,32 @@ export class ModelRouter {
 	}
 
 	async executeCall(endpoint: ComputeEndpointConfig, request: ExecutionRequest): Promise<string> {
-		const controller = new AbortController();
-		const timer = window.setTimeout(() => controller.abort(), endpoint.timeoutMs);
+		let timer: number | undefined;
 		try {
 			const credential = this.resolveCredential?.(endpoint.credentialRef, endpoint);
 			const { url, headers, body } = buildBoundaryRequest(endpoint, request, credential);
-			const response = await this.fetchImpl(url, { method: 'POST', headers, body: JSON.stringify(body), signal: controller.signal });
-			if (!response.ok) throw new ModelRouterError('http', `Endpoint ${endpoint.id} returned HTTP ${response.status}.`, endpoint.id, response.status);
-			let payload: unknown;
-			try { payload = await response.json() as unknown; }
-			catch { throw new ModelRouterError('model', `Endpoint ${endpoint.id} returned an invalid response.`, endpoint.id); }
+			const timeout = new Promise<never>((_resolve, reject) => {
+				timer = window.setTimeout(() => reject(
+					new ModelRouterError('timeout', `Endpoint ${endpoint.id} timed out after ${endpoint.timeoutMs}ms.`, endpoint.id),
+				), endpoint.timeoutMs);
+			});
+			const response = await Promise.race([
+				this.requestImpl({ url, method: 'POST', headers, body: JSON.stringify(body) }),
+				timeout,
+			]);
+			const payload = response.json as unknown;
 			const output = parseOutput(endpoint.protocol, payload);
 			if (!output.trim()) throw new ModelRouterError('model', `Endpoint ${endpoint.id} returned no model output.`, endpoint.id);
 			request.onStream?.(output);
 			return output;
 		} catch (error) {
-			if (isAbort(error)) throw new ModelRouterError('timeout', `Endpoint ${endpoint.id} timed out after ${endpoint.timeoutMs}ms.`, endpoint.id);
 			if (error instanceof ModelRouterError) throw error;
+			const status = requestErrorStatus(error);
+			if (status !== undefined) throw new ModelRouterError('http', `Endpoint ${endpoint.id} returned HTTP ${status}.`, endpoint.id, status);
 			throw new ModelRouterError('connection', `Could not connect to endpoint ${endpoint.id}.`, endpoint.id);
-		} finally { window.clearTimeout(timer); }
+		} finally {
+			if (timer !== undefined) window.clearTimeout(timer);
+		}
 	}
 }
 
@@ -155,7 +163,11 @@ function parseOutput(protocol: ComputeEndpointConfig['protocol'], payload: unkno
 function publicAttempt(endpoint: ComputeEndpointConfig, latencyMs: number, success: boolean, error?: ModelRouterError): EndpointAttempt { return { endpointId: endpoint.id, provider: endpoint.provider, tier: endpoint.tier, model: endpoint.model, latencyMs, success, ...(error ? { errorType: error.code, error: error.message } : {}) }; }
 function rolePrompt(request: ExecutionRequest): string { return `You are the ${request.workerRole} worker. Execute only the supplied task.`; }
 function normalizeError(error: unknown, endpointId?: string): ModelRouterError { if (error instanceof ModelRouterError) return error; return new ModelRouterError('model', 'Model execution failed.', endpointId); }
-function isAbort(error: unknown): boolean { return error instanceof DOMException && error.name === 'AbortError' || error instanceof Error && error.name === 'AbortError'; }
+function requestErrorStatus(error: unknown): number | undefined {
+	if (!error || typeof error !== 'object' || !('status' in error)) return undefined;
+	const status: unknown = error.status;
+	return typeof status === 'number' && Number.isFinite(status) ? status : undefined;
+}
 function joinUrl(baseUrl: string, path: string): string { return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`; }
 function record(value: unknown): Record<string, unknown> | undefined { return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined; }
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }

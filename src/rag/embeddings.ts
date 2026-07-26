@@ -98,7 +98,7 @@ export class EmbeddingAdapter {
 	async embed(input: string | string[]): Promise<EmbeddingBatch> {
 		const values = Array.isArray(input) ? input : [input];
 		const request = this.buildRequest(values);
-		const fetchFn = this.options.fetch ?? globalThis.fetch;
+		const fetchFn = this.options.fetch ?? window.fetch.bind(window);
 		if (fetchFn && !this.options.signal?.aborted) {
 			try {
 				const response = await fetchFn(request.url, request.init);

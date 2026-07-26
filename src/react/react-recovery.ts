@@ -25,11 +25,11 @@ export class TimedOutError extends Error {
 export function withTimeout<T>(fn: () => Promise<T>, ms: number, label: string): Promise<T> {
 	if (ms <= 0) return fn();
 	return new Promise((resolve, reject) => {
-		const timer = setTimeout(() => reject(new TimedOutError(label, ms)), ms);
+		const timer = window.setTimeout(() => reject(new TimedOutError(label, ms)), ms);
 		fn().then(
-			v => { clearTimeout(timer); resolve(v); },
+			v => { window.clearTimeout(timer); resolve(v); },
 			// eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- re-throwing the original rejection value preserves the error chain
-			e => { clearTimeout(timer); reject(e); },
+			e => { window.clearTimeout(timer); reject(e); },
 		);
 	});
 }
@@ -67,7 +67,7 @@ export async function withRetry<T>(
 			if (attempt === cfg.maxRetries) break;
 			if (cfg.retryOnTimeoutOnly && !(lastError instanceof TimedOutError)) throw lastError;
 			const delay = cfg.baseDelayMs * Math.pow(cfg.backoffMultiplier, attempt);
-			await new Promise(r => setTimeout(r, delay));
+			await new Promise(r => window.setTimeout(r, delay));
 		}
 	}
 	throw lastError ?? new Error(`${label} failed after retries`);
@@ -354,7 +354,7 @@ export async function withRecovery<T>(
 			}
 
 			// Exponential backoff before retry
-			await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)));
+			await new Promise(r => window.setTimeout(r, 500 * Math.pow(2, attempt)));
 		}
 	}
 

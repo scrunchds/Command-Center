@@ -89,8 +89,8 @@ export class CohereProvider extends BaseHttpProvider {
 		return {
 			output, success: true, model, providerId: this.id,
 			usage: usageRaw ? {
-				promptTokens: (usageRaw as Record<string, number>).input_tokens ?? 0,
-				completionTokens: (usageRaw as Record<string, number>).output_tokens ?? 0,
+				promptTokens: (usageRaw).input_tokens ?? 0,
+				completionTokens: (usageRaw).output_tokens ?? 0,
 				totalTokens: 0,
 			} : undefined,
 			toolCalls: toolCalls.length > 0 ? toolCalls : undefined,

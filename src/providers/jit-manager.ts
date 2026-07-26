@@ -15,7 +15,7 @@ export class JitModelManager {
 	private readonly timeoutMs: number;
 
 	constructor(options: JitModelManagerOptions = {}) {
-		this.fetchFn = options.fetch ?? globalThis.fetch;
+		this.fetchFn = options.fetch ?? window.fetch.bind(window);
 		this.signal = options.signal;
 		this.timeoutMs = Math.max(0, options.timeoutMs ?? 5_000);
 	}
@@ -102,10 +102,10 @@ export class JitModelManager {
 		const controller = new AbortController();
 		const abort = () => controller.abort();
 		this.signal?.addEventListener('abort', abort, { once: true });
-		const timer = this.timeoutMs > 0 ? setTimeout(abort, this.timeoutMs) : undefined;
+		const timer = this.timeoutMs > 0 ? window.setTimeout(abort, this.timeoutMs) : undefined;
 		try { return await this.fetchFn(endpoint, { ...init, signal: controller.signal }); }
 		finally {
-			if (timer !== undefined) clearTimeout(timer);
+			if (timer !== undefined) window.clearTimeout(timer);
 			this.signal?.removeEventListener('abort', abort);
 		}
 	}

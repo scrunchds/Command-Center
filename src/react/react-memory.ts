@@ -56,7 +56,7 @@ export interface MemorySearchResult {
 export class ReActMemoryBank {
 	private app: App;
 	private folderReady = false;
-	private pruneTimer: ReturnType<typeof setInterval> | null = null;
+	private pruneTimer: number | null = null;
 	private pruneInFlight: Promise<number> | null = null;
 	private topicClusters: TopicCluster[] = [];
 	private clustersDirty = true;
@@ -83,12 +83,12 @@ export class ReActMemoryBank {
 				.finally(() => { this.pruneInFlight = null; });
 		};
 		run();
-		this.pruneTimer = setInterval(run, Math.max(10_000, intervalMs));
+		this.pruneTimer = window.setInterval(run, Math.max(10_000, intervalMs));
 	}
 
 	/** Stop periodic pruning when the plugin unloads. */
 	stopBackgroundPruning(): void {
-		if (this.pruneTimer) clearInterval(this.pruneTimer);
+		if (this.pruneTimer) window.clearInterval(this.pruneTimer);
 		this.pruneTimer = null;
 	}
 
@@ -196,7 +196,7 @@ export class ReActMemoryBank {
 		for (const file of files) {
 			const raw = await this.app.vault.cachedRead(file);
 			const body = stripYamlFrontmatter(raw);
-			const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+			const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
 			const sessionMatch = raw.match(/^session:\s*["']?([^"'\r\n]+)["']?/m);
 			const taskMatch = body.match(/\*\*Task:\*\*\s*([^\r\n]+)/i);
 			notes.push({
@@ -305,7 +305,7 @@ export class ReActMemoryBank {
 
 		let deleted = 0;
 		for (const file of files.slice(retentionLimit)) {
-			await this.app.vault.delete(file);
+			await this.app.fileManager.trashFile(file);
 			deleted++;
 		}
 		if (deleted > 0) this.clustersDirty = true;

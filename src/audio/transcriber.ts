@@ -57,7 +57,7 @@ export class TranscriberAdapter {
 	/** Query an OpenAI-compatible model catalog and retain only likely STT models. */
 	async fetchLiveAudioModels(): Promise<string[]> {
 		const { apiKey, baseUrl, meta } = this.resolveConnection();
-		const fetchFn = this.options.fetch ?? globalThis.fetch;
+		const fetchFn = this.options.fetch ?? window.fetch.bind(window);
 		if (!fetchFn) throw new TranscriptionError('Fetch is not available in this environment.', undefined, false);
 		const headers: Record<string, string> = {};
 		if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
@@ -131,7 +131,7 @@ export class TranscriberAdapter {
 		const { apiKey, baseUrl } = this.resolveConnection();
 		const headers: Record<string, string> = {};
 		if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-		const fetchFn = this.options.fetch ?? globalThis.fetch;
+		const fetchFn = this.options.fetch ?? window.fetch.bind(window);
 		if (!fetchFn) throw new TranscriptionError('Fetch is not available in this environment.', undefined, false);
 
 		const model = this.resolveRequestModel(options.model);
@@ -267,10 +267,10 @@ export class TranscriberAdapter {
 		return new Promise((resolve, reject) => {
 			const signal = this.options.signal;
 			const onAbort = (): void => {
-				clearTimeout(timer);
+				window.clearTimeout(timer);
 				reject(new TranscriptionError('Transcription cancelled.', undefined, false));
 			};
-			const timer = setTimeout(() => {
+			const timer = window.setTimeout(() => {
 				signal?.removeEventListener('abort', onAbort);
 				resolve();
 			}, ms);

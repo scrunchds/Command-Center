@@ -14,7 +14,7 @@ export interface ChatActionCardOptions extends ToolConfirmationRequest {
 export class ChatActionCard {
 	readonly element: HTMLElement;
 	private state: ChatActionCardState = 'pending';
-	private timer: ReturnType<typeof setTimeout> | null = null;
+	private timer: number | null = null;
 	private settlePromise: Promise<ToolConfirmationDecision>;
 	private settleDecision!: (decision: ToolConfirmationDecision) => void;
 	private approveButton: HTMLButtonElement;
@@ -57,7 +57,9 @@ export class ChatActionCard {
 		this.approveButton.addEventListener('click', this.onApprove);
 		this.rejectButton.addEventListener('click', this.onReject);
 		if (options.timeoutMs <= 0) this.finish('timed-out');
-		else this.timer = globalThis.setTimeout(() => this.finish('timed-out'), options.timeoutMs);
+		else this.timer = this.element.ownerDocument?.defaultView?.setTimeout(
+			() => this.finish('timed-out'), options.timeoutMs,
+		) ?? window.setTimeout(() => this.finish('timed-out'), options.timeoutMs);
 	}
 
 	wait(): Promise<ToolConfirmationDecision> { return this.settlePromise; }
@@ -80,7 +82,9 @@ export class ChatActionCard {
 	private finish(decision: ToolConfirmationDecision): void {
 		if (this.state !== 'pending') return;
 		this.state = decision;
-		if (this.timer !== null) globalThis.clearTimeout(this.timer);
+		if (this.timer !== null) {
+			(this.element.ownerDocument?.defaultView ?? window).clearTimeout(this.timer);
+		}
 		this.timer = null;
 		this.approveButton.disabled = true;
 		this.rejectButton.disabled = true;

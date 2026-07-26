@@ -26,7 +26,7 @@ export class AudioRecorder {
 	private recordingError: Error | null = null;
 	private startGeneration = 0;
 	private startedAt = 0;
-	private durationTimer: ReturnType<typeof setInterval> | null = null;
+	private durationTimer: number | null = null;
 	private levelFrame: number | null = null;
 	private audioContext: AudioContext | null = null;
 	private analyser: AnalyserNode | null = null;
@@ -215,8 +215,8 @@ export class AudioRecorder {
 
 	private startProgressMonitoring(): void {
 		this.emitDuration(0);
-		this.durationTimer = setInterval(() => this.emitDuration(Date.now() - this.startedAt), 250);
-		if (this.levelListeners.size === 0 || typeof AudioContext === 'undefined' || typeof requestAnimationFrame === 'undefined' || !this.stream) return;
+		this.durationTimer = window.setInterval(() => this.emitDuration(Date.now() - this.startedAt), 250);
+		if (this.levelListeners.size === 0 || typeof AudioContext === 'undefined' || typeof window.requestAnimationFrame === 'undefined' || !this.stream) return;
 		try {
 			this.audioContext = new AudioContext();
 			this.analyser = this.audioContext.createAnalyser();
@@ -235,9 +235,9 @@ export class AudioRecorder {
 				for (const listener of this.levelListeners) {
 					try { listener(level); } catch { /* Keep metering after a consumer failure. */ }
 				}
-				this.levelFrame = requestAnimationFrame(sampleLevel);
+				this.levelFrame = window.requestAnimationFrame(sampleLevel);
 			};
-			this.levelFrame = requestAnimationFrame(sampleLevel);
+			this.levelFrame = window.requestAnimationFrame(sampleLevel);
 		} catch {
 			// Duration updates remain available when Web Audio metering is unavailable.
 			this.analyser = null;
@@ -254,9 +254,9 @@ export class AudioRecorder {
 	}
 
 	private stopProgressMonitoring(): void {
-		if (this.durationTimer !== null) clearInterval(this.durationTimer);
+		if (this.durationTimer !== null) window.clearInterval(this.durationTimer);
 		this.durationTimer = null;
-		if (this.levelFrame !== null && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(this.levelFrame);
+		if (this.levelFrame !== null && typeof window.cancelAnimationFrame !== 'undefined') window.cancelAnimationFrame(this.levelFrame);
 		this.levelFrame = null;
 		this.analyser = null;
 		const context = this.audioContext;

@@ -15,14 +15,19 @@ export async function updateNoteAgentState(
 	state: NoteAgentState,
 ): Promise<void> {
 	await getSharedFileLockManager(app).withLock(file.path, async () => {
-		await app.fileManager.processFrontMatter(file, frontmatter => {
-			frontmatter.agent_status = state.status;
+		await app.fileManager.processFrontMatter(file, (rawFrontmatter: unknown) => {
+			if (!isMutableRecord(rawFrontmatter)) throw new Error(`Invalid frontmatter in ${file.path}`);
+			rawFrontmatter.agent_status = state.status;
 			if (state.evalScore !== undefined && Number.isFinite(state.evalScore)) {
-				frontmatter.agent_eval_score = Math.round(state.evalScore * 10_000) / 10_000;
+				rawFrontmatter.agent_eval_score = Math.round(state.evalScore * 10_000) / 10_000;
 			}
-			if (state.lastRun !== undefined) frontmatter.agent_last_run = state.lastRun;
+			if (state.lastRun !== undefined) rawFrontmatter.agent_last_run = state.lastRun;
 		});
 	});
+}
+
+function isMutableRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
 }
 
 interface PendingNoteState {
@@ -36,7 +41,7 @@ interface PendingNoteState {
  */
 export class DebouncedFrontmatterSync {
 	private readonly pending = new Map<string, PendingNoteState>();
-	private timer: ReturnType<typeof setTimeout> | null = null;
+	private timer: number | null = null;
 	private flushing: Promise<void> | null = null;
 
 	constructor(
@@ -56,8 +61,8 @@ export class DebouncedFrontmatterSync {
 				lastRun: laterIsoTimestamp(previous?.state.lastRun, state.lastRun),
 			},
 		});
-		if (this.timer !== null) clearTimeout(this.timer);
-		this.timer = setTimeout(() => {
+		if (this.timer !== null) window.clearTimeout(this.timer);
+		this.timer = window.setTimeout(() => {
 			this.timer = null;
 			void this.flush();
 		}, this.delayMs);
@@ -65,7 +70,7 @@ export class DebouncedFrontmatterSync {
 
 	async flush(): Promise<void> {
 		if (this.timer !== null) {
-			clearTimeout(this.timer);
+			window.clearTimeout(this.timer);
 			this.timer = null;
 		}
 		if (this.flushing) await this.flushing;

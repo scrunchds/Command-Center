@@ -50,6 +50,8 @@ export interface ModelRouterConfig {
 	capabilityGating: boolean; providerTimeoutMs: number;
 	/** Absolute path to the vault root, used for resolving image paths. */
 	vaultPath?: string;
+	/** Obsidian configuration directory name excluded from attachment searches. */
+	configDir?: string;
 	/** Optional persistent memory injected into routed system prompts. */
 	memoryStore?: AgentMemoryStore;
 	/** Optional passive vault retrieval used to enrich provider system prompts. */
@@ -358,7 +360,7 @@ export class ModelRouter {
 		return [primary, ...configured];
 	}
 
-	private _delay(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)); }
+	private _delay(ms: number): Promise<void> { return new Promise(r => window.setTimeout(r, ms)); }
 
 	private _optimizationConfig(): RoutingOptimizationConfig {
 		return { ...DEFAULT_OPTIMIZATION, ...this.getSettings().optimization };
@@ -442,8 +444,8 @@ export class ModelRouter {
 	}
 
 	private _logDecision(r: RouteResult): void {
-		this.decisionLog.unshift(r); if (this.decisionLog.length > 100) this.decisionLog.length = 100;
-		if (this.config.debug) console.log('[ModelRouter]', { taskType: r.decision.route.taskType, primary: r.decision.route.providerId, model: r.decision.route.modelId, confidence: r.decision.classification.confidence.toFixed(2), attempts: r.attempts.map(a => `${a.providerId}${a.wasFallback ? '(fb)' : ''}: ${a.success ? 'OK' : a.errorCode}`), servedBy: r.servedBy, latency: `${r.totalLatencyMs}ms` });
+		this.decisionLog.unshift(r);
+		if (this.decisionLog.length > 100) this.decisionLog.length = 100;
 	}
 
 	/* ─── Classification Scorers ──────────────── */
@@ -529,7 +531,9 @@ export class ModelRouter {
 
 		// Try async preprocessing; if it fails (e.g. no Obsidian vault in tests),
 		// fall through with the original prompt and no images.
-		const preprocessingPromise = preprocessPrompt(task.prompt, vaultPath)
+		const preprocessingPromise = preprocessPrompt(task.prompt, vaultPath, undefined, {
+			configDir: this.config.configDir,
+		})
 			.then(result => {
 				userPrompt = result.cleanedPrompt;
 				if (result.images.length > 0) {
@@ -545,7 +549,7 @@ export class ModelRouter {
 		// Store the promise on the task so we can await it before dispatch.
 		// The actual dispatch in route() will await this via a task-level hook.
 		// For clean architecture, we store it as a private field and await at call site.
-		(this._pendingPreprocessing as Map<string, Promise<void>>).set(task.id, preprocessingPromise);
+		(this._pendingPreprocessing).set(task.id, preprocessingPromise);
 
 		const memoryPrompt = this.config.memoryStore?.getSystemMemoryPrompt(task.prompt) ?? '';
 		const contextLimit = Math.max(0, this.config.contextCharLimit ?? 8_000);

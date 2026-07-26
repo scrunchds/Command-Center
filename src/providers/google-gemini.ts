@@ -97,7 +97,7 @@ export class GeminiProvider extends BaseHttpProvider {
 				// Cache hit — record it
 				this.cacheStats.recordRead(estimatePromptTokens(
 					(systemMsg?.content ?? '') +
-					(tools ? JSON.stringify(tools as ToolDefinition[]) : ''),
+					(tools ? JSON.stringify(tools) : ''),
 				));
 				this.cacheStats.updateLastCacheInfo({
 					cacheKey: this.currentCacheKey,
@@ -283,7 +283,7 @@ export class GeminiProvider extends BaseHttpProvider {
 		let cacheReadTokens: number | undefined;
 		let cacheCreationTokens: number | undefined;
 		if (usageMeta) {
-			cacheCreationTokens = usageMeta.cachedContentTokenCount as number | undefined;
+			cacheCreationTokens = usageMeta.cachedContentTokenCount;
 			// Gemini's cachedContentTokenCount is the tokens read from cache
 			if (cacheCreationTokens && cacheCreationTokens > 0) {
 				cacheReadTokens = cacheCreationTokens;

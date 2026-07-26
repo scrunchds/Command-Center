@@ -6,6 +6,9 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+// Obsidian provides window in the renderer; mirror it for headless Node tests.
+global.window = global;
+
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SRC = ROOT + "/src";
 const results = { pass: 0, fail: 0, skip: 0 };
@@ -1787,7 +1790,7 @@ assert.match(modalSource, /cc-voice-stt-badge/);
 pass('27i: voice modal discovers STT, transcribes, resolves context, and dispatches selected dropdown mode');
 const commandSource = await readFile(join(SRC, 'commands.ts'), 'utf8');
 const mainSource = await readFile(join(SRC, 'main.ts'), 'utf8');
-assert.match(commandSource, /name: 'Command Center: Quick Voice Prompt'/);
+assert.match(commandSource, /name: 'Quick Voice Prompt'/);
 assert.match(mainSource, /mode === 'workflow'/);
 assert.match(mainSource, /mode === 'react'/);
 assert.match(mainSource, /executeProviderTurn/);

@@ -7,6 +7,7 @@
  * are available in Command Center.
  */
 
+import { requestUrl } from '../obsidian-request';
 import type { ProviderModel, ProviderResponse } from './provider-types';
 import { OpenAICompatibleProvider } from './openai-compatible';
 
@@ -79,11 +80,11 @@ export class LMStudioProvider extends OpenAICompatibleProvider {
 		error?: string;
 	}> {
 		try {
-			const response = await fetch(url, { headers: this.buildListHeaders(this.getApiKey()) });
-			if (!response.ok) {
-				return { ok: false, models: [], error: `${url} returned HTTP ${response.status}` };
-			}
-			const payload = await response.json() as Record<string, unknown>;
+			const response = await requestUrl({
+				url,
+				headers: this.buildListHeaders(this.getApiKey()),
+			});
+			const payload = response.json as Record<string, unknown>;
 			return { ok: true, models: this.parseLMStudioCatalog(payload) };
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);

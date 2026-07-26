@@ -267,7 +267,7 @@ export class FolderIndexer {
 
 	private async toManifestEntry(file: TFile): Promise<FileManifestEntry> {
 		const cache = this.app.metadataCache.getFileCache(file);
-		const frontmatter = cache?.frontmatter as Record<string, unknown> | undefined;
+		const frontmatter = cache?.frontmatter;
 		let description = this.frontmatterDescription(frontmatter);
 		if (!description && file.extension === 'md') {
 			description = await this.firstParagraphSummary(file);

@@ -9,6 +9,7 @@
  * common lifecycle: build → fetch → parse → stream → tool-loop.
  */
 
+import { requestUrl, type RequestUrlResponse } from '../obsidian-request';
 import type {
 	IProviderAdapter, ProviderId, ProviderMeta, ProviderModel, TaskType,
 	ProviderRequest, ProviderResponse, ProviderRequestConfig,
@@ -138,8 +139,8 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 
 		// Non-streaming path
 		try {
-			const response = await this._fetch(body, headers, model);
-			const data = await response.json() as Record<string, unknown>;
+			const response = await this._request(body, headers, model);
+			const data = response.json as Record<string, unknown>;
 			return this.parseResponse(data, model, startedAt);
 		} catch (err) {
 			return this._errorResponse(err, model, startedAt);
@@ -154,7 +155,7 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 	): Promise<ProviderResponse> {
 		try {
 			const streamBody = { ...(body as Record<string, unknown>), stream: true };
-			const response = await this._fetch(streamBody, headers, model);
+			const response = await this._fetchStreaming(streamBody, headers, model);
 
 			const reader = response.body?.getReader();
 			if (!reader) {
@@ -247,8 +248,8 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 		const headers = this.buildHeaders(this.getApiKey());
 
 		try {
-			const response = await this._fetch(body, headers, model);
-			const data = await response.json() as Record<string, unknown>;
+			const response = await this._request(body, headers, model);
+			const data = response.json as Record<string, unknown>;
 			return this.parseResponse(data, model, Date.now());
 		} catch (err) {
 			return this._errorResponse(err, model, Date.now());
@@ -276,18 +277,42 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 		return payload;
 	}
 
-	/* ─── Unified fetch with timeout & error handling ── */
+	/* ─── HTTP requests and streaming transport ───────── */
 
-	private async _fetch(body: unknown, headers: Record<string, string>, model: string): Promise<Response> {
-		const timeoutId = setTimeout(() => this.abortController!.abort(), this.timeoutMs);
+	private async _request(
+		body: unknown, headers: Record<string, string>, model: string,
+	): Promise<RequestUrlResponse> {
+		try {
+			return await requestUrl({
+				url: this.resolveEndpoint(model),
+				method: 'POST', headers,
+				body: JSON.stringify(body),
+			});
+		} catch (err) {
+			if (err && typeof err === 'object' && 'status' in err) {
+				const status: unknown = err.status;
+				if (typeof status === 'number') {
+					const detail = 'text' in err && typeof err.text === 'string'
+						? err.text
+						: err instanceof Error ? err.message : '';
+					throw classifyHttpError(status, detail, this.id);
+				}
+			}
+			throw classifyThrowError(err, this.id);
+		}
+	}
+
+	private async _fetchStreaming(body: unknown, headers: Record<string, string>, model: string): Promise<Response> {
+		const timeoutId = window.setTimeout(() => this.abortController!.abort(), this.timeoutMs);
 		try {
 			const url = this.resolveEndpoint(model);
+			// The Obsidian requestUrl API does not support ReadableStreams/SSE. Standard fetch is strictly required here to stream local LLM tokens to the UI.
 			const response = await fetch(url, {
 				method: 'POST', headers,
 				body: JSON.stringify(body),
 				signal: this.abortController!.signal,
 			});
-			clearTimeout(timeoutId);
+			window.clearTimeout(timeoutId);
 
 			if (!response.ok) {
 				const errText = await response.text().catch(() => '');
@@ -295,7 +320,7 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 			}
 			return response;
 		} catch (err) {
-			clearTimeout(timeoutId);
+			window.clearTimeout(timeoutId);
 			if (err instanceof Error && err.name === 'ProviderError') throw err;
 			throw classifyThrowError(err, this.id);
 		}
@@ -330,10 +355,8 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 		try {
 			const url = this.getModelListEndpoint();
 			const headers = this.buildListHeaders(apiKey);
-			const response = await fetch(url, { headers });
-			if (!response.ok) return [];
-
-			const data = await response.json() as Record<string, unknown>;
+			const response = await requestUrl({ url, headers });
+			const data = response.json as Record<string, unknown>;
 			return this.parseModelListResponse(data);
 		} catch {
 			return [];

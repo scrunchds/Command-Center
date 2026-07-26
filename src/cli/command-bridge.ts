@@ -40,10 +40,8 @@ export class CommandCenterCommandBridge {
 	register(): void {
 		this.plugin.registerObsidianProtocolHandler('command-center', params => {
 			const operation = params.operation ?? params.command;
-			void this.handle({ ...params, ...(operation ? { action: operation } : {}) }).then(
-				log => console.info('[CC CLI]', JSON.stringify(log)),
-				error => console.error('[CC CLI]', error),
-			);
+			void this.handle({ ...params, ...(operation ? { action: operation } : {}) })
+				.catch(() => undefined);
 		});
 
 		// Native CLI support was introduced after the plugin's minimum Obsidian

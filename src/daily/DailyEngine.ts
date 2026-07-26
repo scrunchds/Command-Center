@@ -195,7 +195,7 @@ export class DailyEngine {
 		const source = this.app.vault.getAbstractFileByPath(proposal.filePath);
 		if (!(source instanceof TFile)) throw new Error(`Inbox file no longer exists: ${proposal.filePath}`);
 		if (action === 'leave') return { proposalId: proposal.id, action, success: true };
-		if (action === 'delete') { await this.app.vault.trash(source, true); return { proposalId: proposal.id, action, success: true }; }
+		if (action === 'delete') { await this.app.fileManager.trashFile(source); return { proposalId: proposal.id, action, success: true }; }
 		const target = safeFolderPath(overrideTarget ?? proposal.targetFolder ?? '');
 		await ensureFolder(this.app, target);
 		const destination = await availablePath(this.app, target, source.name);
@@ -203,12 +203,17 @@ export class DailyEngine {
 		return { proposalId: proposal.id, action, success: true, destination };
 	}
 	private async setDailyFrontmatter(file: TFile, date: Date, capacity: CapacityMetrics | undefined, status: 'active' | 'closed'): Promise<void> {
-		await this.app.fileManager.processFrontMatter(file, frontmatter => {
-			frontmatter.date = formatDate(date); frontmatter.agent_status = status;
-			if (capacity) { frontmatter.capacity_score = capacity.score; frontmatter.priority_cap = capacity.priorityCap; }
-			if (status === 'closed') frontmatter.closed_at = date.toISOString();
+		await this.app.fileManager.processFrontMatter(file, (rawFrontmatter: unknown) => {
+			if (!isMutableRecord(rawFrontmatter)) throw new Error(`Invalid frontmatter in ${file.path}`);
+			rawFrontmatter.date = formatDate(date); rawFrontmatter.agent_status = status;
+			if (capacity) { rawFrontmatter.capacity_score = capacity.score; rawFrontmatter.priority_cap = capacity.priorityCap; }
+			if (status === 'closed') rawFrontmatter.closed_at = date.toISOString();
 		});
 	}
+}
+
+function isMutableRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
 }
 
 function dailyNotePath(folder: string, template: string, date: Date): string {
