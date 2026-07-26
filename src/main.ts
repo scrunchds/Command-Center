@@ -39,6 +39,7 @@ import type { ReActContext, ReActTermination } from './react';
 import { ReActMemoryBank } from './react/react-memory';
 import { ProviderFactory } from './providers/provider-factory';
 import { sanitizeBaseUrl } from './providers/provider-types';
+import { PROVIDER_REGISTRY } from './providers/provider-registry';
 import { ProviderDispatcher } from './dispatcher';
 import { ModelRouter } from './routing/ModelRouter';
 import { WorkflowEngine } from './workflows/workflow-engine';
@@ -133,6 +134,27 @@ export default class CommandCenterPlugin extends Plugin {
 		// Ensure multiProvider exists (migration from v1)
 		if (!this.settings.multiProvider) {
 			this.settings.multiProvider = DEFAULT_MULTI_PROVIDER;
+		}
+		// Normalize provider `enabled` flags: key-requiring providers with a
+		// configured API key default to enabled (the key is the opt-in). Legacy
+		// installs created credential records with `enabled: false` before the
+		// toggle was wired into the dispatch path; this one-time upgrade makes the
+		// toggle a proper opt-out rather than a required opt-in. Keyless local
+		// providers (LM Studio, Ollama, custom) keep their explicit opt-in.
+		{
+			let changed = false;
+			for (const [rawPid, cred] of Object.entries(this.settings.multiProvider.credentials)) {
+				const pid = rawPid as keyof typeof PROVIDER_REGISTRY;
+				const requiresKey = PROVIDER_REGISTRY[pid]?.requiresKey ?? true;
+				if (requiresKey && cred && cred.apiKey && !cred.enabled) {
+					cred.enabled = true;
+					changed = true;
+				}
+			}
+			if (changed) {
+				this.persist.setSettings({ ...this.settings });
+				this.persist.forceFlush().catch(() => {});
+			}
 		}
 		this.taskHistory = data.history;
 		this.configManager = new ConfigManager(this.app);

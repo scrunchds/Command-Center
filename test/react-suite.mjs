@@ -2135,6 +2135,31 @@ assert.equal(factoryOff.isUsable('lmstudio'), false, 'disabled LM Studio is not 
 pass('34a: isUsable requires both enabled toggle and adapter availability');
 }
 {
+// Key-requiring providers: a configured API key is the opt-in. A legacy
+// install with `enabled: false` (the pre-toggle UI default) plus a key is still
+// usable; without a key the provider is never usable regardless of the toggle.
+const daemon = { isRunning: () => false, isBinaryMissing: () => false, startError: null };
+const settingsLegacy = () => ({
+  credentials: { openai: { providerId: 'openai', apiKey: 'sk-legacy', baseUrl: 'https://api.openai.com/v1', enabled: false } }, // SANITIZE_ALLOW: synthetic non-secret fixture
+  routing: {}, fallback: {}, defaults: {},
+});
+const factoryLegacy = new ProviderFactory(daemon, settingsLegacy);
+assert.equal(factoryLegacy.isUsable('openai'), true, 'key + enabled:false (legacy) is usable');
+const settingsOn = () => ({
+  credentials: { openai: { providerId: 'openai', apiKey: 'sk-on', baseUrl: 'https://api.openai.com/v1', enabled: true } }, // SANITIZE_ALLOW: synthetic non-secret fixture
+  routing: {}, fallback: {}, defaults: {},
+});
+const factoryOn = new ProviderFactory(daemon, settingsOn);
+assert.equal(factoryOn.isUsable('openai'), true, 'key + enabled:true is usable');
+const settingsNoKey = () => ({
+  credentials: { openai: { providerId: 'openai', apiKey: '', baseUrl: 'https://api.openai.com/v1', enabled: true } },
+  routing: {}, fallback: {}, defaults: {},
+});
+const factoryNoKey = new ProviderFactory(daemon, settingsNoKey);
+assert.equal(factoryNoKey.isUsable('openai'), false, 'no key is not usable');
+pass('34g: key-requiring providers treat a configured key as opt-in (legacy enabled:false preserved)');
+}
+{
 // listUsable returns enabled+available providers with keyless local runtimes first.
 const daemon = { isRunning: () => false, isBinaryMissing: () => false, startError: null };
 const settings = () => ({

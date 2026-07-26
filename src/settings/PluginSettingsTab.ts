@@ -417,11 +417,14 @@ export class PluginSettingsTab extends PluginSettingTab {
 		if (!meta) return;
 
 		const mp = this.plugin.settings.multiProvider;
+		// Key-requiring providers default to enabled (a configured API key is the
+		// opt-in); keyless local providers (LM Studio, Ollama, custom) default to
+		// disabled so unconfigured localhost endpoints are never tried.
 		const cred = mp.credentials[pid] ?? {
 			providerId: pid,
 			apiKey: '',
 			baseUrl: meta.defaultBaseUrl ?? '',
-			enabled: false,
+			enabled: meta.requiresKey ? true : false,
 		};
 		if (!mp.credentials[pid]) mp.credentials[pid] = cred;
 

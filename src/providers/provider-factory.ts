@@ -65,16 +65,32 @@ export class ProviderFactory {
 	}
 
 	/**
-	 * A provider is usable when the user has explicitly enabled it AND its adapter
-	 * reports available (key configured for key-requiring providers; daemon running
-	 * for pi-daemon). The `enabled` toggle is the user's opt-in; `isAvailable()` is
-	 * the key/runtime check. pi-daemon is treated as always enabled because it is
-	 * the keyless local runtime and is not represented in `credentials`.
+	 * A provider is usable when its adapter reports available (key configured for
+	 * key-requiring providers; daemon running for pi-daemon) AND the user has opted
+	 * in. Opt-in semantics:
+	 *   - pi-daemon: always enabled (keyless local runtime).
+	 *   - key-requiring providers: a configured API key IS the opt-in. The
+	 *     `enabled` toggle is not a hard gate here because legacy installs created
+	 *     credential records with `enabled: false` by default before the toggle was
+	 *     wired into dispatch, and that value is indistinguishable from an
+	 *     explicit opt-out. To disable a key-requiring provider, remove its key.
+	 *     (loadSettings() normalizes `enabled: true` for keyed providers so the
+	 *     UI toggle reflects the correct state and future opt-out works.)
+	 *   - keyless local providers (LM Studio, Ollama, custom): require explicit
+	 *     `enabled: true` so unconfigured localhost endpoints are never tried.
 	 */
 	isUsable(id: ProviderId): boolean {
+		const provider = this.get(id);
+		if (!provider.isAvailable()) return false;
+		if (id === 'pi-daemon') return true;
 		const cred = this.getSettings().credentials[id];
-		const enabled = id === 'pi-daemon' ? true : (cred?.enabled ?? false);
-		return enabled && this.get(id).isAvailable();
+		const requiresKey = PROVIDER_REGISTRY[id]?.requiresKey ?? true;
+		if (requiresKey) {
+			// isAvailable() already verified a key is configured; the key is the opt-in.
+			return true;
+		}
+		// Keyless local providers require explicit opt-in.
+		return cred?.enabled === true;
 	}
 
 	/**
