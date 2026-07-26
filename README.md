@@ -5,6 +5,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022%20%7C%2024-339933?logo=node.js&logoColor=white)](package.json)
 [![Tests](https://img.shields.io/badge/tests-182%20passing-brightgreen)](#quality-security-and-release-controls)
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20development-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/DustinS)
 
 **Command Center is a personal operational OS for Obsidian.** It combines an interview-driven setup, a multi-agent Orchestrator–Worker runtime, provider-aware model routing, native workflows, stationary vault indexes, retrieval-augmented generation, persistent memory, voice input, and headless automation—without imposing a productivity framework on your notes.
 
@@ -580,9 +581,15 @@ Check that:
 
 Open the action card, inspect its target list and diff preview, then choose **Approve & Apply** or **Reject**. Closing chat rejects pending confirmations safely.
 
-## Support development
+## Donations and developer support
 
-If Command Center helps your workflow, you can thank the developer through the support card at the bottom of **Settings → Command Center**, or visit [Buy Me a Coffee](https://buymeacoffee.com/DustinS). Support is optional and does not unlock features.
+Command Center is free and MIT-licensed. If it improves your workflow and you would like to thank the developer, you can make an optional donation:
+
+<p align="center">
+  <a href="https://buymeacoffee.com/DustinS"><strong>☕ Buy Dustin a coffee</strong></a>
+</p>
+
+The same link is available in the support card at the bottom of **Settings → Command Center**. Donations are optional, do not unlock features, and are not required for support or updates.
 
 ## License and attribution
 
