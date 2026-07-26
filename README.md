@@ -539,7 +539,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Artifact upload
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are both currently `1.0.0`.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are both currently `1.0.1`.
 
 ## Troubleshooting
 
@@ -579,6 +579,10 @@ Check that:
 ### A destructive tool is paused
 
 Open the action card, inspect its target list and diff preview, then choose **Approve & Apply** or **Reject**. Closing chat rejects pending confirmations safely.
+
+## Support development
+
+If Command Center helps your workflow, you can thank the developer through the support card at the bottom of **Settings → Command Center**, or visit [Buy Me a Coffee](https://buymeacoffee.com/DustinS). Support is optional and does not unlock features.
 
 ## License and attribution
 

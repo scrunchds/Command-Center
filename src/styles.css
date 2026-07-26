@@ -469,6 +469,26 @@ Command Center — Agentic OS for Obsidian
 .cc-section-body { padding: 4px 0; }
 .cc-section-body.cc-collapsed { display: none; }
 
+/* Developer support */
+.cc-developer-support {
+	display: flex; align-items: center; justify-content: space-between; gap: 16px;
+	margin-top: 28px; padding: 14px 16px;
+	border: 1px solid var(--background-modifier-border); border-radius: 8px;
+	background: var(--background-secondary);
+}
+.cc-developer-support-copy { min-width: 0; }
+.cc-developer-support-copy h3 { margin: 0 0 4px; font-size: var(--font-ui-medium); }
+.cc-developer-support-copy p { margin: 0; color: var(--text-muted); font-size: var(--font-small); }
+.cc-developer-support-button {
+	display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+	padding: 7px 12px; border-radius: 6px; text-decoration: none; white-space: nowrap;
+}
+.cc-developer-support-button:hover { text-decoration: none; }
+@media (max-width: 600px) {
+	.cc-developer-support { align-items: stretch; flex-direction: column; }
+	.cc-developer-support-button { align-self: flex-start; }
+}
+
 /* Provider action bar */
 .cc-provider-actions { display: flex; gap: 6px; }
 .cc-provider-actions button { font-size: var(--font-smallest); padding: 2px 10px; }

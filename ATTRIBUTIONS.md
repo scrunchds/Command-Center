@@ -1,6 +1,6 @@
 # Third-Party Attributions and License Audit
 
-This document records the dependency and interoperability review for Command Center 1.0.0. Command Center itself is distributed under the MIT License; see [`LICENSE`](LICENSE).
+This document records the dependency and interoperability review for Command Center 1.0.1. Command Center itself is distributed under the MIT License; see [`LICENSE`](LICENSE).
 
 > This inventory is informational and is not legal advice. Copyright in each third-party project remains with its respective authors. The authoritative license text shipped by each package is available in that package's source distribution and npm tarball.
 

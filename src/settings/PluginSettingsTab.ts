@@ -30,6 +30,8 @@ import { detectPiPath, clearPiDetectionCache } from '../daemon';
    Constants
    ═══════════════════════════════════════════════════════════ */
 
+const DEVELOPER_SUPPORT_URL = 'https://buymeacoffee.com/DustinS';
+
 const COST_TIER_LABELS: Record<string, string> = {
 	free: '🆓 Free', cheap: '💸 Cheap', moderate: '💰 Moderate', expensive: '💎 Expensive',
 };
@@ -956,6 +958,21 @@ export class PluginSettingsTab extends PluginSettingTab {
 	   ═══════════════════════════════════════════════════════ */
 
 	private renderFooter(containerEl: HTMLElement): void {
+		const support = containerEl.createDiv({ cls: 'cc-developer-support' });
+		const supportCopy = support.createDiv({ cls: 'cc-developer-support-copy' });
+		supportCopy.createEl('h3', { text: 'Thank the developer' });
+		supportCopy.createEl('p', {
+			text: 'If Command Center helps your workflow, you can support its continued development.',
+		});
+		const donate = support.createEl('a', {
+			text: '☕ Buy Dustin a coffee',
+			cls: 'mod-cta cc-developer-support-button',
+			href: DEVELOPER_SUPPORT_URL,
+		});
+		donate.setAttribute('target', '_blank');
+		donate.setAttribute('rel', 'noopener noreferrer');
+		donate.setAttribute('aria-label', 'Support Dustin on Buy Me a Coffee (opens in a browser)');
+
 		const footer = containerEl.createDiv({ cls: 'cc-settings-footer' });
 		footer.createEl('p', {
 			text: 'Changes are saved automatically. Provider configurations are stored locally in your Obsidian vault.',
