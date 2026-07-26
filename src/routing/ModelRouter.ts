@@ -166,7 +166,7 @@ export class ModelRouter {
 	canServe(taskType: TaskType): boolean {
 		const s = this.getSettings();
 		const r = s.routing[taskType] ?? DEFAULT_ROUTING[taskType];
-		return this.factory.get(r.providerId).isAvailable();
+		return this.factory.isUsable(r.providerId);
 	}
 
 	getRoutingTableStatus(): Array<{ taskType: TaskType; label: string; providerId: ProviderId; providerLabel: string; modelId: string; available: boolean }> {
@@ -175,7 +175,7 @@ export class ModelRouter {
 		return (Object.keys(DEFAULT_ROUTING) as TaskType[]).map(tt => {
 			const r = routing[tt] ?? DEFAULT_ROUTING[tt];
 			const p = this.factory.get(r.providerId);
-			return { taskType: tt, label: TASK_TYPE_LABELS[tt], providerId: r.providerId, providerLabel: PROVIDER_REGISTRY[r.providerId]?.label ?? r.providerId, modelId: r.modelId, available: p.isAvailable() };
+			return { taskType: tt, label: TASK_TYPE_LABELS[tt], providerId: r.providerId, providerLabel: PROVIDER_REGISTRY[r.providerId]?.label ?? r.providerId, modelId: r.modelId, available: this.factory.isUsable(r.providerId) };
 		});
 	}
 
@@ -214,10 +214,20 @@ export class ModelRouter {
 		optimization?: Partial<RoutingOptimizationConfig>,
 	): ResolvedRoute {
 		let route = routing[classification.primary];
-		if (!route || !this.factory.get(route.providerId).isAvailable()) {
+		if (!route || !this.factory.isUsable(route.providerId)) {
 			for (const alt of classification.alternatives) {
 				const ar = routing[alt.taskType];
-				if (ar && this.factory.get(ar.providerId).isAvailable()) { route = ar; break; }
+				if (ar && this.factory.isUsable(ar.providerId)) { route = ar; break; }
+			}
+		}
+		if (!route || !this.factory.isUsable(route.providerId)) {
+			// No configured route is usable. Auto-reach the first enabled+available
+			// provider (local-keyless preferred) so a local-only setup works without
+			// manual routing of every TaskType.
+			const reached = this.factory.listUsable()[0];
+			if (reached) {
+				const tt = classification.primary;
+				route = { taskType: tt, providerId: reached.id, modelId: this.factory.resolveModelForTask(reached.id, tt), config: DEFAULT_PROVIDER_CONFIG };
 			}
 		}
 		if (!route) route = DEFAULT_ROUTING[classification.primary] ?? DEFAULT_ROUTING['reasoning'];
@@ -301,12 +311,14 @@ export class ModelRouter {
 				attempts.push({ providerId: pid, modelId: 'skipped', attemptIndex: i, success: false, error: `Provider ${pid} circuit is open after transient failures.`, errorCode: 'circuit_open', latencyMs: 0, wasFallback: i > 0 });
 				continue;
 			}
-			if (!provider.isAvailable()) {
+			if (!this.factory.isUsable(pid)) {
 				attempts.push({ providerId: pid, modelId: 'unavailable', attemptIndex: i, success: false, error: `Provider ${pid} not available.`, errorCode: 'unavailable', latencyMs: 0, wasFallback: i > 0 });
 				continue;
 			}
 
-			const modelId = i === 0 ? route.modelId : provider.getDefaultModel(route.taskType);
+			const modelId = i === 0
+				? route.modelId
+				: this.factory.resolveModelForTask(pid, route.taskType);
 			const providerReq: ProviderRequest = { ...request, config: { ...route.config, model: modelId } };
 
 			try {
@@ -357,7 +369,14 @@ export class ModelRouter {
 			const reliability = this._successProbability(b, taskType) - this._successProbability(a, taskType);
 			return Math.abs(reliability) > 1e-9 ? reliability : fb.fallbacks.indexOf(a) - fb.fallbacks.indexOf(b);
 		});
-		return [primary, ...configured];
+		const chain = [primary, ...configured];
+		// Safety net: append every enabled+available provider so a local-only setup
+		// (e.g. LM Studio alone) is always reachable even when the configured primary
+		// and fallback chain are all disabled/unconfigured. Dedup preserves order.
+		for (const adapter of this.factory.listUsable()) {
+			if (!chain.includes(adapter.id)) chain.push(adapter.id);
+		}
+		return chain;
 	}
 
 	private _delay(ms: number): Promise<void> { return new Promise(r => window.setTimeout(r, ms)); }
@@ -405,7 +424,7 @@ export class ModelRouter {
 		const candidates: Array<{ providerId: ProviderId; model: ProviderModel; score: number }> = [];
 		for (const [rawPid, meta] of Object.entries(PROVIDER_REGISTRY)) {
 			const pid = rawPid as ProviderId;
-			if (!this.factory.get(pid).isAvailable()) continue;
+			if (!this.factory.isUsable(pid)) continue;
 			for (const model of meta.models) {
 				const score = this._capabilityScore(pid, model, tt);
 				if (score >= opt.minCapabilityScore) candidates.push({ providerId: pid, model, score });

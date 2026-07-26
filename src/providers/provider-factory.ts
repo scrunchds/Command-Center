@@ -8,7 +8,7 @@
 
 import type {
 	IProviderAdapter, ProviderId, MultiProviderSettings,
-	ProviderCredentials,
+	ProviderCredentials, TaskType, ProviderModel,
 } from './provider-types';
 import { sanitizeBaseUrl } from './provider-types';
 import { PROVIDER_REGISTRY } from './provider-registry';
@@ -62,6 +62,56 @@ export class ProviderFactory {
 		return Object.keys(PROVIDER_REGISTRY)
 			.map(id => this.get(id as ProviderId))
 			.filter(p => p.isAvailable());
+	}
+
+	/**
+	 * A provider is usable when the user has explicitly enabled it AND its adapter
+	 * reports available (key configured for key-requiring providers; daemon running
+	 * for pi-daemon). The `enabled` toggle is the user's opt-in; `isAvailable()` is
+	 * the key/runtime check. pi-daemon is treated as always enabled because it is
+	 * the keyless local runtime and is not represented in `credentials`.
+	 */
+	isUsable(id: ProviderId): boolean {
+		const cred = this.getSettings().credentials[id];
+		const enabled = id === 'pi-daemon' ? true : (cred?.enabled ?? false);
+		return enabled && this.get(id).isAvailable();
+	}
+
+	/**
+	 * List all enabled+available providers in a stable preference order: keyless
+	 * local runtimes first (pi-daemon, ollama, lmstudio, custom), then configured
+	 * cloud providers in registry order. Used to auto-reach a usable provider when
+	 * no configured route is usable (e.g. a local-only setup).
+	 */
+	listUsable(): IProviderAdapter[] {
+		const localFirst: ProviderId[] = ['pi-daemon', 'ollama', 'lmstudio', 'custom'];
+		const rest = Object.keys(PROVIDER_REGISTRY)
+			.filter(id => !localFirst.includes(id as ProviderId)) as ProviderId[];
+		return [...localFirst, ...rest]
+			.filter(id => this.isUsable(id))
+			.map(id => this.get(id));
+	}
+
+	/**
+	 * Resolve the best model ID for a task on this provider. Prefers cached live
+	 * models (discovered from the server) over the static registry default, because
+	 * local servers such as LM Studio reject placeholder IDs like `local-model` and
+	 * require a real loaded model. Falls back to the registry default when no live
+	 * models are cached.
+	 */
+	resolveModelForTask(id: ProviderId, taskType: TaskType): string {
+		const provider = this.get(id);
+		const configured = provider.getDefaultModel(taskType);
+		const live = this.getSettings().liveModels?.[id];
+		if (!live || live.length === 0) return configured;
+		// Keep the configured/default model when the server reports it as loaded.
+		if (live.some(m => m.id === configured)) return configured;
+		// Prefer a live model whose strengths match the task type (cheapest first).
+		const costOrder: Record<string, number> = { free: 0, cheap: 1, moderate: 2, expensive: 3 };
+		const byStrength = live.filter(m => Array.isArray(m.strengths) && m.strengths.includes(taskType));
+		const pool = byStrength.length > 0 ? byStrength : live;
+		return [...pool].sort((a, b) =>
+			(costOrder[a.costTier] ?? 2) - (costOrder[b.costTier] ?? 2))[0]!.id;
 	}
 
 	/** Invalidate cached instances (e.g., after settings change). */

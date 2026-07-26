@@ -717,6 +717,7 @@ async function verifyProviderFallback() {
 	let primaryError = new ProviderError('auth_failed', 'bad key', 'openai', 401);
 	const adapters = {
 		openai: {
+			id: 'openai',
 			isAvailable: () => true,
 			getDefaultModel: () => 'openai-model',
 			complete: async () => {
@@ -725,6 +726,7 @@ async function verifyProviderFallback() {
 			},
 		},
 		anthropic: {
+			id: 'anthropic',
 			isAvailable: () => true,
 			getDefaultModel: () => 'anthropic-model',
 			complete: async () => {
@@ -734,7 +736,7 @@ async function verifyProviderFallback() {
 		},
 	};
 	const settings = {
-		credentials: {}, fallback: config,
+		credentials: { openai: { enabled: true }, anthropic: { enabled: true } }, fallback: config,
 		routing: {
 			coding: { taskType: 'coding', providerId: 'openai', modelId: 'primary-model' },
 			vision: { taskType: 'vision', providerId: 'openai', modelId: 'primary-model' },
@@ -743,7 +745,14 @@ async function verifyProviderFallback() {
 			fast: { taskType: 'fast', providerId: 'openai', modelId: 'primary-model' },
 		},
 	};
-	const dispatcher = new ProviderDispatcher({ get: id => adapters[id] }, () => settings);
+	// Faithful mock factory: mirrors ProviderFactory.isUsable/listUsable/resolveModelForTask.
+	const mockFactory = {
+		get: id => adapters[id],
+		isUsable: id => { const c = settings.credentials[id]; const en = id === 'pi-daemon' ? true : (c?.enabled ?? false); return en && !!adapters[id] && adapters[id].isAvailable(); },
+		listUsable: () => Object.keys(adapters).filter(id => { const c = settings.credentials[id]; const en = id === 'pi-daemon' ? true : (c?.enabled ?? false); return en && adapters[id].isAvailable(); }).map(id => adapters[id]),
+		resolveModelForTask: (id, tt) => adapters[id]?.getDefaultModel(tt) ?? 'unknown',
+	};
+	const dispatcher = new ProviderDispatcher(mockFactory, () => settings);
 	let delayed = 0;
 	dispatcher._delay = async () => { delayed++; };
 	const authResult = await dispatcher.dispatch({ systemPrompt: '', userPrompt: 'test' }, 'reasoning');

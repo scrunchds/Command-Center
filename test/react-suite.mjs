@@ -2104,6 +2104,149 @@ pass('33f: TranscriberAdapter transcribes against only the first comma-delimited
 }
 }
 
+/* ═══ 34. Provider Auto-Reach & Enabled-Gated Dispatch ═══ */
+async function verifyProviderAutoReach() {
+console.log('\n─── 34. Provider Auto-Reach & Enabled-Gated Dispatch ───');
+const { ProviderFactory } = await import(pathToFileURL(SRC + '/providers/provider-factory.ts').href);
+const { PROVIDER_REGISTRY } = await import(pathToFileURL(SRC + '/providers/provider-registry.ts').href);
+const { ModelRouter } = await import(pathToFileURL(SRC + '/routing/ModelRouter.ts').href);
+const { ProviderDispatcher } = await import(pathToFileURL(SRC + '/dispatcher.ts').href);
+const { DEFAULT_ROUTING } = await import(pathToFileURL(SRC + '/routing.ts').href);
+{
+// A keyless local provider (LM Studio) is usable when enabled; a key-requiring
+// provider (OpenAI) is not usable without an API key even when enabled.
+const daemon = { isRunning: () => false, isBinaryMissing: () => false, startError: null };
+const settings = () => ({
+  credentials: {
+    lmstudio: { providerId: 'lmstudio', apiKey: '', baseUrl: 'http://localhost:1234/v1', enabled: true },
+    openai: { providerId: 'openai', apiKey: '', baseUrl: 'https://api.openai.com/v1', enabled: true },
+  }, routing: {}, fallback: {}, defaults: {},
+});
+const factory = new ProviderFactory(daemon, settings);
+assert.equal(factory.isUsable('lmstudio'), true, 'LM Studio enabled+keyless is usable');
+assert.equal(factory.isUsable('openai'), false, 'OpenAI enabled but no key is not usable');
+// Disabling LM Studio makes it unusable even though it is keyless.
+const settingsOff = () => ({
+  credentials: { lmstudio: { providerId: 'lmstudio', apiKey: '', baseUrl: 'http://localhost:1234/v1', enabled: false } },
+  routing: {}, fallback: {}, defaults: {},
+});
+const factoryOff = new ProviderFactory(daemon, settingsOff);
+assert.equal(factoryOff.isUsable('lmstudio'), false, 'disabled LM Studio is not usable');
+pass('34a: isUsable requires both enabled toggle and adapter availability');
+}
+{
+// listUsable returns enabled+available providers with keyless local runtimes first.
+const daemon = { isRunning: () => false, isBinaryMissing: () => false, startError: null };
+const settings = () => ({
+  credentials: {
+    lmstudio: { providerId: 'lmstudio', apiKey: '', baseUrl: 'http://localhost:1234/v1', enabled: true },
+    openai: { providerId: 'openai', apiKey: 'sk-live', baseUrl: 'https://api.openai.com/v1', enabled: true },
+  }, routing: {}, fallback: {}, defaults: {},
+});
+const factory = new ProviderFactory(daemon, settings);
+const usable = factory.listUsable().map(p => p.id);
+assert.deepEqual(usable, ['lmstudio', 'openai'], 'local-keyless providers precede configured cloud providers');
+pass('34b: listUsable orders keyless local runtimes before cloud providers');
+}
+{
+// resolveModelForTask prefers cached live models over the static `local-model`
+// placeholder, because LM Studio rejects placeholder IDs with a 400.
+const daemon = { isRunning: () => false, isBinaryMissing: () => false, startError: null };
+const liveSettings = () => ({
+  credentials: { lmstudio: { providerId: 'lmstudio', apiKey: '', baseUrl: 'http://localhost:1234/v1', enabled: true } },
+  liveModels: { lmstudio: [{ id: 'qwen-real', label: 'Qwen Real', contextWindow: 32768, maxOutput: 4096, supportsVision: false, supportsTools: true, supportsCaching: false, costTier: 'free', strengths: ['fast', 'reasoning'] }] },
+  routing: {}, fallback: {}, defaults: {},
+});
+const factoryLive = new ProviderFactory(daemon, liveSettings);
+assert.equal(factoryLive.resolveModelForTask('lmstudio', 'fast'), 'qwen-real', 'live model replaces placeholder');
+// Without cached live models, the registry placeholder is returned.
+const noLiveSettings = () => ({
+  credentials: { lmstudio: { providerId: 'lmstudio', apiKey: '', baseUrl: 'http://localhost:1234/v1', enabled: true } },
+  routing: {}, fallback: {}, defaults: {},
+});
+const factoryNoLive = new ProviderFactory(daemon, noLiveSettings);
+assert.equal(factoryNoLive.resolveModelForTask('lmstudio', 'fast'), 'local-model', 'placeholder used when no live models cached');
+pass('34c: resolveModelForTask prefers live models over the local-model placeholder');
+}
+{
+// ModelRouter.resolve auto-reaches the first usable provider when no configured
+// route is usable (local-only setup with no cloud keys).
+const mockFactory = {
+  get: (id) => ({ id, isAvailable: () => id === 'lmstudio' }),
+  isUsable: (id) => id === 'lmstudio',
+  listUsable: () => [{ id: 'lmstudio' }],
+  resolveModelForTask: (_id, _tt) => 'qwen-real',
+  getBaseUrl: () => 'http://localhost:1234/v1',
+  jitModelManager: { ensureModelLoaded: async () => true, evictModel: async () => true },
+};
+const settings = () => ({
+  credentials: { lmstudio: { enabled: true }, anthropic: { enabled: true, apiKey: '' } },
+  routing: { reasoning: { taskType: 'reasoning', providerId: 'anthropic', modelId: 'claude-x' } },
+  fallback: {}, defaults: {}, optimization: {},
+});
+const router = new ModelRouter(mockFactory, settings, () => []);
+const route = router.resolve(
+  { primary: 'reasoning', confidence: 1, alternatives: [], signals: [] },
+  settings().routing,
+);
+assert.equal(route.providerId, 'lmstudio', 'auto-reached LM Studio when anthropic route unusable');
+assert.equal(route.modelId, 'qwen-real', 'auto-reach resolved a live model id');
+pass('34d: ModelRouter.resolve auto-reaches a usable provider for local-only setups');
+}
+{
+// ProviderDispatcher._buildFallbackChain appends every usable provider as a
+// safety net so a local-only setup is always reachable.
+const mockFactory = {
+  get: (id) => ({ id, isAvailable: () => id === 'lmstudio' }),
+  isUsable: (id) => id === 'lmstudio',
+  listUsable: () => [{ id: 'lmstudio' }],
+  resolveModelForTask: (_id, _tt) => 'qwen-real',
+};
+const settings = () => ({
+  credentials: { lmstudio: { enabled: true } },
+  routing: { reasoning: { taskType: 'reasoning', providerId: 'anthropic', modelId: 'claude-x' } },
+  fallback: { primary: 'anthropic', fallbacks: ['openai'], fallbackOnRateLimit: true, fallbackOnTimeout: true, maxAttempts: 5, backoffMs: 1 },
+  defaults: {},
+});
+const dispatcher = new ProviderDispatcher(mockFactory, settings);
+dispatcher._delay = async () => {};
+const chain = dispatcher._buildFallbackChain('anthropic', settings().fallback);
+assert.deepEqual(chain, ['anthropic', 'openai', 'lmstudio'], 'safety net appends usable providers after configured chain');
+pass('34e: fallback chain appends usable providers as a safety net');
+}
+{
+// End-to-end: a dispatch whose configured primary is disabled auto-reaches the
+// one enabled local provider and returns its output.
+const calls = { lmstudio: 0 };
+const adapters = {
+  lmstudio: {
+    id: 'lmstudio',
+    isAvailable: () => true,
+    getDefaultModel: () => 'qwen-real',
+    complete: async () => { calls.lmstudio++; return { output: 'lm-ok', success: true, providerId: 'lmstudio', latencyMs: 0 }; },
+  },
+};
+const mockFactory = {
+  get: (id) => adapters[id],
+  isUsable: (id) => id === 'lmstudio',
+  listUsable: () => [{ id: 'lmstudio' }],
+  resolveModelForTask: (_id, _tt) => 'qwen-real',
+};
+const settings = () => ({
+  credentials: { lmstudio: { enabled: true }, openai: { enabled: false }, anthropic: { enabled: false } },
+  routing: { reasoning: { taskType: 'reasoning', providerId: 'anthropic', modelId: 'claude-x' } },
+  fallback: { primary: 'anthropic', fallbacks: ['openai'], fallbackOnRateLimit: true, fallbackOnTimeout: true, maxAttempts: 5, backoffMs: 1 },
+  defaults: {},
+});
+const dispatcher = new ProviderDispatcher(mockFactory, settings);
+dispatcher._delay = async () => {};
+const result = await dispatcher.dispatch({ systemPrompt: '', userPrompt: 'hello' }, 'reasoning');
+assert.equal(result.output, 'lm-ok', 'dispatch reached LM Studio and returned its output');
+assert.equal(calls.lmstudio, 1, 'LM Studio complete called exactly once');
+pass('34f: dispatch auto-reaches an enabled local provider when cloud routes are disabled');
+}
+}
+
 async function main(){
 console.log("═══════════════════════════════════════════");
 console.log("  Command Center — ReAct Framework Suite");
@@ -2136,6 +2279,7 @@ await verifyAgentMemory();
 await verifyRagAgentIntegration();
 await verifyHeadlessCliBridge();
 await verifyBaseUrlSanitization();
+await verifyProviderAutoReach();
 console.log("");
 console.log("═══════════════════════════════════════════");
 console.log("  Results:  "+results.pass+" passed, "+results.fail+" failed, "+results.skip+" skipped");

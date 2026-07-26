@@ -59,10 +59,10 @@ export class ProviderDispatcher {
 		request: ProviderRequest,
 	): Promise<ProviderResponse> {
 		const provider = this.factory.get(providerId);
-		if (!provider.isAvailable()) {
+		if (!this.factory.isUsable(providerId)) {
 			return {
 				output: '', success: false,
-				error: `Provider ${providerId} is not available.`,
+				error: `Provider ${providerId} is not enabled or not available.`,
 				providerId, latencyMs: 0,
 			};
 		}
@@ -120,13 +120,15 @@ export class ProviderDispatcher {
 				continue;
 			}
 
-			if (!provider.isAvailable()) {
+			if (!this.factory.isUsable(providerId)) {
 				lastError = `Provider ${providerId} not available.`;
 				continue;
 			}
 
-			// Use the route model for the primary, default for fallbacks
-			const modelId = i === 0 ? route.modelId : provider.getDefaultModel(route.taskType);
+			// Use the route model for the primary, a live/registry default for fallbacks.
+			const modelId = i === 0
+				? route.modelId
+				: this.factory.resolveModelForTask(providerId, route.taskType);
 
 			const providerRequest: ProviderRequest = {
 				...request,
@@ -183,6 +185,13 @@ export class ProviderDispatcher {
 		const chain = [primary];
 		for (const fb of fallback.fallbacks) {
 			if (fb !== primary) chain.push(fb);
+		}
+		// Safety net: append every enabled+available provider so a local-only setup
+		// (e.g. LM Studio alone) is always reachable even when the configured
+		// primary and fallback chain are all disabled/unconfigured. Dedup preserves
+		// the configured order.
+		for (const adapter of this.factory.listUsable()) {
+			if (!chain.includes(adapter.id)) chain.push(adapter.id);
 		}
 		return chain;
 	}
