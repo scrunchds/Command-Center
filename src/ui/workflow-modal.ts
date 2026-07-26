@@ -44,7 +44,6 @@ export class WorkflowInputModal extends Modal {
 				.setDesc('Queue notes processed at the same time (1–10).')
 				.addSlider(slider => slider
 					.setLimits(1, 10, 1)
-					.setDynamicTooltip()
 					.setValue(this.batchConcurrency)
 					.onChange(value => { this.batchConcurrency = value; }));
 		}

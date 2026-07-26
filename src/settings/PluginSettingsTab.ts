@@ -121,11 +121,15 @@ export class PluginSettingsTab extends PluginSettingTab {
 	   ═══════════════════════════════════════════════════════ */
 
 	display(): void {
-		this.update();
+		this.renderImperativeSettings();
 	}
 
 	/** Refresh the imperative settings UI after an interaction. */
-	private update(): void {
+	override update(): void {
+		this.renderImperativeSettings();
+	}
+
+	private renderImperativeSettings(): void {
 		const { containerEl } = this;
 		containerEl.empty();
 		containerEl.addClass('cc-settings');
