@@ -128,7 +128,7 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 		// best-effort; inference remains authoritative if a local lifecycle API is
 		// unavailable. TTL/keep-alive in the request handles eventual eviction.
 		const baseUrl = this.getBaseUrl();
-		if (isLocalBaseUrl(baseUrl)) {
+		if (isLocalBaseUrl(baseUrl) && this.shouldPrewarmModel()) {
 			const retention = cfg.ttl ?? (typeof cfg.keepAlive === 'number' ? cfg.keepAlive : 300);
 			await this.jitModelManager.ensureModelLoaded(baseUrl, model, retention);
 		}
@@ -283,6 +283,9 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 		else payload.ttl = config.ttl ?? 300;
 		return payload;
 	}
+
+	/** Subclasses may skip optional lifecycle prewarming when discovery already proves a model is loaded. */
+	protected shouldPrewarmModel(): boolean { return true; }
 
 	/* ─── HTTP requests and streaming transport ───────── */
 

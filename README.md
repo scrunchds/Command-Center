@@ -56,7 +56,7 @@ Command Center exposes one dispatch layer across **12 providers**:
 | DeepInfra | Cloud | Hosted open-weight models |
 | Mistral AI | Cloud | Mistral and Codestral families |
 | Cohere | Cloud | Command models for retrieval-heavy work |
-| LM Studio | Local | Native model discovery plus OpenAI-compatible inference |
+| LM Studio | Local | Native model discovery, resource-aware JIT loading, and OpenAI-compatible inference |
 | Custom Endpoint | Local or remote | User-defined OpenAI-compatible service |
 
 Routing classifies work as `coding`, `vision`, `reading`, `reasoning`, or `fast`. Capability checks prevent invalid model selection; optional exponential moving averages optimize initial routes for **latency**, **cost**, or a **balanced** objective. Recovery remains reliability-first: authentication and invalid-request failures fail or fall through immediately, while rate limits, network errors, timeouts, and server errors use isolated circuit breakers, bounded backoff, and a configurable multi-tier fallback chain.
@@ -68,6 +68,7 @@ Additional provider capabilities include:
 - Multimodal image preprocessing for vault attachments and Canvas file nodes
 - Structured-output repair only at model-authored JSON boundaries
 - Local model pre-warm, TTL/keep-alive, and best-effort eviction
+- LM Studio resource-aware JIT: reuse a loaded primary LLM or automatically load the smallest downloaded non-draft conversational model, excluding embedding and speculative draft models
 - Cloud-bound payload scrubbing of local-only lifecycle fields
 
 ### Multi-Agent ReAct engine
@@ -131,6 +132,14 @@ The interview becomes the source of truth for daily operations:
 - Protected `_index.md` manifests maintained from direct-child scans
 
 Stationary indexes contain purpose, scope, summary, and status metadata. Compact purpose headers allow routing to the correct folder before deeper retrieval, reducing full-vault reads and prompt waste.
+
+### Triptych Logic Discovery
+
+The **Command Deck** provides an Obsidian-native Triptych workspace for Socratic vault discovery. It begins with a contextual baseline before introducing read-only `TopographySweep` evidence, then routes each submitted answer through the normalized provider execution boundary. Topography is injected as supporting context, while the system prompt prevents topology from being presented before the baseline interview is complete.
+
+Logic Discovery responses use a bounded generation budget and disable model reasoning where supported so the Center Stage receives one concise visible question. With LM Studio enabled, Command Center discovers native catalog state through `/api/v1/models`, prefers an already loaded primary conversational model, or JIT-loads the smallest suitable downloaded model before calling `/v1/chat/completions`. Large first loads may take longer; keep a smaller conversational model downloaded on constrained hardware.
+
+Open it from the Command Palette with **Command Center: Open Triptych Logic Discovery**.
 
 ### Native chat and context
 

@@ -76,7 +76,7 @@ import { ModelRouter as EndpointModelRouter } from './engine/ModelRouter';
 import { InterviewModal } from './ui/InterviewModal';
 import { CommandCenterCommandBridge } from './cli/command-bridge';
 import { TopographySweep, type TopographyMap } from './ingestion/TopographySweep';
-import { LogicDiscovery } from './ingestion/LogicDiscovery';
+import { LogicDiscovery, LOGIC_DISCOVERY_SYSTEM_PROMPT } from './ingestion/LogicDiscovery';
 import { NativeAutoRouter } from './routing/NativeAutoRouter';
 import { DataNormalizer } from './execution/DataNormalizer';
 import { ExecutionRouter } from './execution/ExecutionRouter';
@@ -431,8 +431,10 @@ export default class CommandCenterPlugin extends Plugin {
 			const deck = new CommandDeck(leaf);
 			this.commandDeck = deck;
 			deck.setAnswerHandler(answer => {
-				const discovery = this.activeDiscovery;
-				if (discovery) discovery.answer(answer);
+				void this.submitDiscoveryAnswer(answer).catch(error => {
+					console.error('[CC] Logic Discovery execution failed:', error);
+					new Notice(`Logic Discovery failed: ${error instanceof Error ? error.message : String(error)}`, 15000);
+				});
 			});
 			return deck;
 		});
@@ -619,6 +621,43 @@ export default class CommandCenterPlugin extends Plugin {
 			providerId: 'ollama',
 			model: 'nomic-embed-text',
 		};
+	}
+
+	private async submitDiscoveryAnswer(answer: string): Promise<void> {
+		const discovery = this.activeDiscovery;
+		if (!discovery) throw new Error('No active Logic Discovery session.');
+		discovery.answer(answer);
+		const state = discovery.getState();
+		const topographyContext = this.serializeTopographyForDiscovery();
+		const resolution = this.nativeAutoRouter.resolve('text');
+		const normalized = await this.executionRouter.execute({
+			resolution,
+			request: {
+				systemPrompt: `${LOGIC_DISCOVERY_SYSTEM_PROMPT}\n\nCurrent TopographySweep evidence (do not mention before the contextual baseline is complete):\n${topographyContext}`,
+				userPrompt: `Conversation so far:\n${state.turns.map(turn => `${turn.role}: ${turn.content}`).join('\n')}\n\nRespond with only the next concise Socratic question.`,
+				taskId: `logic-discovery-${Date.now()}`,
+				config: {
+					model: resolution.modelId,
+					maxTokens: 320,
+					temperature: 0.4,
+					extra: { reasoning: 'off' },
+				},
+			},
+		});
+		if (!normalized.success) throw new Error(normalized.error ?? 'Logic Discovery provider execution failed.');
+		if (!normalized.content.trim()) throw new Error('The selected provider returned an empty assistant response.');
+		discovery.applyAssistantResponse(normalized.content);
+	}
+
+	private serializeTopographyForDiscovery(): string {
+		if (!this.topography) return JSON.stringify({ status: 'unavailable' });
+		return JSON.stringify({
+			generatedAt: this.topography.generatedAt,
+			notes: [...this.topography.nodes.values()],
+			folders: [...this.topography.folders.values()],
+			tagCounts: Object.fromEntries(this.topography.tagCounts),
+			frontmatterFieldCounts: Object.fromEntries(this.topography.frontmatterFieldCounts),
+		}, null, 2);
 	}
 
 	private async openTriptychDiscovery(): Promise<void> {

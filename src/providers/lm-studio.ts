@@ -23,23 +23,55 @@ export class LMStudioProvider extends OpenAICompatibleProvider {
 		return `${this.serverRoot()}/v1/chat/completions`;
 	}
 
-	/** Resolve the exact model currently exposed by LM Studio for inference. */
+	/** Resolve the best primary LM Studio model; the JIT manager loads it if needed. */
 	async getActiveModelId(baseUrl: string = this.serverRoot()): Promise<string> {
 		const root = baseUrl.trim().replace(/\/+$/, '').replace(/\/(?:api\/v[01]|v1)$/i, '');
 		try {
 			const response = await requestUrl({
-				url: `${root}/v1/models`,
+				url: `${root}/api/v1/models`,
 				method: 'GET',
 				headers: this.buildListHeaders(this.getApiKey()),
 			});
-			const payload = response.json as { data?: Array<{ id?: unknown }> };
-			const id = payload.data?.[0]?.id;
-			if (typeof id === 'string' && id.trim()) return id.trim();
-		} catch {
-			// Normalize transport and response failures into an actionable message.
+			const payload = response.json as {
+				models?: Array<{
+					type?: unknown;
+					key?: unknown;
+					size_bytes?: unknown;
+					loaded_instances?: Array<{ id?: unknown }>;
+				}>;
+			};
+			const models = payload.models ?? [];
+			const isPrimary = (model: typeof models[number]): boolean => {
+				const key = typeof model.key === 'string' ? model.key : '';
+				const instanceId = typeof model.loaded_instances?.[0]?.id === 'string' ? model.loaded_instances[0].id : '';
+				const identity = `${key} ${instanceId}`.toLocaleLowerCase();
+				return model.type !== 'embedding' && !/(?:^|[-_/])draft(?:[-_/]|$)|embed(?:ding)?/.test(identity);
+			};
+			const loadedPrimary = models.find(model => (model.loaded_instances?.length ?? 0) > 0 && isPrimary(model));
+			const smallestDownloadedPrimary = models
+				.filter(isPrimary)
+				.sort((left, right) => {
+					const leftSize = typeof left.size_bytes === 'number' && Number.isFinite(left.size_bytes)
+						? left.size_bytes : Number.POSITIVE_INFINITY;
+					const rightSize = typeof right.size_bytes === 'number' && Number.isFinite(right.size_bytes)
+						? right.size_bytes : Number.POSITIVE_INFINITY;
+					return leftSize - rightSize;
+				})[0];
+			const primary = loadedPrimary ?? smallestDownloadedPrimary;
+			if (primary) {
+				// The native model key is the inference API's stable primary-model ID.
+				if (typeof primary.key === 'string' && primary.key.trim()) return primary.key.trim();
+				const instanceId = primary.loaded_instances?.[0]?.id;
+				if (typeof instanceId === 'string' && instanceId.trim()) return instanceId.trim();
+			}
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			throw new Error(`No model currently loaded in LM Studio. Please load a model into memory. Model discovery failed at ${root}/api/v1/models: ${detail}`);
 		}
 		throw new Error('No model currently loaded in LM Studio. Please load a model into memory.');
 	}
+
+	protected override shouldPrewarmModel(): boolean { return true; }
 
 	/** Replace matrix placeholders with the model LM Studio reports as active. */
 	protected override async _completeImpl(request: ProviderRequest): Promise<ProviderResponse> {

@@ -17,7 +17,9 @@ export class JitModelManager {
 	constructor(options: JitModelManagerOptions = {}) {
 		this.fetchFn = options.fetch ?? window.fetch.bind(window);
 		this.signal = options.signal;
-		this.timeoutMs = Math.max(0, options.timeoutMs ?? 5_000);
+		// Native model loads can legitimately take well beyond five seconds for
+		// large local weights. Keep the operation bounded, but allow startup.
+		this.timeoutMs = Math.max(0, options.timeoutMs ?? 120_000);
 	}
 
 	/** Check local state and pre-warm an unloaded model. Never blocks normal inference on failure. */
@@ -69,7 +71,9 @@ export class JitModelManager {
 				const item = entry as Record<string, unknown>;
 				const id = item.id ?? item.key ?? item.model ?? item.name;
 				if (id !== modelId) return false;
-				// LM Studio native catalogs can include downloaded but unloaded models.
+				// LM Studio native v1 catalogs include downloaded and loaded models.
+				// `loaded_instances` is authoritative when present.
+				if (Array.isArray(item.loaded_instances)) return item.loaded_instances.length > 0;
 				return item.loaded !== false && item.state !== 'unloaded' && item.status !== 'unloaded';
 			});
 		}

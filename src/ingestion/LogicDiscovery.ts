@@ -100,6 +100,16 @@ export class LogicDiscovery {
 		return state;
 	}
 
+	applyAssistantResponse(content: string): LogicDiscoveryState {
+		const value = content.trim();
+		if (!value) throw new Error('Discovery response cannot be empty.');
+		if (this.turns.at(-1)?.role === 'assistant') this.turns[this.turns.length - 1] = { role: 'assistant', content: value };
+		else this.turns.push({ role: 'assistant', content: value });
+		const state = this.state(value);
+		this.deck.updateDiscovery(state);
+		return state;
+	}
+
 	finish(): void {
 		this.deck.closeDiscovery();
 	}
