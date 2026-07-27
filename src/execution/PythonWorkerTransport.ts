@@ -3,7 +3,8 @@ import type { PythonWorkerRequest, PythonWorkerTransport as PythonWorkerTranspor
 
 export interface PythonWorkerTransportOptions {
 	pythonPath?: string;
-	workerPath: string;
+	workerPath?: string;
+	workerSource?: string;
 	timeoutMs?: number;
 	failureThreshold?: number;
 	circuitResetMs?: number;
@@ -31,6 +32,7 @@ export class PythonWorkerTransport implements PythonWorkerTransportContract {
 	private readonly maxOutputBytes: number;
 
 	constructor(private readonly options: PythonWorkerTransportOptions) {
+		if (!options.workerPath && !options.workerSource) throw new Error('A Python worker path or bundled source is required.');
 		this.pythonPath = options.pythonPath?.trim() || 'python';
 		this.timeoutMs = options.timeoutMs ?? 60_000;
 		this.failureThreshold = options.failureThreshold ?? 3;
@@ -50,7 +52,8 @@ export class PythonWorkerTransport implements PythonWorkerTransportContract {
 		if (!this.isAvailable()) return Promise.reject(new Error('Python worker is temporarily unavailable.'));
 		if (signal?.aborted) return Promise.reject(new Error('Python worker execution was cancelled.'));
 		return new Promise((resolve, reject) => {
-			const child = spawn(this.pythonPath, ['-I', this.options.workerPath], {
+			const args = this.options.workerSource ? ['-I', '-c', this.options.workerSource] : ['-I', this.options.workerPath!];
+			const child = spawn(this.pythonPath, args, {
 				cwd: this.options.cwd,
 				shell: false,
 				windowsHide: true,

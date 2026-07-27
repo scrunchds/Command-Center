@@ -33,7 +33,7 @@ export class ProviderFactory {
 
 	constructor(
 		daemon: PiAgentDaemon, getSettings: () => MultiProviderSettings,
-		private readonly credentialVault: MemoryCredentialVault,
+		private readonly credentialVault?: MemoryCredentialVault,
 		jitModelManager: JitModelManager = new JitModelManager(),
 	) {
 		this.daemon = daemon;
@@ -90,7 +90,14 @@ export class ProviderFactory {
 		if (requiresKey) {
 			// Locked credential vaults deliberately make cloud providers unusable,
 			// allowing the existing local-first fallback chain to remain authoritative.
-			return this.credentialVault.unlocked && this.credentialVault.has(id) && cred?.enabled === true;
+			// Legacy/test construction without the secure bridge may only use the
+			// pre-migration settings key; production always injects MemoryCredentialVault.
+			if (this.credentialVault) {
+				return this.credentialVault.unlocked
+					&& this.credentialVault.has(id)
+					&& cred?.enabled === true;
+			}
+			return Boolean((cred as unknown as { apiKey?: string } | undefined)?.apiKey);
 		}
 		// Keyless local providers require explicit opt-in.
 		return cred?.enabled === true;
@@ -183,7 +190,9 @@ export class ProviderFactory {
 		const meta = { ...PROVIDER_REGISTRY[id] };
 		return {
 			id, meta,
-			getApiKey: () => this.credentialVault.get(id),
+			getApiKey: () => this.credentialVault?.get(id)
+				?? (this.getSettings().credentials[id] as unknown as { apiKey?: string } | undefined)?.apiKey
+				?? '',
 			getBaseUrl: () => this.getBaseUrl(id),
 		};
 	}

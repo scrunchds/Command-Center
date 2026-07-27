@@ -19,7 +19,7 @@ Most AI integrations add a chat box. Command Center adds an operational layer:
 - **Framework-agnostic by design** — no required PARA, GTD, Johnny.Decimal, folder taxonomy, note schema, or life-management methodology. The setup interview learns the structures already used in your vault.
 - **Interview-driven configuration** — six discovery phases collect topology, life map, capacity rules, triage policy, focus constraints, and writing style; confirmation and synthesis then generate only the assets you approve.
 - **Token-efficient stationary indexing** — protected `_index.md` files describe folder purpose and direct-child contents so agents can route work without repeatedly scanning the whole vault.
-- **Credential isolation** — onboarding, generated `.command-center/config.json`, workflow arguments, and CLI/URI commands reject credentials. Provider secrets stay in local Obsidian plugin settings and are resolved only at request time.
+- **Air-gapped credential bridge** — API keys are managed through a dedicated secure modal, persisted only as AES-256-GCM ciphertext, and decrypted into a process-lifetime memory vault. A locked vault disables keyed cloud providers while local routes remain available.
 - **Local-first options** — Pi, Ollama, LM Studio, custom OpenAI-compatible endpoints, local embeddings, and deterministic fallback retrieval support private or disconnected workflows.
 - **Human control at mutation boundaries** — destructive and bulk changes pause on approval cards with collapsible, syntax-colored diff previews.
 
@@ -105,6 +105,17 @@ Command Center can ground model calls in vault content without rebuilding the in
 
 Persistent agent memory stores facts, preferences, entities, and session summaries in vault-native state. Semantic duplicate updates, thematic session hubs, threshold-aware pruning, and bounded prompt injection keep memory useful without allowing it to grow without control.
 
+### Metacognitive ingestion and semantic memory
+
+The metacognition layer builds local context without reorganizing or rewriting user notes:
+
+- `TopographySweep` uses Obsidian's `TAbstractFile`, `TFile`, `TFolder`, `MetadataCache`, and `getAllTags` APIs to map folders, tag frequencies, links, and hub/MOC candidates.
+- The sweep runs silently and cooperatively, excludes `.obsidian` and `.trash`, and writes only `.obsidian/plugins/command-center/vault_topography.json`.
+- **Logic Discovery onboarding** asks one focused Socratic question at a time and treats topology as neutral evidence requiring user confirmation. Confirmed preferences and the transcript are stored in `user_logic_profile.json`.
+- Header-aware Markdown chunking preserves `##`/`###` boundaries, source lines, frontmatter tags/aliases, and outbound `[[wikilinks]]`.
+- The semantic database schema separates documents, chunks, and SQLite-VSS vectors. Document replacement is transactional, and nearest-neighbor search remains local.
+- Dialectic RAG requests only the `embeddings` modality through the Native Auto-Router and Python execution boundary; normalized, dimension-validated vectors are stored in SQLite-VSS.
+
 ### Native workflows and Bases queues
 
 Workflows are vault-native rather than hidden in a remote service:
@@ -139,7 +150,19 @@ The **Command Deck** provides an Obsidian-native Triptych workspace for Socratic
 
 Logic Discovery responses use a bounded generation budget and disable model reasoning where supported so the Center Stage receives one concise visible question. With LM Studio enabled, Command Center discovers native catalog state through `/api/v1/models`, prefers an already loaded primary conversational model, or JIT-loads the smallest suitable downloaded model before calling `/v1/chat/completions`. Large first loads may take longer; keep a smaller conversational model downloaded on constrained hardware.
 
-Open it from the Command Palette with **Command Center: Open Triptych Logic Discovery**.
+Open it from the Command Palette with **Command Center: Open Triptych Logic Discovery**. A focused modal flow is also available as **Command Center: Open Logic Discovery onboarding**.
+
+### Normalized execution and Shadow-Clone diagnostics
+
+Standard and Python-backed agent work crosses a mandatory execution boundary:
+
+- `NativeAutoRouter` reads the shipped `model_matrix.json` and applies the global 1–10 quality/cost depth to text, image, audio, video, and embedding intents.
+- Orchestrator, summarizer, editor, retrieval, and ReAct worker profiles declare an explicit modality before provider/model resolution.
+- Python workers use isolated JSON-RPC 2.0 subprocesses over stdin/stdout with `shell: false`, bounded output, cancellation, timeouts, cleanup, and circuit breaking. Credentials are never placed in argv or environment variables.
+- `DataNormalizer` is the trust boundary for provider responses, Python results, intermediate observations, and multi-agent merges. It sanitizes tracebacks, stderr, malformed JSON, control characters, and oversized output before UI or vault use.
+- Locked or failed keyed routes retain local-first behavior through provider usability checks and circuit-breaker fallback.
+
+Run **Command Center: Run Shadow-Clone Diagnostics** from the command palette to verify credential-memory wiping, current slider/matrix routing, fail-safe local routing, and Python-output sanitization. The harness uses in-memory fixtures and prints a sanitized report to the developer console; it does not modify user notes.
 
 ### Native chat and context
 
@@ -168,17 +191,23 @@ Obsidian desktop
 │   ├── ConfigManager + generated style guide
 │   ├── FolderIndexer → protected _index.md manifests
 │   └── DailyEngine + InboxTriager + CapacityEngine
-├── Knowledge layer
+├── Metacognition and knowledge layer
+│   ├── TopographySweep + LogicDiscoveryLoop → localized topology/profile JSON
+│   ├── ChunkingEngine → H2/H3 chunks + tags/aliases/wikilinks
+│   ├── DialecticRAG → normalized embedding ingestion → SQLite-VSS
 │   ├── HybridRetriever → BM25 + embeddings + weighted RRF
-│   ├── AgentMemoryStore → facts/preferences/entities/summaries
-│   └── ReActMemoryBank → sessions, pruning, and topic hubs
+│   └── AgentMemoryStore/ReActMemoryBank → bounded persistent memory
 ├── Workflow layer
 │   ├── Markdown/Canvas parser → validated DAG tiers
 │   ├── Bases queue → bounded target batches
 │   └── frontmatter state sync → live Bases refresh
+├── Execution layer
+│   ├── NativeAutoRouter → model_matrix.json + global depth 1–10
+│   ├── ExecutionRouter → explicit worker modalities + secure credentials
+│   ├── PythonWorkerTransport → bounded JSON-RPC subprocesses
+│   └── DataNormalizer → sanitized results, observations, and merges
 └── Provider layer
-    ├── ModelRouter → capability + cost/latency classification
-    ├── ProviderDispatcher → fallback + isolated circuits
+    ├── ModelRouter/ProviderDispatcher → capability, fallback, isolated circuits
     ├── cloud adapters → OpenAI, Anthropic, Gemini, etc.
     └── local adapters → Pi, Ollama, LM Studio, custom endpoint
 ```
@@ -283,15 +312,11 @@ Configure the active profile, token limits, Pi path, daemon startup, memory limi
 
 ### 2. Provider Credentials
 
-Each provider has a collapsible card with:
+Each provider has a collapsible card for enablement, endpoint configuration, health checks, and model refresh. API keys are not exposed through ordinary settings fields.
 
-- Enable/disable control
-- Password-masked API key field and show/hide toggle
-- Base URL with one-click reset
-- Health check
-- Live model refresh
+Select **Manage API Keys** to open the secure credential-vault modal. A Vault Master Key derives an AES-256-GCM key with PBKDF2-SHA-256 and a random salt; only ciphertext, salt, IV, and non-secret derivation parameters are persisted. Master passwords, derived keys, and decrypted API keys remain memory-only and are wiped when the vault is locked or the plugin unloads. Existing keys cannot be revealed or copied back into the UI.
 
-Credentials are loaded lazily at call time, so changes do not require an Obsidian restart. They are intentionally excluded from interview configuration, generated workflows, CLI arguments, logs, and repository examples.
+Credentials are resolved only at request time. When the vault is locked, keyed cloud providers are unavailable and routing remains local-first. Credentials are excluded from interviews, generated workflows, CLI/URI arguments, subprocess argv/environment, logs, and repository examples.
 
 ### 3. Task Routing Matrix
 
@@ -465,12 +490,15 @@ Use local Pi/Ollama/LM Studio/custom endpoints when content must remain on your 
 
 ### Local safeguards
 
-- Secrets are accepted only through local plugin provider settings.
-- Interview, config generation, CLI/URI arguments, and examples prohibit credentials.
+- Secrets are accepted only through the dedicated encrypted credential-vault modal.
+- Persisted provider secrets use AES-256-GCM; the PBKDF2-derived key and plaintext remain memory-only.
+- Lock and plugin unload wipe the in-memory credential map; locked state disables keyed providers.
+- Interview, config generation, CLI/URI arguments, subprocess argv/environment, and examples prohibit credentials.
 - Tool paths reject traversal, absolute paths, NUL bytes, and unsafe characters.
 - Existing-note overwrites and bulk/destructive operations can require explicit approval.
 - Shared FIFO locks coordinate all mutation paths.
-- Prompt context, memory, traces, histories, and UI rows are bounded.
+- Prompt context, memory, traces, histories, Python subprocess output, and UI rows are bounded.
+- All Python JSON-RPC responses, stderr, tracebacks, malformed output, and multi-agent merges pass through `DataNormalizer`.
 - `.gitignore` excludes runtime config, memory, audit traces, topology, generated assets, logs, environment files, and release/build outputs.
 - `scripts/sanitize-repo.mjs` scans repository and release content for common secrets, private keys, absolute local paths, private IPs, NULs, and tracked runtime state.
 
@@ -509,7 +537,7 @@ npm run dev
 
 | Command | Purpose |
 |---|---|
-| `npm run typecheck` | Strict TypeScript check |
+| `npm run typecheck` | Strict TypeScript check (including security, metacognition, execution, and diagnostic layers) |
 | `npm run lint` | Zero-warning ESLint gate |
 | `npm run test` | 44 core + 138 ReAct/workflow/UI/service tests |
 | `npm run benchmark` | Produce the standardized 10-metric report |

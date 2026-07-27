@@ -80,10 +80,14 @@ import { LogicDiscovery, LOGIC_DISCOVERY_SYSTEM_PROMPT } from './ingestion/Logic
 import { NativeAutoRouter } from './routing/NativeAutoRouter';
 import { DataNormalizer } from './execution/DataNormalizer';
 import { ExecutionRouter } from './execution/ExecutionRouter';
+import { PythonWorkerTransport } from './execution/PythonWorkerTransport';
+import { BUNDLED_PYTHON_WORKER } from './execution/BundledPythonWorker';
 import { CommandDeck, COMMAND_DECK_VIEW_TYPE } from './ui/CommandDeck';
 import { MemoryCredentialVault } from './security/VaultCrypto';
 import { TopographySweep as PersistentTopographySweep, type VaultTopography } from './metacognition/TopographySweep';
 import { LogicDiscoveryLoop } from './metacognition/LogicDiscoveryLoop';
+import { SemanticDatabase } from './metacognition/SemanticDatabase';
+import { DialecticRAG } from './metacognition/DialecticRAG';
 import { ShadowTestHarness } from './testing/ShadowTestHarness';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -119,6 +123,9 @@ export default class CommandCenterPlugin extends Plugin {
 	orchestrator!: Orchestrator;
 	nativeAutoRouter!: NativeAutoRouter;
 	executionRouter!: ExecutionRouter;
+	pythonWorker!: PythonWorkerTransport;
+	semanticDatabase!: SemanticDatabase;
+	dialecticRag!: DialecticRAG;
 	topographySweep!: TopographySweep;
 	private topography: TopographyMap | null = null;
 	private persistentTopography: VaultTopography | null = null;
@@ -251,14 +258,28 @@ export default class CommandCenterPlugin extends Plugin {
 		);
 		// Mandatory route/normalization boundary for modality-aware command flows.
 		this.nativeAutoRouter = new NativeAutoRouter(this.app, this.providerFactory, () => this.settings);
+		await this.nativeAutoRouter.reload();
+		this.pythonWorker = new PythonWorkerTransport({
+			workerSource: BUNDLED_PYTHON_WORKER,
+			cwd: vaultPath,
+			timeoutMs: 60_000,
+		});
 		this.executionRouter = new ExecutionRouter(
 			this.dispatcher,
 			new DataNormalizer(),
-			undefined,
+			this.pythonWorker,
 			this.nativeAutoRouter,
 			this.credentialVault,
 		);
-		void this.nativeAutoRouter.reload();
+		// SQLite is an optional injected desktop capability. The database remains
+		// operational with an in-memory local index when no safe native driver exists.
+		this.semanticDatabase = new SemanticDatabase(undefined, 384);
+		await this.semanticDatabase.open();
+		this.dialecticRag = new DialecticRAG(
+			this.nativeAutoRouter,
+			this.pythonWorker,
+			this.semanticDatabase,
+		);
 		// Silent, read-only background topology observation. Results remain in memory.
 		this.topographySweep = new TopographySweep(this.app);
 		void this.topographySweep.run().then(snapshot => { this.topography = snapshot; }).catch(error => {
@@ -729,6 +750,8 @@ export default class CommandCenterPlugin extends Plugin {
 		this.daemon.trace.clearCallback();
 		this.commandCenterView = null;
 		this.commandCenterChatView = null;
+		this.pythonWorker?.dispose();
+		await this.semanticDatabase?.close();
 		this.daemon.stop();
 		// Final persistence flush: conversations + history
 		this.persistSessions();
