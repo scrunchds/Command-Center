@@ -8,7 +8,7 @@
  */
 
 import { requestUrl } from '../obsidian-request';
-import type { ProviderModel, ProviderResponse } from './provider-types';
+import type { ProviderModel, ProviderRequest, ProviderResponse } from './provider-types';
 import { OpenAICompatibleProvider } from './openai-compatible';
 
 export class LMStudioProvider extends OpenAICompatibleProvider {
@@ -21,6 +21,33 @@ export class LMStudioProvider extends OpenAICompatibleProvider {
 
 	protected getEndpoint(): string {
 		return `${this.serverRoot()}/v1/chat/completions`;
+	}
+
+	/** Resolve the exact model currently exposed by LM Studio for inference. */
+	async getActiveModelId(baseUrl: string = this.serverRoot()): Promise<string> {
+		const root = baseUrl.trim().replace(/\/+$/, '').replace(/\/(?:api\/v[01]|v1)$/i, '');
+		try {
+			const response = await requestUrl({
+				url: `${root}/v1/models`,
+				method: 'GET',
+				headers: this.buildListHeaders(this.getApiKey()),
+			});
+			const payload = response.json as { data?: Array<{ id?: unknown }> };
+			const id = payload.data?.[0]?.id;
+			if (typeof id === 'string' && id.trim()) return id.trim();
+		} catch {
+			// Normalize transport and response failures into an actionable message.
+		}
+		throw new Error('No model currently loaded in LM Studio. Please load a model into memory.');
+	}
+
+	/** Replace matrix placeholders with the model LM Studio reports as active. */
+	protected override async _completeImpl(request: ProviderRequest): Promise<ProviderResponse> {
+		const activeModelId = await this.getActiveModelId();
+		return super._completeImpl({
+			...request,
+			config: { ...request.config, model: activeModelId },
+		});
 	}
 
 	/**
