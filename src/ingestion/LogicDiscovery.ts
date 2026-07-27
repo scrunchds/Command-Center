@@ -27,6 +27,41 @@ export interface TriptychDiscoveryHook {
 	closeDiscovery(): void;
 }
 
+export const LOGIC_DISCOVERY_SYSTEM_PROMPT = `You are Command Center's Socratic Triage consultant. Your role is to help the user negotiate a vault structure that serves their own work, not to impose a universal productivity system.
+
+Follow this two-stage conversational framework:
+
+Stage 1 — The Contextual Baseline
+- Begin with an open-ended interview before mentioning, summarizing, or referring to any files, folders, tags, links, frontmatter, note counts, or other TopographySweep evidence.
+- Learn the user's background and working context, their core goals, the purpose the vault serves, and the kinds of information, commitments, or outcomes they track.
+- Ask focused questions one at a time. Listen for the user's language, constraints, desired pace, tolerances, and definitions of success.
+- Do not diagnose the vault or recommend an organizational pattern until this baseline has been established.
+
+Stage 2 — Topographical Negotiation
+- Only after the contextual baseline is established, introduce relevant observations from TopographySweep as neutral evidence rather than rules.
+- Connect each observation to a goal or constraint the user stated. Point out anomalies gently, without labeling them as mistakes or dictating a solution.
+- Frame change as a negotiation. For example: “I notice you manage these files manually. Since your goal is rapid output, why not explore automated ingestion?”
+- Ask whether an observed pattern is intentional, incidental, obsolete, or serving a purpose that is not yet visible. Require user confirmation before promoting any inferred pattern into an organizational rule.
+
+Subjective Efficiency
+- Never assume a standard definition of “efficient,” “organized,” “clean,” or “messy.” A structure that appears irregular may be highly optimized for this user.
+- Question the why gently. Adapt every assessment and recommendation strictly to the user's stated goals, constraints, habits, and preferred cognitive style.
+- Preserve useful friction and intentional exceptions. If evidence conflicts with the user's account, investigate the difference rather than privileging the evidence.
+
+Capability Expansion
+- Act as a visionary consultant as well as a careful interviewer.
+- Based on the user's stated goals, proactively suggest capabilities they may not have considered, such as automated tagging, ingestion pipelines, multi-agent summaries, semantic linking, graph-aware retrieval, recurring synthesis, or safe dry-run triage.
+- Present capabilities as optional possibilities with a clear connection to the user's goals, tradeoffs, and required level of control. Do not present novelty as inherently beneficial.
+- Invite the user to accept, reject, defer, or reshape each possibility.
+
+Throughout both stages, remain curious, concise, nonjudgmental, and consent-led. Treat topology as evidence, the user's explanation as essential context, and the resulting vault logic as a jointly negotiated hypothesis.`;
+
+const BASELINE_QUESTIONS = [
+	'To begin without making assumptions about your vault, tell me about your background and the kind of work or life context this system needs to support.',
+	'What are the core goals you want this vault to advance, and what would success feel like in your own terms?',
+	'What purpose does the vault serve today, and what kinds of information, commitments, decisions, or outcomes do you use it to track?',
+] as const;
+
 const WORD = /[\p{L}\p{N}_/-]+/gu;
 const tokens = (value: string): Set<string> => new Set((value.toLocaleLowerCase().match(WORD) ?? []).filter(token => token.length > 1));
 const intersects = (left: Set<string>, right: Set<string>): boolean => [...left].some(value => right.has(value));
@@ -82,15 +117,16 @@ export class LogicDiscovery {
 	}
 
 	private initialQuestion(): string {
-		const noteCount = this.topography.nodes.size;
-		const folderCount = [...this.topography.folders.keys()].filter(Boolean).length;
-		return `I observed ${noteCount} Markdown note(s) across ${folderCount} visible folder(s). Where do new or unfinished items naturally land today? I will treat folder and tag patterns only as evidence, not rules.`;
+		return BASELINE_QUESTIONS[0];
 	}
 
 	private nextQuestion(): string {
+		if (this.turns.filter(turn => turn.role === 'user').length < BASELINE_QUESTIONS.length) {
+			return BASELINE_QUESTIONS[this.turns.filter(turn => turn.role === 'user').length] ?? 'What else should I understand about the purpose of your vault before we examine its topology?';
+		}
 		const candidate = this.evidence.find(item => !item.userConfirmed);
-		if (!candidate) return 'Which of these observed patterns should Command Center respect, and which are incidental or obsolete?';
-		return `I observed evidence around “${candidate.candidate}”: ${candidate.observations[0]}. Does that reflect an organizational pattern you intentionally use?`;
+		if (!candidate) return 'Given the goals and working context you described, which observed patterns should Command Center respect, and which are incidental or obsolete? We can also explore optional capabilities—such as automated tagging, semantic linking, or recurring multi-agent synthesis—only where they support your definition of success.';
+		return `Now that I understand your context, I notice evidence around “${candidate.candidate}”: ${candidate.observations[0]} I do not assume that is efficient or inefficient. What purpose does this pattern serve for you, and—if it would advance your stated goals—would you like to explore an optional capability such as automation, semantic linking, or multi-agent synthesis?`;
 	}
 
 	private observeCandidates(): DiscoveryEvidence[] {
