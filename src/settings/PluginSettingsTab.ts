@@ -37,6 +37,7 @@ import {
 	METACOGNITIVE_DEPTH_MAX,
 } from '../settings';
 import { detectPiPath, clearPiDetectionCache } from '../daemon';
+import { CredentialVaultModal } from '../security/CredentialVaultModal';
 
 /* ═══════════════════════════════════════════════════════════
    Constants
@@ -446,6 +447,13 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Bulk action bar
 		const actionBar = headerRow.createDiv({ cls: 'cc-provider-actions' });
+		this.createButton(actionBar, '🔐 Manage API Keys', () => {
+			new CredentialVaultModal(this.app, this.plugin, () => this.update()).open();
+		});
+		actionBar.createSpan({
+			cls: 'cc-provider-key-badge',
+			text: this.plugin.credentialVault.unlocked ? '🔓 Vault unlocked' : '🔒 Vault locked · local-only',
+		});
 		this.createButton(actionBar, 'Test All', async () => {
 			const btns = actionBar.querySelectorAll('button');
 			const testBtn = btns[0] as HTMLButtonElement;
@@ -610,53 +618,16 @@ export class PluginSettingsTab extends PluginSettingTab {
 			text: `📐 ${this.formatContext(caps.maxContextWindow)} ctx`,
 		});
 
-		// API Key (only for providers that require it)
+		// API keys are managed only inside the isolated credential modal.
 		if (meta.requiresKey) {
 			const keyRow = cardBody.createDiv({ cls: 'cc-credential-row' });
 			keyRow.createSpan({ cls: 'cc-credential-label', text: 'API Key' });
-
-			const keyInputContainer = keyRow.createDiv({
-				cls: 'cc-key-input-container',
+			keyRow.createSpan({
+				cls: 'cc-provider-key-badge',
+				text: !this.plugin.credentialVault.unlocked ? '🔒 Vault locked' : this.plugin.credentialVault.has(pid) ? '🔐 Configured' : 'Not configured',
 			});
-			const keyInput = keyInputContainer.createEl('input', {
-				type: 'password',
-				cls: 'cc-key-input',
-				attr: {
-					placeholder: 'sk-...',
-					autocomplete: 'off',
-					spellcheck: 'false',
-				},
-			});
-			keyInput.value = cred.apiKey;
-
-			const eyeBtn = keyInputContainer.createSpan({
-				cls: 'cc-eye-toggle',
-				text: '👁️',
-			});
-			eyeBtn.setAttribute('title', 'Show/hide API key');
-			let keyVisible = false;
-			eyeBtn.addEventListener('click', () => {
-				keyVisible = !keyVisible;
-				keyInput.type = keyVisible ? 'text' : 'password';
-				eyeBtn.textContent = keyVisible ? '🙈' : '👁️';
-			});
-
-			keyInput.addEventListener('change',  () => { void (async () => {
-				const c = mp.credentials[pid]!;
-				c.apiKey = keyInput.value.trim();
-				this.plugin.providerFactory.invalidate(pid);
-				this.healthStatus.set(pid, 'idle');
-				this.healthErrors.delete(pid);
-				await this.plugin.saveSettings();
-				this.showSaved();
-			})(); });
-
-			// Key strength indicator
-			const strengthEl = keyRow.createSpan({ cls: 'cc-key-strength' });
-			this.updateKeyStrength(strengthEl, cred.apiKey);
-			keyInput.addEventListener('input', () => {
-				this.updateKeyStrength(strengthEl, keyInput.value);
-			});
+			const manage = keyRow.createEl('button', { text: 'Manage Securely' });
+			manage.addEventListener('click', () => new CredentialVaultModal(this.app, this.plugin, () => this.update()).open());
 		}
 
 		// Base URL — HTTP providers only. Pi Daemon is a local subprocess.
@@ -847,7 +818,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		});
 		if (
 			health === 'checking' ||
-			(!enabled && meta.requiresKey && !cred.apiKey)
+			(meta.requiresKey && (!enabled || !this.plugin.credentialVault.has(pid)))
 		) {
 			testBtn.disabled = true;
 		}
@@ -856,37 +827,6 @@ export class PluginSettingsTab extends PluginSettingTab {
 			this.update();
 		})(); });
 
-		// Copy key button (only if key exists)
-		if (cred.apiKey) {
-			const copyBtn = actionsRow.createEl('button', {
-				text: '📋 Copy Key',
-				cls: 'cc-copy-btn',
-			});
-			copyBtn.addEventListener('click',  () => { void (async () => {
-				await navigator.clipboard.writeText(cred.apiKey);
-				copyBtn.textContent = '✅ Copied!';
-				window.setTimeout(() => {
-					copyBtn.textContent = '📋 Copy Key';
-				}, 2000);
-			})(); });
-		}
-
-		// Clear credentials button
-		const clearBtn = actionsRow.createEl('button', {
-			text: '🗑 Clear',
-			cls: 'cc-clear-btn',
-		});
-		clearBtn.addEventListener('click',  () => { void (async () => {
-			const c = mp.credentials[pid]!;
-			c.apiKey = '';
-			c.baseUrl = meta.defaultBaseUrl ?? '';
-			c.enabled = false;
-			this.plugin.providerFactory.invalidate(pid);
-			this.healthStatus.set(pid, 'idle');
-			this.healthErrors.delete(pid);
-			await this.plugin.saveSettings();
-			this.update();
-		})(); });
 	}
 
 	/* ═══════════════════════════════════════════════════════

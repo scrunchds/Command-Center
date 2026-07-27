@@ -6,6 +6,7 @@
  */
 
 import type { MultiProviderSettings } from './providers/provider-types';
+import type { EncryptedCredentialPayload } from './security/VaultCrypto';
 import { DEFAULT_FALLBACK_CONFIG } from './providers/provider-types';
 import { DEFAULT_ROUTING } from './routing';
 
@@ -25,6 +26,8 @@ export interface CommandCenterSettings {
 	 * Integer only. Drives NativeAutoRouter intent resolution against
 	 * model_matrix.json. Lower = local/cheap, higher = cloud/premium. */
 	metacognitiveDepth: number;
+	/** AES-GCM ciphertext only; plaintext credentials are memory-only. */
+	encryptedCredentialVault?: EncryptedCredentialPayload;
 }
 
 export const DEFAULT_MULTI_PROVIDER: MultiProviderSettings = {

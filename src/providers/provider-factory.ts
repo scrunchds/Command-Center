@@ -8,7 +8,7 @@
 
 import type {
 	IProviderAdapter, ProviderId, MultiProviderSettings,
-	ProviderCredentials, TaskType, ProviderModel,
+	TaskType, ProviderModel,
 } from './provider-types';
 import { sanitizeBaseUrl } from './provider-types';
 import { PROVIDER_REGISTRY } from './provider-registry';
@@ -21,6 +21,7 @@ import { PiDaemonAdapter } from './pi-daemon-provider';
 import type { PiAgentDaemon } from '../daemon';
 import { BaseHttpProvider, type BaseHttpProviderOptions } from './base-http-provider';
 import { JitModelManager } from './jit-manager';
+import type { MemoryCredentialVault } from '../security/VaultCrypto';
 
 /* ─── Factory ──────────────────────────────────────────── */
 
@@ -32,6 +33,7 @@ export class ProviderFactory {
 
 	constructor(
 		daemon: PiAgentDaemon, getSettings: () => MultiProviderSettings,
+		private readonly credentialVault: MemoryCredentialVault,
 		jitModelManager: JitModelManager = new JitModelManager(),
 	) {
 		this.daemon = daemon;
@@ -86,8 +88,9 @@ export class ProviderFactory {
 		const cred = this.getSettings().credentials[id];
 		const requiresKey = PROVIDER_REGISTRY[id]?.requiresKey ?? true;
 		if (requiresKey) {
-			// isAvailable() already verified a key is configured; the key is the opt-in.
-			return true;
+			// Locked credential vaults deliberately make cloud providers unusable,
+			// allowing the existing local-first fallback chain to remain authoritative.
+			return this.credentialVault.unlocked && this.credentialVault.has(id) && cred?.enabled === true;
 		}
 		// Keyless local providers require explicit opt-in.
 		return cred?.enabled === true;
@@ -180,11 +183,7 @@ export class ProviderFactory {
 		const meta = { ...PROVIDER_REGISTRY[id] };
 		return {
 			id, meta,
-			getApiKey: () => {
-				const settings = this.getSettings();
-				const cred: Partial<ProviderCredentials> = settings.credentials[id] ?? {};
-				return cred.apiKey ?? '';
-			},
+			getApiKey: () => this.credentialVault.get(id),
 			getBaseUrl: () => this.getBaseUrl(id),
 		};
 	}

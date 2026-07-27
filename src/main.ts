@@ -81,6 +81,10 @@ import { NativeAutoRouter } from './routing/NativeAutoRouter';
 import { DataNormalizer } from './execution/DataNormalizer';
 import { ExecutionRouter } from './execution/ExecutionRouter';
 import { CommandDeck, COMMAND_DECK_VIEW_TYPE } from './ui/CommandDeck';
+import { MemoryCredentialVault } from './security/VaultCrypto';
+import { TopographySweep as PersistentTopographySweep, type VaultTopography } from './metacognition/TopographySweep';
+import { LogicDiscoveryLoop } from './metacognition/LogicDiscoveryLoop';
+import { ShadowTestHarness } from './testing/ShadowTestHarness';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
@@ -107,6 +111,7 @@ export default class CommandCenterPlugin extends Plugin {
 
 	/** Multi-provider subsystem (v2.0). */
 	providerFactory!: ProviderFactory;
+	readonly credentialVault = new MemoryCredentialVault();
 	dispatcher!: ProviderDispatcher;
 	router!: ModelRouter;
 	endpointRouter!: EndpointModelRouter;
@@ -116,6 +121,7 @@ export default class CommandCenterPlugin extends Plugin {
 	executionRouter!: ExecutionRouter;
 	topographySweep!: TopographySweep;
 	private topography: TopographyMap | null = null;
+	private persistentTopography: VaultTopography | null = null;
 	private commandDeck: CommandDeck | null = null;
 
 	private taskHistory: StoredTask[] = [];
@@ -237,6 +243,7 @@ export default class CommandCenterPlugin extends Plugin {
 		this.providerFactory = new ProviderFactory(
 			this.daemon,
 			() => this.settings.multiProvider,
+			this.credentialVault,
 		);
 		this.dispatcher = new ProviderDispatcher(
 			this.providerFactory,
@@ -244,12 +251,31 @@ export default class CommandCenterPlugin extends Plugin {
 		);
 		// Mandatory route/normalization boundary for modality-aware command flows.
 		this.nativeAutoRouter = new NativeAutoRouter(this.app, this.providerFactory, () => this.settings);
-		this.executionRouter = new ExecutionRouter(this.dispatcher, new DataNormalizer());
+		this.executionRouter = new ExecutionRouter(
+			this.dispatcher,
+			new DataNormalizer(),
+			undefined,
+			this.nativeAutoRouter,
+			this.credentialVault,
+		);
 		void this.nativeAutoRouter.reload();
 		// Silent, read-only background topology observation. Results remain in memory.
 		this.topographySweep = new TopographySweep(this.app);
 		void this.topographySweep.run().then(snapshot => { this.topography = snapshot; }).catch(error => {
 			console.warn('[CC] Background topography sweep unavailable:', error);
+		});
+		const persistentSweep = new PersistentTopographySweep(this.app);
+		void persistentSweep.run().then(snapshot => { this.persistentTopography = snapshot; }).catch(error => {
+			console.warn('[CC] Localized topography map unavailable:', error);
+		});
+		this.addCommand({
+			id: 'open-logic-discovery-loop',
+			name: 'Open Logic Discovery onboarding',
+			callback: () => { void (async () => {
+				const topology = this.persistentTopography ?? await persistentSweep.run();
+				this.persistentTopography = topology;
+				new LogicDiscoveryLoop(this.app, topology).open();
+			})(); },
 		});
 		this.router = new ModelRouter(
 			this.providerFactory,
@@ -469,6 +495,11 @@ export default class CommandCenterPlugin extends Plugin {
 			callback: () => this.confirmResetConfiguration(),
 		});
 		this.addCommand({
+			id: 'run-shadow-clone-diagnostics',
+			name: 'Run Shadow-Clone Diagnostics',
+			callback: () => { void this.runShadowCloneDiagnostics(); },
+		});
+		this.addCommand({
 			id: 'open-triptych-logic-discovery',
 			name: 'Open Triptych Logic Discovery',
 			callback: () => { void this.openTriptychDiscovery(); },
@@ -609,7 +640,7 @@ export default class CommandCenterPlugin extends Plugin {
 			if (!credentials?.enabled || !credentials.baseUrl) continue;
 			return {
 				baseUrl: sanitizeBaseUrl(credentials.baseUrl),
-				apiKey: credentials.apiKey,
+				apiKey: this.credentialVault.get(providerId),
 				providerId,
 				ttl: this.settings.multiProvider.defaults.ttl,
 				keepAlive: this.settings.multiProvider.defaults.keepAlive,
@@ -660,6 +691,14 @@ export default class CommandCenterPlugin extends Plugin {
 		}, null, 2);
 	}
 
+	private async runShadowCloneDiagnostics(): Promise<void> {
+		const harness = new ShadowTestHarness(this.nativeAutoRouter);
+		const report = await harness.runDiagnostics();
+		const markdown = harness.formatReport(report);
+		console.info('[Command Center] Shadow-Clone Diagnostics\n' + markdown);
+		new Notice(`Shadow-Clone diagnostics: ${report.passed}/${report.total} passed. See developer console for the sanitized report.`, 8000);
+	}
+
 	private async openTriptychDiscovery(): Promise<void> {
 		if (!this.topography) this.topography = await this.topographySweep.run();
 		let leaf = this.app.workspace.getLeavesOfType(COMMAND_DECK_VIEW_TYPE)[0];
@@ -675,6 +714,7 @@ export default class CommandCenterPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		this.credentialVault.lock();
 		void this.unloadAsync().catch((error: unknown) => {
 			console.error('[CC] Final unload flush failed:', error);
 		});
@@ -810,6 +850,10 @@ export default class CommandCenterPlugin extends Plugin {
 	/* ─── Settings persistence ──────────────────────── */
 
 	async saveSettings(): Promise<void> {
+		// Defense in depth: strip legacy plaintext fields before every disk write.
+		for (const credentials of Object.values(this.settings.multiProvider.credentials)) {
+			if (credentials && 'apiKey' in credentials) delete (credentials as unknown as { apiKey?: string }).apiKey;
+		}
 		this.persist.setSettings({ ...this.settings });
 		await this.persist.forceFlush();
 	}

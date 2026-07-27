@@ -23,11 +23,29 @@ const stripControlCharacters = (value: string): string => [...value].filter(char
 
 /** Mandatory trust boundary between external processes and Markdown consumers. */
 export class DataNormalizer {
+	normalizeMany(payloads: readonly unknown[], source: ExecutionSource): NormalizedExecutionResult[] {
+		return payloads.map(payload => this.normalize(payload, source));
+	}
+
+	merge(payloads: readonly unknown[], source: ExecutionSource): NormalizedExecutionResult {
+		const results = this.normalizeMany(payloads, source);
+		const failure = results.find(result => !result.success);
+		return {
+			schemaVersion: 1,
+			success: !failure,
+			content: results.filter(result => result.success && result.content).map(result => result.content).join('\n\n---\n\n'),
+			...(failure ? { error: failure.error ?? 'One or more agent workers failed safely.' } : {}),
+			latencyMs: results.reduce((total, result) => total + result.latencyMs, 0),
+			source,
+		};
+	}
+
 	normalize(payload: unknown, source: ExecutionSource): NormalizedExecutionResult {
 		const value = this.toRecord(payload);
-		const success = value.success === true;
-		const content = this.cleanText(this.string(value.content) ?? this.string(value.output) ?? this.nestedOutput(value.result));
-		const error = this.cleanError(this.string(value.error));
+		const nested = this.toOptionalRecord(value.result);
+		const success = value.success === true && nested?.success !== false;
+		const content = this.cleanText(this.string(value.content) ?? this.string(value.output) ?? this.string(value.result) ?? this.string(nested?.content) ?? this.string(nested?.output));
+		const error = this.cleanError(this.string(value.error) ?? this.string(nested?.error) ?? (success ? undefined : this.string(value.stderr)));
 		return {
 			schemaVersion: 1,
 			success: success && !error,
@@ -53,10 +71,12 @@ export class DataNormalizer {
 		}
 		return payload !== null && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : { success: false, error: 'Worker returned an invalid payload.' };
 	}
-	private nestedOutput(value: unknown): string | undefined { return this.string(this.toRecord(value).output); }
+	private toOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+		return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+	}
 	private string(value: unknown): string | undefined { return typeof value === 'string' ? value : undefined; }
 	private cleanText(value = ''): string {
-		return stripControlCharacters(value).split(/\r?\n/).filter(line => !STACK_LINE.test(line)).join('\n').trim();
+		return stripControlCharacters(value).split(/\r?\n/).filter(line => !STACK_LINE.test(line)).join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 1_000_000);
 	}
 	private cleanError(value?: string): string | undefined {
 		if (!value) return undefined;
