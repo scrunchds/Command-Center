@@ -19,11 +19,11 @@
   },
   "matrix": {
     "text": {
-      "1":  { "providerId": "pi-daemon",  "modelId": "default",          "rationale": "Local ReAct subprocess, zero cost, always usable." },
-      "2":  { "providerId": "ollama",     "modelId": "llama3.2:3b",      "rationale": "Local 3B, low VRAM, offline." },
-      "3":  { "providerId": "lmstudio",   "modelId": "local-model",      "rationale": "Local whatever-is-loaded, free." },
-      "4":  { "providerId": "ollama",     "modelId": "llama3.1:8b",      "rationale": "Local 8B, balanced." },
-      "5":  { "providerId": "groq",       "modelId": "llama-3.3-70b-versatile", "rationale": "Cloud, very fast, cheap." },
+      "1":  { "providerId": "lmstudio",   "modelId": "default",          "rationale": "Explicit local LM Studio conversational route." },
+      "2":  { "providerId": "lmstudio",   "modelId": "default",          "rationale": "Explicit local LM Studio conversational route." },
+      "3":  { "providerId": "lmstudio",   "modelId": "default",          "rationale": "Explicit local LM Studio conversational route." },
+      "4":  { "providerId": "lmstudio",   "modelId": "default",          "rationale": "Explicit local LM Studio reasoning route." },
+      "5":  { "providerId": "lmstudio",   "modelId": "default",          "rationale": "Explicit local LM Studio reasoning route." },
       "6":  { "providerId": "openrouter", "modelId": "meta-llama/llama-3.3-70b-instruct", "rationale": "Cloud open model, moderate." },
       "7":  { "providerId": "deepinfra",  "modelId": "meta-llama/Llama-3.3-70B-Instruct", "rationale": "Cloud 70B, moderate cost." },
       "8":  { "providerId": "mistral",    "modelId": "mistral-large-latest", "rationale": "Cloud frontier-class." },
