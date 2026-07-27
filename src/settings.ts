@@ -21,6 +21,10 @@ export interface CommandCenterSettings {
 	silentDailyStartup: boolean;
 	/** Multi-provider configuration (added in v2.0). */
 	multiProvider: MultiProviderSettings;
+	/** Command-Center: 1-10 Metacognitive Depth (Quality-Cost) slider.
+	 * Integer only. Drives NativeAutoRouter intent resolution against
+	 * model_matrix.json. Lower = local/cheap, higher = cloud/premium. */
+	metacognitiveDepth: number;
 }
 
 export const DEFAULT_MULTI_PROVIDER: MultiProviderSettings = {
@@ -38,7 +42,12 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	memoryMaxNotes: 100,
 	silentDailyStartup: false,
 	multiProvider: DEFAULT_MULTI_PROVIDER,
+	metacognitiveDepth: 3,
 };
+
+/** Bounds for the Metacognitive Depth slider (Directive 1.6). */
+export const METACOGNITIVE_DEPTH_MIN = 1;
+export const METACOGNITIVE_DEPTH_MAX = 10;
 
 // Re-export the dynamic settings tab for convenience
 export { PluginSettingsTab } from './settings/PluginSettingsTab';

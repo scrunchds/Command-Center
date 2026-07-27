@@ -1,0 +1,125 @@
+{
+  "$schema": "https://command-center.local/schemas/model_matrix.v1.json",
+  "version": 1,
+  "description": "Command-Center Native Auto-Router matrix. Maps the strict 1-10 Quality-Cost slider across the 8-Modality OpenRouter taxonomy to (providerId, modelId) pairs. Local-first: lower slider values bias toward lmstudio/ollama/pi-daemon; higher values escalate to cloud endpoints. This file is hot-reloadable, schema-validated, and credential-free (Directive 1.4). On schema violation or missing entry the loader fails closed to the static registry defaults (see NativeAutoRouter.ts).",
+  "taxonomy": [
+    "text",
+    "image",
+    "embeddings",
+    "audio",
+    "video",
+    "re-rank",
+    "speech",
+    "transcription"
+  ],
+  "scale": {
+    "min": 1,
+    "max": 10,
+    "description": "Integer-only Quality-Cost depth. 1 = cheapest/local-fastest, 10 = highest-quality/cost. No fractional values."
+  },
+  "matrix": {
+    "text": {
+      "1":  { "providerId": "pi-daemon",  "modelId": "default",          "rationale": "Local ReAct subprocess, zero cost, always usable." },
+      "2":  { "providerId": "ollama",     "modelId": "llama3.2:3b",      "rationale": "Local 3B, low VRAM, offline." },
+      "3":  { "providerId": "lmstudio",   "modelId": "local-model",      "rationale": "Local whatever-is-loaded, free." },
+      "4":  { "providerId": "ollama",     "modelId": "llama3.1:8b",      "rationale": "Local 8B, balanced." },
+      "5":  { "providerId": "groq",       "modelId": "llama-3.3-70b-versatile", "rationale": "Cloud, very fast, cheap." },
+      "6":  { "providerId": "openrouter", "modelId": "meta-llama/llama-3.3-70b-instruct", "rationale": "Cloud open model, moderate." },
+      "7":  { "providerId": "deepinfra",  "modelId": "meta-llama/Llama-3.3-70B-Instruct", "rationale": "Cloud 70B, moderate cost." },
+      "8":  { "providerId": "mistral",    "modelId": "mistral-large-latest", "rationale": "Cloud frontier-class." },
+      "9":  { "providerId": "anthropic",  "modelId": "claude-3-5-sonnet-latest", "rationale": "Cloud high-quality reasoning." },
+      "10": { "providerId": "openai",     "modelId": "gpt-4o",           "rationale": "Cloud premium, max quality." }
+    },
+    "image": {
+      "1":  { "providerId": "ollama",     "modelId": "llava:7b",         "rationale": "Local vision, free." },
+      "2":  { "providerId": "lmstudio",   "modelId": "local-model",      "rationale": "Local loaded vision model." },
+      "3":  { "providerId": "ollama",     "modelId": "llava:13b",        "rationale": "Local larger vision." },
+      "4":  { "providerId": "ollama",     "modelId": "llava:34b",        "rationale": "Local heavy vision." },
+      "5":  { "providerId": "deepinfra",  "modelId": "openai/vision",    "rationale": "Cloud open vision." },
+      "6":  { "providerId": "openrouter", "modelId": "openai/gpt-4o-mini", "rationale": "Cloud cheap vision." },
+      "7":  { "providerId": "groq",       "modelId": "llama-3.2-90b-vision-preview", "rationale": "Cloud fast vision." },
+      "8":  { "providerId": "openrouter", "modelId": "anthropic/claude-3.5-sonnet", "rationale": "Cloud strong multimodal." },
+      "9":  { "providerId": "anthropic",  "modelId": "claude-3-5-sonnet-latest", "rationale": "Cloud frontier vision." },
+      "10": { "providerId": "openai",     "modelId": "gpt-4o",           "rationale": "Cloud premium vision." }
+    },
+    "embeddings": {
+      "1":  { "providerId": "ollama",     "modelId": "nomic-embed-text", "rationale": "Local embeddings, free." },
+      "2":  { "providerId": "ollama",     "modelId": "mxbai-embed-large","rationale": "Local embeddings." },
+      "3":  { "providerId": "lmstudio",   "modelId": "local-model",      "rationale": "Local loaded embedder." },
+      "4":  { "providerId": "ollama",     "modelId": "snowflake-arctic-embed", "rationale": "Local long-context embeddings." },
+      "5":  { "providerId": "cohere",     "modelId": "embed-english-light-v3.0", "rationale": "Cloud cheap embeddings." },
+      "6":  { "providerId": "cohere",     "modelId": "embed-english-v3.0", "rationale": "Cloud embeddings." },
+      "7":  { "providerId": "mistral",    "modelId": "mistral-embed",    "rationale": "Cloud embeddings." },
+      "8":  { "providerId": "openrouter", "modelId": "openai/text-embedding-3-small", "rationale": "Cloud embeddings." },
+      "9":  { "providerId": "openai",     "modelId": "text-embedding-3-small", "rationale": "Cloud quality embeddings." },
+      "10": { "providerId": "openai",     "modelId": "text-embedding-3-large", "rationale": "Cloud premium embeddings." }
+    },
+    "audio": {
+      "1":  { "providerId": "ollama",     "modelId": "qwen2-audio:7b",   "rationale": "Local audio model (placeholder)." },
+      "2":  { "providerId": "lmstudio",   "modelId": "local-model",      "rationale": "Local loaded audio model." },
+      "3":  { "providerId": "ollama",     "modelId": "qwen2-audio:7b-instruct", "rationale": "Local instructed audio." },
+      "4":  { "providerId": "deepinfra",  "modelId": "openai/whisper",   "rationale": "Cloud open audio." },
+      "5":  { "providerId": "groq",       "modelId": "whisper-large-v3", "rationale": "Cloud fast audio." },
+      "6":  { "providerId": "openrouter", "modelId": "openai/whisper-1",  "rationale": "Cloud audio." },
+      "7":  { "providerId": "deepinfra",  "modelId": "openai/audio",     "rationale": "Cloud audio." },
+      "8":  { "providerId": "openrouter", "modelId": "openai/gpt-4o-audio", "rationale": "Cloud multimodal audio." },
+      "9":  { "providerId": "openai",     "modelId": "gpt-4o-audio-preview", "rationale": "Cloud quality audio." },
+      "10": { "providerId": "openai",     "modelId": "gpt-4o-audio",     "rationale": "Cloud premium audio." }
+    },
+    "video": {
+      "1":  { "providerId": "lmstudio",   "modelId": "local-model",      "rationale": "Local loaded video model (placeholder)." },
+      "2":  { "providerId": "ollama",     "modelId": "llava:7b",         "rationale": "Local frame analysis fallback." },
+      "3":  { "providerId": "ollama",     "modelId": "llava:13b",        "rationale": "Local heavier frame analysis." },
+      "4":  { "providerId": "deepinfra",  "modelId": "openai/vision",    "rationale": "Cloud open video frames." },
+      "5":  { "providerId": "openrouter", "modelId": "openai/gpt-4o-mini", "rationale": "Cloud cheap frame analysis." },
+      "6":  { "providerId": "groq",       "modelId": "llama-3.2-90b-vision-preview", "rationale": "Cloud fast frames." },
+      "7":  { "providerId": "openrouter", "modelId": "anthropic/claude-3.5-sonnet", "rationale": "Cloud multimodal frames." },
+      "8":  { "providerId": "anthropic",  "modelId": "claude-3-5-sonnet-latest", "rationale": "Cloud frontier frame analysis." },
+      "9":  { "providerId": "openai",     "modelId": "gpt-4o",           "rationale": "Cloud quality video." },
+      "10": { "providerId": "openai",     "modelId": "gpt-4o",           "rationale": "Cloud premium video." }
+    },
+    "re-rank": {
+      "1":  { "providerId": "ollama",     "modelId": "nomic-embed-text", "rationale": "Local embedder as re-ranker stand-in." },
+      "2":  { "providerId": "lmstudio",   "modelId": "local-model",      "rationale": "Local loaded model." },
+      "3":  { "providerId": "ollama",     "modelId": "mxbai-embed-large","rationale": "Local re-rank proxy." },
+      "4":  { "providerId": "cohere",     "modelId": "rerank-english-v3.0", "rationale": "Cloud cheap re-rank." },
+      "5":  { "providerId": "cohere",     "modelId": "rerank-english-v3.0", "rationale": "Cloud re-rank." },
+      "6":  { "providerId": "cohere",     "modelId": "rerank-multilingual-v3.0", "rationale": "Cloud multilingual re-rank." },
+      "7":  { "providerId": "openrouter", "modelId": "cohere/rerank-english-v3.0", "rationale": "Cloud re-rank via OpenRouter." },
+      "8":  { "providerId": "openrouter", "modelId": "cohere/rerank-multilingual-v3.0", "rationale": "Cloud re-rank." },
+      "9":  { "providerId": "cohere",     "modelId": "rerank-english-v3.0", "rationale": "Cloud quality re-rank." },
+      "10": { "providerId": "cohere",     "modelId": "rerank-multilingual-v3.0", "rationale": "Cloud premium re-rank." }
+    },
+    "speech": {
+      "1":  { "providerId": "ollama",     "modelId": "qwen2-audio:7b",   "rationale": "Local TTS stand-in (placeholder)." },
+      "2":  { "providerId": "lmstudio",   "modelId": "local-model",      "rationale": "Local loaded speech model." },
+      "3":  { "providerId": "ollama",     "modelId": "qwen2-audio:7b-instruct", "rationale": "Local instructed speech." },
+      "4":  { "providerId": "deepinfra",  "modelId": "openai/tts",       "rationale": "Cloud open TTS." },
+      "5":  { "providerId": "groq",       "modelId": "whisper-large-v3", "rationale": "Cloud fast speech proxy." },
+      "6":  { "providerId": "openrouter", "modelId": "openai/tts-1",     "rationale": "Cloud TTS." },
+      "7":  { "providerId": "openrouter", "modelId": "openai/tts-1-hd",  "rationale": "Cloud HD TTS." },
+      "8":  { "providerId": "openai",     "modelId": "tts-1-hd",         "rationale": "Cloud quality TTS." },
+      "9":  { "providerId": "openai",     "modelId": "tts-1-hd",         "rationale": "Cloud quality TTS." },
+      "10": { "providerId": "openai",     "modelId": "tts-1-hd",         "rationale": "Cloud premium TTS." }
+    },
+    "transcription": {
+      "1":  { "providerId": "ollama",     "modelId": "whisper",          "rationale": "Local whisper (placeholder)." },
+      "2":  { "providerId": "lmstudio",   "modelId": "local-model",      "rationale": "Local loaded transcriber." },
+      "3":  { "providerId": "ollama",     "modelId": "whisper-large",    "rationale": "Local heavy transcriber." },
+      "4":  { "providerId": "deepinfra",  "modelId": "openai/whisper",   "rationale": "Cloud open transcription." },
+      "5":  { "providerId": "groq",       "modelId": "whisper-large-v3", "rationale": "Cloud fast transcription." },
+      "6":  { "providerId": "openrouter", "modelId": "openai/whisper-1",  "rationale": "Cloud transcription." },
+      "7":  { "providerId": "groq",       "modelId": "whisper-large-v3-turbo", "rationale": "Cloud fast turbo transcription." },
+      "8":  { "providerId": "openrouter", "modelId": "openai/whisper-1",  "rationale": "Cloud transcription." },
+      "9":  { "providerId": "openai",     "modelId": "whisper-1",        "rationale": "Cloud quality transcription." },
+      "10": { "providerId": "openai",     "modelId": "whisper-1",        "rationale": "Cloud premium transcription." }
+    }
+  },
+  "fallbackBehavior": {
+    "description": "When a resolved (providerId, modelId) is not usable (ProviderFactory.isUsable() === false) or fails, control returns to the existing reliability-first fallback chain. The NativeAutoRouter never short-circuits fallback — it only selects the primary intent.",
+    "failClosedDefault": {
+      "providerId": "pi-daemon",
+      "modelId": "default"
+    }
+  }
+}

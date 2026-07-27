@@ -32,6 +32,10 @@ import {
 	getDefaultModelForProvider,
 } from '../providers/provider-registry';
 import { DEFAULT_ROUTING } from '../routing';
+import {
+	METACOGNITIVE_DEPTH_MIN,
+	METACOGNITIVE_DEPTH_MAX,
+} from '../settings';
 import { detectPiPath, clearPiDetectionCache } from '../daemon';
 
 /* ═══════════════════════════════════════════════════════════
@@ -140,6 +144,9 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// ── Section 1: Core Settings ───────────────────
 		this.renderCoreSettings(containerEl);
+
+		// ── Section 1b: Metacognitive Depth (Command-Center) ────
+		this.renderMetacognitiveDepth(containerEl);
 
 		// ── Section 2: Provider Credentials ────────────
 		this.renderProviderCredentials(containerEl);
@@ -358,6 +365,71 @@ export class PluginSettingsTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.memoryMaxNotes)
 					.onChange((v) => this.saveSetting('memoryMaxNotes', v)),
 			);
+	}
+
+	/* ═══════════════════════════════════════════════════════
+	   Section 1b: Metacognitive Depth (Command-Center)
+	   ═══════════════════════════════════════════════════════ */
+
+	private renderMetacognitiveDepth(containerEl: HTMLElement): void {
+		this.renderSectionHeader(
+			containerEl,
+			'metacognitive',
+			'🧭 Metacognitive Depth (Quality-Cost)',
+			'Command-Center native auto-router. 1 = local / cheapest, 10 = cloud / premium. Integer only. Drives intent resolution against model_matrix.json; the existing fallback chain remains authoritative on any failure.',
+		);
+		const body = this.getSectionBody(containerEl, 'metacognitive');
+
+		// Slider bound to plugin.settings.metacognitiveDepth. Clamped to
+		// [METACOGNITIVE_DEPTH_MIN, METACOGNITIVE_DEPTH_MAX] on change so no
+		// fractional or out-of-range value ever reaches the auto-router.
+		const depthSetting = new Setting(body)
+			.setName('Depth')
+			.setDesc(
+				`Integer ${METACOGNITIVE_DEPTH_MIN}-${METACOGNITIVE_DEPTH_MAX}. ` +
+					'Lower biases toward local models (lmstudio / ollama / pi-daemon); ' +
+					'higher escalates to cloud endpoints.',
+			);
+
+		// Numeric label that mirrors the slider — Obsidian's slider tooltip
+		// shows decimal by default, so a discrete label keeps the 1-10 contract
+		// explicit (Directive 1.6: integer scale only).
+		const valueLabel = body.createDiv({ cls: 'cc-metacognitive-depth-value' });
+		const renderLabel = (v: number): void => {
+			valueLabel.textContent = String(v);
+		};
+
+		depthSetting.addSlider((slider) =>
+			slider
+				.setLimits(
+					METACOGNITIVE_DEPTH_MIN,
+					METACOGNITIVE_DEPTH_MAX,
+					1,
+				)
+				.setValue(this.plugin.settings.metacognitiveDepth)
+				.onChange((v) => {
+					const clamped = Math.max(
+						METACOGNITIVE_DEPTH_MIN,
+						Math.min(METACOGNITIVE_DEPTH_MAX, Math.round(v)),
+				);
+					renderLabel(clamped);
+					void this.saveSetting('metacognitiveDepth', clamped);
+				}),
+		);
+		renderLabel(this.plugin.settings.metacognitiveDepth);
+
+		// Reset-to-default affordance so a misconfigured slider is one click
+		// from the local-first baseline (depth 3).
+		depthSetting.addExtraButton((btn) =>
+			btn
+				.setIcon('rotate-ccw')
+				.setTooltip('Reset to default (3)')
+				.onClick(() => {
+					void this.saveSetting('metacognitiveDepth', 3).then(() =>
+						this.update(),
+					);
+				}),
+		);
 	}
 
 	/* ═══════════════════════════════════════════════════════

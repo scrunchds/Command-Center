@@ -843,3 +843,17 @@ Command Center — Agentic OS for Obsidian
 .cc-react-filters { display: flex; flex-wrap: wrap; gap: 5px; margin: -2px 0 7px; }
 .cc-react-filters button { padding: 2px 8px; font-size: var(--font-smallest); }
 .cc-react-entry.cc-react-agent-error { border-left: 3px solid var(--color-red); background: hsla(var(--color-red-hsl), .08); }
+
+/* ─── Metacognitive Depth (Command-Center) ─── */
+.cc-metacognitive-depth-value {
+	display: inline-block;
+	min-width: 2.2em;
+	padding: 2px 8px;
+	margin-left: 8px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+	border-radius: var(--radius-m);
+	background: hsla(var(--interactive-accent-hsl), .12);
+	color: var(--text-normal);
+}
