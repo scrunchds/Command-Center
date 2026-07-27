@@ -75,6 +75,12 @@ import { Orchestrator } from './engine/Orchestrator';
 import { ModelRouter as EndpointModelRouter } from './engine/ModelRouter';
 import { InterviewModal } from './ui/InterviewModal';
 import { CommandCenterCommandBridge } from './cli/command-bridge';
+import { TopographySweep, type TopographyMap } from './ingestion/TopographySweep';
+import { LogicDiscovery } from './ingestion/LogicDiscovery';
+import { NativeAutoRouter } from './routing/NativeAutoRouter';
+import { DataNormalizer } from './execution/DataNormalizer';
+import { ExecutionRouter } from './execution/ExecutionRouter';
+import { CommandDeck, COMMAND_DECK_VIEW_TYPE } from './ui/CommandDeck';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
@@ -106,12 +112,18 @@ export default class CommandCenterPlugin extends Plugin {
 	endpointRouter!: EndpointModelRouter;
 	workflowEngine!: WorkflowEngine;
 	orchestrator!: Orchestrator;
+	nativeAutoRouter!: NativeAutoRouter;
+	executionRouter!: ExecutionRouter;
+	topographySweep!: TopographySweep;
+	private topography: TopographyMap | null = null;
+	private commandDeck: CommandDeck | null = null;
 
 	private taskHistory: StoredTask[] = [];
 	private readonly maxHistory = 100;
 	/** Coalesces worker/session completions into metadata-cache-visible vault writes. */
 	private frontmatterSync!: DebouncedFrontmatterSync;
 	private commandBridge!: CommandCenterCommandBridge;
+	private activeDiscovery: LogicDiscovery | null = null;
 
 	/** Daemon auto-retry state for missing/failed pi binary. */
 	private daemonRetryTimer: number | null = null;
@@ -230,6 +242,15 @@ export default class CommandCenterPlugin extends Plugin {
 			this.providerFactory,
 			() => this.settings.multiProvider,
 		);
+		// Mandatory route/normalization boundary for modality-aware command flows.
+		this.nativeAutoRouter = new NativeAutoRouter(this.app, this.providerFactory, () => this.settings);
+		this.executionRouter = new ExecutionRouter(this.dispatcher, new DataNormalizer());
+		void this.nativeAutoRouter.reload();
+		// Silent, read-only background topology observation. Results remain in memory.
+		this.topographySweep = new TopographySweep(this.app);
+		void this.topographySweep.run().then(snapshot => { this.topography = snapshot; }).catch(error => {
+			console.warn('[CC] Background topography sweep unavailable:', error);
+		});
 		this.router = new ModelRouter(
 			this.providerFactory,
 			() => this.settings.multiProvider,
@@ -299,9 +320,22 @@ export default class CommandCenterPlugin extends Plugin {
 					return routeResult.taskResult;
 				}
 
-				// ── Multi-provider routing for standard tasks ──
-				const routeResult = await this.router.route(task);
-				return routeResult.taskResult;
+				// ── Native intent routing + mandatory normalized execution boundary ──
+				const resolution = this.nativeAutoRouter.resolve('text');
+				const normalized = await this.executionRouter.execute({
+					resolution,
+					request: {
+						systemPrompt: this.configManager.requireStyleGuide(),
+						userPrompt: task.prompt,
+						taskId: task.id,
+						onStream: task.onStream,
+					},
+				});
+				return {
+					output: normalized.content,
+					summary: normalized.success ? normalized.content : normalized.error,
+					metadata: { normalizedExecution: normalized },
+				};
 			},
 		};
 		this.taskQueue = new TaskQueue(executor, 1);
@@ -393,6 +427,15 @@ export default class CommandCenterPlugin extends Plugin {
 			this.commandCenterChatView = view;
 			return view;
 		});
+		this.registerView(COMMAND_DECK_VIEW_TYPE, (leaf) => {
+			const deck = new CommandDeck(leaf);
+			this.commandDeck = deck;
+			deck.setAnswerHandler(answer => {
+				const discovery = this.activeDiscovery;
+				if (discovery) discovery.answer(answer);
+			});
+			return deck;
+		});
 		const basesRegistered = this.registerBasesView(
 			COMMAND_CENTER_BASES_VIEW_ID,
 			commandCenterBasesRegistration(this),
@@ -422,6 +465,11 @@ export default class CommandCenterPlugin extends Plugin {
 			id: 'reset-reinitialize-vault-config',
 			name: 'Reset and Re-Initialize Vault Config',
 			callback: () => this.confirmResetConfiguration(),
+		});
+		this.addCommand({
+			id: 'open-triptych-logic-discovery',
+			name: 'Open Triptych Logic Discovery',
+			callback: () => { void this.openTriptychDiscovery(); },
 		});
 
 		// Defer the first-run modal until Obsidian's workspace is ready. The
@@ -571,6 +619,20 @@ export default class CommandCenterPlugin extends Plugin {
 			providerId: 'ollama',
 			model: 'nomic-embed-text',
 		};
+	}
+
+	private async openTriptychDiscovery(): Promise<void> {
+		if (!this.topography) this.topography = await this.topographySweep.run();
+		let leaf = this.app.workspace.getLeavesOfType(COMMAND_DECK_VIEW_TYPE)[0];
+		if (!leaf) {
+			leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf(true);
+			await leaf.setViewState({ type: COMMAND_DECK_VIEW_TYPE, active: true });
+		}
+		await this.app.workspace.revealLeaf(leaf);
+		const deck = leaf.view instanceof CommandDeck ? leaf.view : this.commandDeck;
+		if (!deck) throw new Error('Command Deck view failed to initialize.');
+		this.activeDiscovery = new LogicDiscovery(this.topography, deck);
+		await this.activeDiscovery.start();
 	}
 
 	onunload(): void {
