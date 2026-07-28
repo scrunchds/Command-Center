@@ -2,6 +2,7 @@
 	"name": "command-center",
 	"version": "1.1.0",
 	"description": "Autonomous agent orchestration layer for your vault. Spawns pi workers for retrieval, summarization, and structural editing.",
+	"private": true,
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
@@ -18,6 +19,7 @@
 		"sanitize": "node scripts/sanitize-repo.mjs",
 		"sanitize:staged": "node scripts/sanitize-repo.mjs --staged",
 		"sanitize:release": "node scripts/sanitize-repo.mjs --release",
+		"audit:releases": "node scripts/audit-public-releases.mjs",
 		"typecheck": "tsc --noEmit"
 	},
 	"keywords": [],

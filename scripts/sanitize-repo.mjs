@@ -21,9 +21,12 @@ const root = resolve(import.meta.dirname, '..');
 const args = new Set(process.argv.slice(2));
 const stagedOnly = args.has('--staged');
 const includeRelease = args.has('--release');
-const allowedArgs = new Set(['--staged', '--release']);
+const artifactsOnly = args.has('--artifacts');
+const allowedArgs = new Set(['--staged', '--release', '--artifacts']);
 for (const arg of args) if (!allowedArgs.has(arg)) fail(`Unknown option: ${arg}`);
-if (stagedOnly && includeRelease) fail('--staged and --release cannot be combined.');
+if ([stagedOnly, includeRelease, artifactsOnly].filter(Boolean).length > 1) {
+	fail('--staged, --release, and --artifacts cannot be combined.');
+}
 
 const maxBytes = 2 * 1024 * 1024;
 const selfPath = 'scripts/sanitize-repo.mjs';
@@ -76,8 +79,10 @@ const checks = [
 	},
 ];
 
-const files = stagedOnly ? stagedFiles() : repositoryFiles();
-for (const deleted of deletedFiles()) files.delete(deleted);
+const files = artifactsOnly ? new Set(listedFiles('release-audit')) : stagedOnly ? stagedFiles() : repositoryFiles();
+if (!artifactsOnly) {
+	for (const deleted of deletedFiles()) files.delete(deleted);
+}
 if (includeRelease) {
 	for (const path of ['main.js', 'styles.css', ...listedFiles('release/command-center')]) files.add(path);
 }
@@ -165,7 +170,7 @@ function gitLikeWalk(directory) {
 
 function shouldScan(path) {
 	if (path === selfPath || excludedNames.has(path)) return false;
-	if (excludedPrefixes.some(prefix => path.startsWith(prefix)) && !(includeRelease && path.startsWith('release/'))) return false;
+	if (excludedPrefixes.some(prefix => path.startsWith(prefix)) && !(includeRelease && path.startsWith('release/')) && !(artifactsOnly && path.startsWith('release-audit/'))) return false;
 	if (path.startsWith('.command-center/') || path.includes('/.command-center/')) {
 		findings.push({ path, line: 0, id: 'runtime-state', excerpt: 'Command Center runtime state must never be tracked or published' });
 		return false;

@@ -63,6 +63,7 @@ playwright-report/
 # Build cache
 dist/
 release/
+release-audit/
 *.tsbuildinfo
 
 # Generated benchmark and audit reports (CI artifacts)

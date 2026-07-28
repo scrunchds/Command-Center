@@ -62,14 +62,8 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' && matrix['node-version'] == '24.x' }}
         run: node test/check-benchmark-regression.mjs
 
-      - name: Upload benchmark results
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: benchmark-results-${{ matrix.os }}-node-${{ matrix.node-version }}
-          path: benchmark-results.json
-          if-no-files-found: error
-          retention-days: 14
+      # Benchmark output is validated in-job. Do not publish diagnostic or
+      # performance data as a public Actions artifact.
 
       # ── Production build check ───────────────────
       - name: Production build and clean package
@@ -86,12 +80,3 @@ jobs:
           const size = fs.statSync(`${dir}/main.js`).size;
           console.log(`main.js: ${size} bytes`);
           if (size <= 1000) throw new Error(`main.js too small (${size} bytes)`);
-
-      # ── Upload build artifact (main only for caching) ──
-      - name: Upload build artifact
-        if: matrix.node-version == '24.x' && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v5
-        with:
-          name: dist
-          path: release/command-center/
-          retention-days: 1
