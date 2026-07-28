@@ -1,0 +1,89 @@
+name: Bug report
+description: Report a reproducible problem in Command Center
+title: "[Bug]: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Search existing issues first. Do not include API keys, vault contents, personal data, private URLs, or unredacted diagnostics. Report vulnerabilities through the private Security Advisory form instead.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched existing issues and discussions for this problem.
+          required: true
+        - label: I am using the latest Command Center release.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
+        - label: I removed credentials and private vault information.
+          required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Problem
+      description: Clearly describe what went wrong.
+      placeholder: Command Center does ... when ...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence that reproduces the issue.
+      placeholder: |
+        1. Enable ...
+        2. Open ...
+        3. Run ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: command-center-version
+    attributes:
+      label: Command Center version
+      placeholder: 1.1.0
+    validations:
+      required: true
+  - type: input
+    id: obsidian-version
+    attributes:
+      label: Obsidian version
+      placeholder: 1.13.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and model
+      description: If relevant; never include credentials or private endpoint details.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Include relevant logs, stack traces, screenshots, or configuration after removing sensitive information.
+      render: shell
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include regression status, workarounds, and anything else that may help.

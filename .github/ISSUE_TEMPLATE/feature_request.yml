@@ -1,0 +1,53 @@
+name: Feature request
+description: Propose a focused improvement to Command Center
+title: "[Feature]: "
+labels: [enhancement, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues and discussions before proposing a feature. For broad design ideas, start a Discussion first. Do not include private vault content or credentials.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched existing issues and discussions for this request.
+          required: true
+        - label: This request is focused on one problem or capability.
+          required: true
+        - label: I removed private and sensitive information.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the user need rather than only the desired implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Explain the behavior, workflow, and intended result.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe existing workarounds or other approaches.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Privacy, security, and compatibility impact
+      description: Note vault mutations, provider/network access, credentials, platform constraints, migrations, or performance costs. Write "None known" if applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add sanitized mockups, examples, or links that clarify the proposal.

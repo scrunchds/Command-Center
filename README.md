@@ -37,6 +37,7 @@ Most AI integrations add a chat box. Command Center adds an operational layer:
 - [Privacy and security model](#privacy-and-security-model)
 - [Development](#development)
 - [Quality, security, and release controls](#quality-security-and-release-controls)
+- [Community and support](#community-and-support)
 - [License and attribution](#license-and-attribution)
 
 ## Feature overview
@@ -584,7 +585,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 5. Standardized benchmarks
 6. 25% performance-regression gate
 7. Production package validation
-8. Artifact upload
+8. Clean release-surface verification
 
 Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are both currently `1.1.0`, with Obsidian 1.13.0 as the minimum supported app version.
 
@@ -628,6 +629,13 @@ Check that:
 ### A destructive tool is paused
 
 Open the Command Center dashboard, inspect the Mutation Approval card's target list and diff preview, then choose **Approve & Apply** or **Reject**. Closing the dashboard rejects pending confirmations safely.
+
+## Community and support
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes or opening a pull request.
+- Follow the [Code of Conduct](CODE_OF_CONDUCT.md) in all project spaces.
+- Use [GitHub Discussions](https://github.com/scrunchds/Command-Center/discussions) for questions and community support; see [SUPPORT.md](SUPPORT.md).
+- Report vulnerabilities privately according to [SECURITY.md](SECURITY.md)—never in a public issue.
 
 ## Donations and developer support
 
