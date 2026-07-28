@@ -525,12 +525,9 @@ export class PiAgentDaemon {
 				return { command: nodeExecutable, args: [cliPath, ...rpcArgs] };
 			}
 
-			// Generic fallback for a custom npm .cmd wrapper. Invoke cmd.exe
-			// explicitly without shell:true; each user-controlled value is quoted.
-			const comspec = process.env.ComSpec || 'cmd.exe';
-			const quote = (value: string): string => `"${value.replace(/"/g, '""')}"`;
-			const commandLine = [quote(this._piPath), ...rpcArgs.map(quote)].join(' ');
-			return { command: comspec, args: ['/d', '/s', '/c', commandLine] };
+			// Never fall back to a command shell for a user-selected wrapper. Shell
+			// interpretation would turn the configured path into executable syntax.
+			throw new Error('Unable to resolve the JavaScript entry point for the selected Pi .cmd wrapper.');
 		}
 		return { command: this._piPath, args: rpcArgs };
 	}
