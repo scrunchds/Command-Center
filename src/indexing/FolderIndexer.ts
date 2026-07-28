@@ -291,7 +291,7 @@ export class FolderIndexer {
 			const body = text.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trimStart();
 			const paragraphs = body.split(/\r?\n\s*\r?\n/);
 			for (const paragraph of paragraphs) {
-				const clean = paragraph.replace(/^#{1,6}\s+.*$/gm, '').replace(/<!--[^]*?-->/g, '')
+				const clean = paragraph.replace(/^#{1,6}\s+.*$/gm, '').replace(/<!--(?:(?!-->).)*-->/gs, '')
 					.replace(/```[^]*?```/g, '').replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
 					.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?]]/g, '$2$1').replace(/\s+/g, ' ').trim();
 				if (clean) return clean;
@@ -382,12 +382,12 @@ export class FolderIndexer {
 		return '';
 	}
 	private cleanCell(value: string): string {
-		const cleaned = value.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').replace(/`/g, "'").replace(/\s+/g, ' ').trim();
+		const cleaned = value.replace(/\\/g, '\\\\').replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').replace(/`/g, "'").replace(/\s+/g, ' ').trim();
 		return cleaned.length > this.maxSummaryLength ? `${cleaned.slice(0, this.maxSummaryLength).trimEnd()}…` : cleaned;
 	}
 	private cleanHeading(value: string): string { return value.replace(/[\r\n#]/g, ' ').trim(); }
-	private blockquote(value: string): string { return value.replace(/\r?\n+/g, '<br>').replace(/\|/g, '\\|').trim(); }
-	private escapeLink(path: string): string { return path.replace(/\|/g, '\\|').replace(/]]/g, ']\\]'); }
+	private blockquote(value: string): string { return value.replace(/\\/g, '\\\\').replace(/\r?\n+/g, '<br>').replace(/\|/g, '\\|').trim(); }
+	private escapeLink(path: string): string { return path.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/]]/g, ']\\]'); }
 	private formatTimestamp(timestamp: number): string {
 		const date = new Date(timestamp);
 		const parts = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(date);

@@ -446,7 +446,9 @@ export class PiAgentDaemon {
 				// Pipe stderr instead of inheriting it: Pi stays fully silent, while a
 				// small tail remains available for actionable UI diagnostics.
 				stdio: ['pipe', 'pipe', 'pipe'],
-				env: { ...process.env },
+				// Pi inherits no ambient credentials or shell-influencing variables.
+				// Provider credentials cross only the encrypted in-memory bridge.
+				env: {},
 				cwd: this._workspacePath,
 				windowsHide: true,
 			});
