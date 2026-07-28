@@ -55,8 +55,11 @@ export class ShadowTestHarness {
 	private async testSecurityVault(): Promise<ShadowTestResult> {
 		try {
 			const vault = new MemoryCredentialVault();
-			vault.unlock({ openai: 'sk-test-secret-key-12345' });
-			const initialCheck = vault.has('openai') && vault.get('openai') === 'sk-test-secret-key-12345';
+			// Keep the synthetic value deliberately unlike any provider credential format
+			// so repository/release secret scans remain fail-closed without exceptions.
+			const syntheticCredential = ['diagnostic', 'credential', 'fixture'].join('-');
+			vault.unlock({ openai: syntheticCredential });
+			const initialCheck = vault.has('openai') && vault.get('openai') === syntheticCredential;
 			vault.lock();
 			const clearedCheck = !vault.unlocked && !vault.has('openai') && vault.get('openai') === '';
 			const passed = initialCheck && clearedCheck;

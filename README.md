@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.10%2B-7C3AED?logo=obsidian)](https://obsidian.md/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022%20%7C%2024-339933?logo=node.js&logoColor=white)](package.json)
-[![Tests](https://img.shields.io/badge/tests-182%20passing-brightgreen)](#quality-security-and-release-controls)
+[![Tests](https://img.shields.io/badge/tests-195%20passing-brightgreen)](#quality-security-and-release-controls)
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20development-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/DustinS)
 
@@ -113,8 +113,8 @@ The metacognition layer builds local context without reorganizing or rewriting u
 - The sweep runs silently and cooperatively, excludes `.obsidian` and `.trash`, and writes only `.obsidian/plugins/command-center/vault_topography.json`.
 - **Logic Discovery onboarding** asks one focused Socratic question at a time and treats topology as neutral evidence requiring user confirmation. Confirmed preferences and the transcript are stored in `user_logic_profile.json`.
 - Header-aware Markdown chunking preserves `##`/`###` boundaries, source lines, frontmatter tags/aliases, and outbound `[[wikilinks]]`.
-- The semantic database schema separates documents, chunks, and SQLite-VSS vectors. Document replacement is transactional, and nearest-neighbor search remains local.
-- Dialectic RAG requests only the `embeddings` modality through the Native Auto-Router and Python execution boundary; normalized, dimension-validated vectors are stored in SQLite-VSS.
+- The semantic database schema separates documents, chunks, and vectors. With an injected desktop SQLite-VSS driver, document replacement is transactional and nearest-neighbor search is persisted locally; the distributed build otherwise uses a process-lifetime in-memory index.
+- Dialectic RAG requests only the `embeddings` modality through the Native Auto-Router and Python execution boundary. The shipped Python worker is a secure transport stub and reports that no embedding backend is configured; an integrated backend must return normalized, dimension-validated vectors before they can be stored.
 
 ### Native workflows and Bases queues
 
@@ -194,7 +194,7 @@ Obsidian desktop
 ├── Metacognition and knowledge layer
 │   ├── TopographySweep + LogicDiscoveryLoop → localized topology/profile JSON
 │   ├── ChunkingEngine → H2/H3 chunks + tags/aliases/wikilinks
-│   ├── DialecticRAG → normalized embedding ingestion → SQLite-VSS
+│   ├── DialecticRAG → normalized embedding ingestion → memory / injected SQLite-VSS
 │   ├── HybridRetriever → BM25 + embeddings + weighted RRF
 │   └── AgentMemoryStore/ReActMemoryBank → bounded persistent memory
 ├── Workflow layer
@@ -539,7 +539,7 @@ npm run dev
 |---|---|
 | `npm run typecheck` | Strict TypeScript check (including security, metacognition, execution, and diagnostic layers) |
 | `npm run lint` | Zero-warning ESLint gate |
-| `npm run test` | 44 core + 138 ReAct/workflow/UI/service tests |
+| `npm run test` | 44 core + 151 ReAct/workflow/UI/service tests |
 | `npm run benchmark` | Produce the standardized 10-metric report |
 | `npm run benchmark:check` | Enforce the 25% core regression threshold |
 | `npm run sanitize` | Scan public repository files for PII/secrets/runtime data |
@@ -562,10 +562,10 @@ License and attribution documents remain at repository level. Restricting the in
 
 ## Quality, security, and release controls
 
-The test suite currently contains **182 tests**:
+The test suite currently contains **195 tests**:
 
 - **44 core tests** — build integrity, parsers, byte-safe RPC framing, subprocess integration, task queue, recovery, and provider fallback
-- **138 ReAct and subsystem tests** — roles, evaluation, traces, workflows, Bases, chat context, action cards, audio, JIT lifecycle, RAG, memory, CLI, locks, and stress scenarios
+- **151 ReAct and subsystem tests** — roles, evaluation, traces, workflows, Bases, chat context, action cards, audio, JIT lifecycle, RAG, memory, CLI, locks, and stress scenarios
 
 CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 

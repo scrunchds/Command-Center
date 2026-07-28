@@ -16,7 +16,7 @@ Treat handoff maintenance as the final step of the task’s definition of done.
 > **Project:** Command Center — Autonomous agent orchestration layer for Obsidian
 > **Entry point:** `src/main.ts` → compiled to `main.js`
 > **Release artifacts:** `main.js`, `manifest.json`, `styles.css`
-> **Tests:** `test/verify.mjs` — 32 tests (run with `npx tsx test/verify.mjs`)
+> **Tests:** 195 total — 44 core in `test/verify.mjs` and 151 subsystem tests in `test/react-suite.mjs` (run with `npm test`)
 
 ---
 
@@ -41,7 +41,9 @@ npx tsx test/verify.mjs
 VERBOSE=1 npx tsx test/verify.mjs
 ```
 
-## Project Architecture (18 source files, ~2,650 lines)
+## Project Architecture (113 TypeScript source files, ~26,000 TypeScript/CSS lines)
+
+The map below highlights the original core runtime. Additional modules under `src/agent`, `audio`, `cli`, `daily`, `engine`, `execution`, `indexing`, `ingestion`, `memory`, `metacognition`, `onboarding`, `providers`, `rag`, `react`, `routing`, `security`, `settings`, `testing`, `templates`, `ui`, and `workflows` implement the provider, ReAct, retrieval, workflow, onboarding, and security subsystems documented in `README.md`.
 
 ```
 src/
@@ -110,7 +112,8 @@ src/
     # Budget = maxTokens × 4 (chars/token) - instruction_overhead - padding
 
 test/
-└── verify.mjs           # 32 tests: build, parsers, RPC routing, error recovery, queue lifecycle
+├── verify.mjs           # 44 core tests: build, parsers, RPC routing, recovery, queue, providers
+└── react-suite.mjs      # 151 ReAct/workflow/UI/service subsystem tests
 ```
 
 ---
@@ -152,6 +155,6 @@ Every Obsidian tool enforces: `sanitizePath()` blocks `..` traversal, absolute W
 - [ ] Update `manifest.json` version + `minAppVersion`
 - [ ] Update `versions.json` if needed
 - [ ] Run `npm run build` — verify zero errors
-- [ ] Run `npx tsx test/verify.mjs` — verify all 32 tests pass
+- [ ] Run `npm test` — verify all 195 tests pass
 - [ ] Commit and tag
 - [ ] Create GitHub release with `main.js`, `manifest.json`, `styles.css`
