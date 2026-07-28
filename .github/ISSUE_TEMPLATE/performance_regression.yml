@@ -1,0 +1,91 @@
+name: Performance regression
+description: Report a reproducible slowdown, freeze, memory increase, or resource regression
+title: "[Performance]: "
+labels: [performance, triage]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Performance reports are most useful with repeatable measurements and a comparison baseline. Never upload a real vault or diagnostics containing private content.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I reproduced this on the latest Command Center release.
+          required: true
+        - label: I compared the behavior with Command Center disabled or with an earlier version.
+          required: true
+        - label: I removed private vault content, credentials, local paths, and personal data.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Startup or plugin loading
+        - Dashboard or chat UI
+        - Vault indexing
+        - RAG search or embeddings
+        - ReAct or worker execution
+        - Workflow or Bases queue
+        - Provider streaming or routing
+        - Audio or transcription
+        - Build or test tooling
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: symptom
+    attributes:
+      label: Performance symptom
+      description: Describe the slowdown, freeze, CPU usage, memory growth, excessive I/O, or other regression.
+    validations:
+      required: true
+  - type: textarea
+    id: workload
+    attributes:
+      label: Reproduction and workload
+      description: Give repeatable steps and sanitized scale information such as note count, total size, queue size, or model type.
+    validations:
+      required: true
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Measurements
+      description: Provide before/after timings or resource measurements, including measurement method and number of runs.
+      placeholder: |
+        Baseline: ...
+        Current: ...
+        Runs: ...
+        Measurement tool: ...
+    validations:
+      required: true
+  - type: input
+    id: regression-version
+    attributes:
+      label: Last known good and first affected versions
+      placeholder: Good 1.0.6; affected 1.1.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, hardware summary, Obsidian version, and Command Center version.
+      placeholder: Windows 11; 16 GB RAM; Obsidian 1.13.0; Command Center 1.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: profile
+    attributes:
+      label: Sanitized profile or diagnostics
+      description: Add sanitized profiler output, logs, screenshots, or benchmark results if available.
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Community standards
+      options:
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

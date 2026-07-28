@@ -1,0 +1,82 @@
+name: Accessibility report
+description: Report an accessibility barrier or propose an inclusive interaction improvement
+title: "[Accessibility]: "
+labels: [accessibility, triage]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping make Command Center more accessible. You do not need to disclose a disability or medical information. Describe the barrier and preferred outcome using only the context you are comfortable sharing.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched existing accessibility reports.
+          required: true
+        - label: I removed private vault content and personal information.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Keyboard navigation
+        - Screen reader or semantics
+        - Focus management
+        - Color or contrast
+        - Text size or zoom
+        - Motion or animation
+        - Audio or voice
+        - Cognitive accessibility
+        - Error or status messaging
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: barrier
+    attributes:
+      label: Accessibility barrier
+      description: Explain the task, the barrier encountered, and its impact.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Give the shortest sequence that demonstrates the barrier.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected accessible behavior
+      description: Describe the outcome that would make the task usable.
+    validations:
+      required: true
+  - type: input
+    id: assistive-tech
+    attributes:
+      label: Assistive technology or input method
+      description: Optional; for example NVDA, VoiceOver, keyboard only, zoom, voice control, or high contrast.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Obsidian version, Command Center version, and theme where relevant.
+      placeholder: macOS; Obsidian 1.13.0; Command Center 1.1.0; default theme
+    validations:
+      required: true
+  - type: textarea
+    id: standard
+    attributes:
+      label: Relevant standard or additional context
+      description: Optional WCAG criterion, sanitized screenshots, or further context.
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Community standards
+      options:
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

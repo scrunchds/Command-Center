@@ -1,0 +1,124 @@
+name: Provider compatibility report
+description: Report model discovery, authentication, routing, or response problems for a provider
+title: "[Provider]: "
+labels: [provider, bug, triage]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for OpenAI, Anthropic, Gemini, OpenRouter, Ollama, LM Studio, Pi, or compatible endpoint problems. Never include API keys, bearer tokens, private endpoint URLs, or unredacted request/response payloads. Report security issues privately.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched existing issues and verified the provider/service is available independently.
+          required: true
+        - label: I am using the latest Command Center release.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
+        - label: I removed credentials, private URLs, vault content, and personal data.
+          required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - Pi daemon
+        - OpenAI
+        - Anthropic
+        - Google Gemini
+        - OpenRouter
+        - Ollama
+        - Groq
+        - DeepInfra
+        - Mistral AI
+        - Cohere
+        - LM Studio
+        - Custom OpenAI-compatible endpoint
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model identifier
+      description: Use the public model identifier only.
+      placeholder: model-name
+    validations:
+      required: true
+  - type: dropdown
+    id: operation
+    attributes:
+      label: Affected operation
+      options:
+        - Provider health check
+        - Authentication
+        - Model discovery
+        - Quick chat
+        - Streaming chat
+        - ReAct or Pi execution
+        - Vision
+        - Embeddings or RAG
+        - Audio transcription
+        - JIT load or unload
+        - Fallback routing
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Sanitized configuration
+      description: Include enabled state, local/cloud type, and non-sensitive settings. Replace hosts and tokens with placeholders.
+      placeholder: Provider enabled; default public base URL; no proxy; model selected manually
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Configure ...
+        2. Select ...
+        3. Run ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized error
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Include Command Center, Obsidian, and local provider application versions where relevant.
+      placeholder: Command Center 1.1.0; Obsidian 1.13.0; LM Studio x.y.z
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux, Other]
+    validations:
+      required: true
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Community standards
+      options:
+        - label: I agree to follow this project's Code of Conduct.
+          required: true
