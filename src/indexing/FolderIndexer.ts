@@ -291,7 +291,7 @@ export class FolderIndexer {
 			const body = text.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trimStart();
 			const paragraphs = body.split(/\r?\n\s*\r?\n/);
 			for (const paragraph of paragraphs) {
-				const clean = paragraph.replace(/^#{1,6}\s+.*$/gm, '').replace(/<!--/g, '&lt;!--').replace(/-->/g, '--&gt;')
+				const clean = paragraph.replace(/^#{1,6}\s+.*$/gm, '').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 					.replace(/```[^]*?```/g, '').replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
 					.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?]]/g, '$2$1').replace(/\s+/g, ' ').trim();
 				if (clean) return clean;
