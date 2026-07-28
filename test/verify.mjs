@@ -19,7 +19,7 @@ import { strict as assert } from 'node:assert';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -620,9 +620,8 @@ async function verifyRealDaemon() {
 	const mockPiPath = join(ROOT, 'test', 'mock-pi-daemon.js');
 	assert.ok(existsSync(mockPiPath), 'Mock Pi RPC executable should exist');
 
-	const tmpDir = join(tmpdir(), 'cc-test-' + randomUUID().slice(0, 8));
+	const tmpDir = mkdtempSync(join(tmpdir(), `cc-test-${randomUUID().slice(0, 8)}-`));
 	try {
-		mkdirSync(tmpDir, { recursive: true });
 		writeFileSync(join(tmpDir, 'test-note.md'), '# Test Note\n\nHello world.');
 
 		const { PiAgentDaemon } = await import(pathToFileURL(join(SRC, 'daemon.ts')).href);

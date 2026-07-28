@@ -208,16 +208,18 @@ export async function readImageAsBase64(
 	options: ImageProcessingOptions = {},
 ): Promise<ImageContent> {
 	const resolvedPath = path.resolve(filePath);
-	let stat: fs.Stats;
-	try { stat = await fs.promises.stat(resolvedPath); }
-	catch { throw new Error(`File not found: ${resolvedPath}`); }
-	if (!stat.isFile()) throw new Error(`Not a file: ${resolvedPath}`);
-
 	const ext = path.extname(resolvedPath).toLowerCase();
 	const expectedMime = MIME_TYPES[ext];
 	if (!expectedMime) throw new Error(`Unsupported image format: ${ext} (file: ${resolvedPath})`);
 
-	let buffer: Buffer = Buffer.from(await fs.promises.readFile(resolvedPath));
+	let buffer: Buffer;
+	try {
+		// Read directly rather than checking then reading, which would introduce
+		// a time-of-check/time-of-use race. Directories and missing files fail here.
+		buffer = Buffer.from(await fs.promises.readFile(resolvedPath));
+	} catch {
+		throw new Error(`Unable to read image file: ${resolvedPath}`);
+	}
 	let mimeType = validateAndDetectMime(buffer, expectedMime, resolvedPath);
 	const maxPayloadBytes = options.maxPayloadBytes ?? DEFAULT_MAX_IMAGE_PAYLOAD_BYTES;
 	if (!Number.isFinite(maxPayloadBytes) || maxPayloadBytes <= DATA_URI_OVERHEAD_BYTES) {
