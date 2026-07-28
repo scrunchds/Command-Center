@@ -141,7 +141,7 @@ export class InboxTriager {
 		const body = content.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trimStart();
 		for (const paragraph of body.split(/\r?\n\s*\r?\n/)) {
 			const clean = paragraph.replace(/^#{1,6}\s+.*$/gm, '').replace(/^\s*[-*+]\s+\[[ xX]\].*$/gm, '')
-				.replace(/<!--/g, '&lt;!--').replace(/-->/g, '--&gt;').replace(/\s+/g, ' ').trim();
+				.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\s+/g, ' ').trim();
 			if (clean) return clean.length > 220 ? `${clean.slice(0, 220).trimEnd()}…` : clean;
 		}
 		return `Inbox note: ${fallback}`;
