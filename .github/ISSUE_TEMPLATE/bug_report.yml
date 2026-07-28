@@ -2,6 +2,7 @@ name: Bug report
 description: Report a reproducible problem in Command Center
 title: "[Bug]: "
 labels: [bug, triage]
+assignees: []
 body:
   - type: markdown
     attributes:
@@ -44,6 +45,14 @@ body:
     id: expected
     attributes:
       label: Expected behavior
+      description: Explain what should have happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Explain the observed result, including whether data was changed or lost.
     validations:
       required: true
   - type: input
@@ -71,11 +80,34 @@ body:
         - Other
     validations:
       required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - GitHub release assets
+        - Manual build from main
+        - BRAT
+        - Other
+    validations:
+      required: true
   - type: input
     id: provider
     attributes:
       label: Provider and model
       description: If relevant; never include credentials or private endpoint details.
+      placeholder: Ollama with model-name, or Not applicable
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Regression
+      description: Did this work in an earlier Command Center release?
+      options:
+        - "Yes"
+        - "No"
+        - Unknown
+    validations:
+      required: true
   - type: textarea
     id: diagnostics
     attributes:
@@ -86,4 +118,11 @@ body:
     id: context
     attributes:
       label: Additional context
-      description: Include regression status, workarounds, and anything else that may help.
+      description: Include workarounds and anything else that may help.
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Community standards
+      options:
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

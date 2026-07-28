@@ -1,0 +1,77 @@
+name: Documentation issue
+description: Report unclear, missing, or incorrect project documentation
+title: "[Docs]: "
+labels: [documentation, triage]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for improving Command Center's documentation. Do not include private vault content, credentials, personal data, or private endpoint details.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched existing issues and the latest documentation.
+          required: true
+        - label: This request concerns documentation rather than a product defect.
+          required: true
+        - label: I removed private and sensitive information.
+          required: true
+  - type: dropdown
+    id: location
+    attributes:
+      label: Documentation area
+      options:
+        - README
+        - Installation or configuration
+        - Usage or workflows
+        - Security or privacy
+        - Contributing or development
+        - API or source comments
+        - Release notes or changelog
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Page or section
+      description: Link to the file/heading or provide its repository path.
+      placeholder: README.md#configuration
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Documentation problem
+      description: Explain what is missing, inaccurate, outdated, or difficult to understand.
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: Suggested correction
+      description: Describe the information or wording that would resolve the problem.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Relevant Command Center version
+      placeholder: 1.1.0, main, or Not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add sanitized examples, screenshots, or references if useful.
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Community standards
+      options:
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

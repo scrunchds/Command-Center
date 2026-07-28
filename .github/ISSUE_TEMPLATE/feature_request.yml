@@ -2,6 +2,7 @@ name: Feature request
 description: Propose a focused improvement to Command Center
 title: "[Feature]: "
 labels: [enhancement, triage]
+assignees: []
 body:
   - type: markdown
     attributes:
@@ -23,6 +24,24 @@ body:
     attributes:
       label: Problem or use case
       description: Describe the user need rather than only the desired implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feature area
+      options:
+        - Dashboard and onboarding
+        - Chat and context
+        - ReAct and multi-agent execution
+        - Providers and model routing
+        - RAG and memory
+        - Workflows and Bases
+        - Daily operations and indexing
+        - Voice and transcription
+        - Security and privacy
+        - Developer experience
+        - Other
     validations:
       required: true
   - type: textarea
@@ -47,7 +66,24 @@ body:
     validations:
       required: true
   - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable outcomes that would make the request complete.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
     id: context
     attributes:
       label: Additional context
       description: Add sanitized mockups, examples, or links that clarify the proposal.
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Community standards
+      options:
+        - label: I agree to follow this project's Code of Conduct.
+          required: true
