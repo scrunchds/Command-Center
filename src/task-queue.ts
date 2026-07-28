@@ -25,6 +25,7 @@ export interface TaskExecutor {
 export class TaskQueue {
 	private queue: QueueEntry[] = [];
 	private activeCount = 0;
+	private readonly activeTasks = new Map<string, Task>();
 	private completedCount = 0;
 	private failedCount = 0;
 	private readonly maxConcurrency: number;
@@ -68,6 +69,14 @@ export class TaskQueue {
 		};
 	}
 
+	/** Read-only task IDs used by dashboard telemetry; prompts remain private. */
+	getTaskStates(): ReadonlyArray<{ id: string; status: 'queued' | 'running' }> {
+		return [
+			...[...this.activeTasks.values()].map(task => ({ id: task.id, status: 'running' as const })),
+			...this.queue.map(entry => ({ id: entry.task.id, status: 'queued' as const })),
+		];
+	}
+
 	clear(): void {
 		this.queue = [];
 	}
@@ -95,10 +104,12 @@ export class TaskQueue {
 			const entry = this.queue.shift()!;
 			this.activeCount++;
 			entry.task.status = 'running';
+			this.activeTasks.set(entry.task.id, entry.task);
 			entry.task.startedAt = Date.now();
 			this.emit('started', entry.task);
 
 			void this.runTask(entry).finally(() => {
+				this.activeTasks.delete(entry.task.id);
 				this.activeCount--;
 				void this.processNext();
 			});

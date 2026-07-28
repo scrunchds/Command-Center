@@ -6,6 +6,7 @@ import { TEMPLATE_DIRECTORY, TemplateGenerator, type TemplateProposal } from '..
 import { GENERATED_WORKFLOW_DIRECTORY, WorkflowGenerator, type WorkflowProposal } from '../workflows/WorkflowGenerator';
 import { WorkflowBuilder } from '../workflows/WorkflowBuilder';
 import type { ConfigManager } from '../engine/ConfigManager';
+import { LOGIC_DISCOVERY_SYSTEM_PROMPT } from '../ingestion/LogicDiscovery';
 
 export const INTERVIEW_COMPLETE_SIGNAL = 'COMMAND_CENTER_INTERVIEW_COMPLETE';
 export const SYNTHESIS_COMPLETE_SIGNAL = 'COMMAND_CENTER_SYNTHESIS_COMPLETE';
@@ -46,11 +47,7 @@ export class InterviewEngine {
 		this.phaseIndex = 0;
 		this.pendingSynthesis = null;
 		this.vaultTopology = this.inspectTopology();
-		if (this.vaultTopology.empty) {
-			return 'Your vault currently has no visible folders or root notes. What folders would you like Command Center to manage, and what purpose and content scope should each have? You may skip any optional area; no paths will be invented.';
-		}
-		const folderSummary = this.vaultTopology.folders.slice(0, 12).map(path => `\`${path}\``).join(', ');
-		return `I found ${this.vaultTopology.folders.length} visible vault folder(s): ${folderSummary || 'none'}. Which should Command Center manage, what is each folder’s purpose/scope, and which should receive a stationary \`_index.md\` anchor? Nothing will be selected without your approval.`;
+		return 'To begin without making assumptions about your vault, tell me about your background and the kind of work or life context this system needs to support. We will discuss its structure only after I understand what it needs to do for you.';
 	}
 
 	async answer(raw: string): Promise<InterviewReply> {
@@ -154,7 +151,9 @@ export class InterviewEngine {
 	}
 
 	private systemPrompt(): string {
-		return `You are the agnostic Command Center configuration interviewer. Ask exactly one focused question at a time. Never assume folder names, paths, metrics, thresholds, task syntax, policies, writing tone, persona, templates, or workflows. Extract one cumulative configuration from natural-language answers.
+		return `${LOGIC_DISCOVERY_SYSTEM_PROMPT}
+
+You are also responsible for turning the jointly negotiated logic into Command Center configuration. Ask exactly one focused question at a time. Never assume folder names, paths, metrics, thresholds, task syntax, policies, writing tone, persona, templates, or workflows. Extract one cumulative configuration from natural-language answers. Do not introduce the topology context below until the contextual baseline is established.
 
 SECURITY: Never request, accept, repeat, inspect, or store credentials, API keys, passwords, tokens, secrets, URLs, hosts, ports, or endpoint values. Direct credential and endpoint setup to the native Obsidian Settings → Command Center UI.
 CURRENT PHASE: ${this.getPhase()}

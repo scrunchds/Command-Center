@@ -264,13 +264,15 @@ export class ModelRouter {
 		if (!enabled) return work();
 
 		const modelId = configured.modelId;
-		await this.factory.jitModelManager.ensureModelLoaded(baseUrl, modelId, ttl);
+		// Optional call preserves compatibility with injected test/legacy factories.
+		const bearerToken = this.factory.getApiKey?.(configured.providerId) ?? '';
+		await this.factory.jitModelManager.ensureModelLoaded(baseUrl, modelId, ttl, bearerToken);
 		try {
 			return await work();
 		} finally {
 			// ReAct sessions and Base batches are explicit workload boundaries, so
 			// release VRAM immediately instead of waiting for the request TTL.
-			await this.factory.jitModelManager.evictModel(baseUrl, modelId);
+			await this.factory.jitModelManager.evictModel(baseUrl, modelId, bearerToken);
 		}
 	}
 

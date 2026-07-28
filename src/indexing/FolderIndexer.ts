@@ -324,7 +324,7 @@ export class FolderIndexer {
 		const rows = metadata.manifest.length
 			? metadata.manifest.map(entry => this.renderRow(entry)).join('\n')
 			: '| _No files indexed yet._ | — | — | — |';
-		return `${SYSTEM_INDEX_HEADER}\n\n# Folder Index: ${this.cleanHeading(metadata.folderName)}\n\n> **Purpose:** ${this.blockquote(metadata.purpose)}  \n> **Scope & Content Types:** ${this.blockquote(metadata.scope)}\n\n---\n\n## File Manifest\n\n| File Path | Description / Summary | Status / Frontmatter | Last Modified |\n| --- | --- | --- | --- |\n${rows}\n`;
+		return `${SYSTEM_INDEX_HEADER}\n\n# Folder Index: ${this.cleanHeading(metadata.folderName)}\n\n> **Purpose:** ${this.blockquote(metadata.purpose)}\n> **Scope & Content Types:** ${this.blockquote(metadata.scope)}\n\n---\n\n## File Manifest\n\n| File Path | Description / Summary | Status / Frontmatter | Last Modified |\n| --- | --- | --- | --- |\n${rows}\n`;
 	}
 
 	private renderRow(entry: FileManifestEntry): string {

@@ -17,7 +17,8 @@
 Most AI integrations add a chat box. Command Center adds an operational layer:
 
 - **Framework-agnostic by design** — no required PARA, GTD, Johnny.Decimal, folder taxonomy, note schema, or life-management methodology. The setup interview learns the structures already used in your vault.
-- **Interview-driven configuration** — six discovery phases collect topology, life map, capacity rules, triage policy, focus constraints, and writing style; confirmation and synthesis then generate only the assets you approve.
+- **Metacognitive Partner, not prescriptive organizer** — two-stage Socratic Triage first learns your goals, constraints, language, and personal definition of efficiency, then negotiates topology observations as neutral evidence. It preserves intentional friction and proposes capabilities only with consent.
+- **Interview-driven configuration** — embedded dashboard discovery collects topology, life map, capacity rules, triage policy, focus constraints, and writing style; confirmation and synthesis then generate only the assets you approve.
 - **Token-efficient stationary indexing** — protected `_index.md` files describe folder purpose and direct-child contents so agents can route work without repeatedly scanning the whole vault.
 - **Air-gapped credential bridge** — API keys are managed through a dedicated secure modal, persisted only as AES-256-GCM ciphertext, and decrypted into a process-lifetime memory vault. A locked vault disables keyed cloud providers while local routes remain available.
 - **Local-first options** — Pi, Ollama, LM Studio, custom OpenAI-compatible endpoints, local embeddings, and deterministic fallback retrieval support private or disconnected workflows.
@@ -51,13 +52,13 @@ Command Center exposes one dispatch layer across **12 providers**:
 | Anthropic | Cloud | Claude, tools, prompt caching |
 | Google Gemini | Cloud | Multimodal, long context, cached-content support |
 | OpenRouter | Cloud gateway | Multi-model OpenAI-compatible routing |
-| Ollama | Local | Local chat and keep-alive lifecycle controls |
+| Ollama | Local | Local chat, keep-alive lifecycle controls, and optional bearer authentication |
 | Groq | Cloud | Low-latency inference and transcription-compatible routing |
 | DeepInfra | Cloud | Hosted open-weight models |
 | Mistral AI | Cloud | Mistral and Codestral families |
 | Cohere | Cloud | Command models for retrieval-heavy work |
-| LM Studio | Local | Native model discovery, resource-aware JIT loading, and OpenAI-compatible inference |
-| Custom Endpoint | Local or remote | User-defined OpenAI-compatible service |
+| LM Studio | Local | Dynamic native model resolution, resource-aware JIT loading, OpenAI-compatible inference, and optional bearer authentication |
+| Custom Endpoint | Local or remote | User-defined OpenAI-compatible service with optional bearer authentication |
 
 Routing classifies work as `coding`, `vision`, `reading`, `reasoning`, or `fast`. Capability checks prevent invalid model selection; optional exponential moving averages optimize initial routes for **latency**, **cost**, or a **balanced** objective. Recovery remains reliability-first: authentication and invalid-request failures fail or fall through immediately, while rate limits, network errors, timeouts, and server errors use isolated circuit breakers, bounded backoff, and a configurable multi-tier fallback chain.
 
@@ -68,7 +69,8 @@ Additional provider capabilities include:
 - Multimodal image preprocessing for vault attachments and Canvas file nodes
 - Structured-output repair only at model-authored JSON boundaries
 - Local model pre-warm, TTL/keep-alive, and best-effort eviction
-- LM Studio resource-aware JIT: reuse a loaded primary LLM or automatically load the smallest downloaded non-draft conversational model, excluding embedding and speculative draft models
+- Dynamic LM Studio model resolution through `/api/v1/models`: reuse a loaded primary LLM or select the smallest downloaded non-draft conversational model, excluding embedding and speculative draft models
+- Optional secure-vault bearer tokens for LM Studio Require Authentication, authenticated Ollama proxies, and custom OpenAI-compatible endpoints; unauthenticated local operation remains supported
 - Cloud-bound payload scrubbing of local-only lifecycle fields
 
 ### Multi-Agent ReAct engine
@@ -105,13 +107,18 @@ Command Center can ground model calls in vault content without rebuilding the in
 
 Persistent agent memory stores facts, preferences, entities, and session summaries in vault-native state. Semantic duplicate updates, thematic session hubs, threshold-aware pruning, and bounded prompt injection keep memory useful without allowing it to grow without control.
 
-### Metacognitive ingestion and semantic memory
+### Metacognitive Partner and semantic memory
 
-The metacognition layer builds local context without reorganizing or rewriting user notes:
+Command Center acts as a **Metacognitive Partner**: it helps users examine and negotiate how their own system works rather than grading it against a generic productivity framework. Discovery follows two deliberate stages:
+
+1. **Contextual baseline** — one focused Socratic question at a time establishes goals, constraints, working context, preferred cognitive style, and the user's subjective definition of success and efficiency.
+2. **Topographical negotiation** — only after that baseline exists does Command Center introduce read-only vault observations. Patterns are treated as hypotheses; intentional exceptions and useful friction are preserved, and automation, semantic linking, or multi-agent synthesis are offered as optional capability expansions with explicit tradeoffs.
+
+The metacognition layer builds supporting local context without reorganizing or rewriting user notes:
 
 - `TopographySweep` uses Obsidian's `TAbstractFile`, `TFile`, `TFolder`, `MetadataCache`, and `getAllTags` APIs to map folders, tag frequencies, links, and hub/MOC candidates.
 - The sweep runs silently and cooperatively, excludes `.obsidian` and `.trash`, and writes only `.obsidian/plugins/command-center/vault_topography.json`.
-- **Logic Discovery onboarding** asks one focused Socratic question at a time and treats topology as neutral evidence requiring user confirmation. Confirmed preferences and the transcript are stored in `user_logic_profile.json`.
+- **Logic Discovery onboarding** is consent-led and treats topology as neutral evidence requiring user confirmation. Confirmed preferences and the transcript are stored in `user_logic_profile.json`.
 - Header-aware Markdown chunking preserves `##`/`###` boundaries, source lines, frontmatter tags/aliases, and outbound `[[wikilinks]]`.
 - The semantic database schema separates documents, chunks, and vectors. With an injected desktop SQLite-VSS driver, document replacement is transactional and nearest-neighbor search is persisted locally; the distributed build otherwise uses a process-lifetime in-memory index.
 - Dialectic RAG requests only the `embeddings` modality through the Native Auto-Router and Python execution boundary. The shipped Python worker is a secure transport stub and reports that no embedding backend is configured; an integrated backend must return normalized, dimension-validated vectors before they can be stored.
@@ -144,13 +151,13 @@ The interview becomes the source of truth for daily operations:
 
 Stationary indexes contain purpose, scope, summary, and status metadata. Compact purpose headers allow routing to the correct folder before deeper retrieval, reducing full-vault reads and prompt waste.
 
-### Triptych Logic Discovery
+### Dashboard Logic Discovery
 
-The **Command Deck** provides an Obsidian-native Triptych workspace for Socratic vault discovery. It begins with a contextual baseline before introducing read-only `TopographySweep` evidence, then routes each submitted answer through the normalized provider execution boundary. Topography is injected as supporting context, while the system prompt prevents topology from being presented before the baseline interview is complete.
+The full-page **Command Center Dashboard** is the single operational interface for Socratic vault discovery, onboarding, agent monitoring, queue control, approvals, and daily operations. Discovery is a dashboard mode—not a separate deck, pane, or modal. It begins with a contextual baseline before introducing read-only `TopographySweep` evidence. Topology remains supporting evidence and is never promoted into a rule without user confirmation.
 
-Logic Discovery responses use a bounded generation budget and disable model reasoning where supported so the Center Stage receives one concise visible question. With LM Studio enabled, Command Center discovers native catalog state through `/api/v1/models`, prefers an already loaded primary conversational model, or JIT-loads the smallest suitable downloaded model before calling `/v1/chat/completions`. Large first loads may take longer; keep a smaller conversational model downloaded on constrained hardware.
+Logic Discovery uses bounded generation and disables model reasoning where supported so the dashboard presents one concise visible question at a time. With LM Studio enabled, Command Center discovers native catalog state through `/api/v1/models`, prefers an already loaded primary conversational model, or JIT-loads the smallest suitable downloaded model before calling `/v1/chat/completions`.
 
-Open it from the Command Palette with **Command Center: Open Triptych Logic Discovery**. A focused modal flow is also available as **Command Center: Open Logic Discovery onboarding**.
+Open **Command Center** from the ribbon or run **Command Center: Start Setup / Onboarding Interview**. Both routes use the same full-page dashboard.
 
 ### Normalized execution and Shadow-Clone diagnostics
 
@@ -173,7 +180,7 @@ The right-sidebar chat supports **Quick**, **ReAct**, and **Workflow** modes wit
 - Active editor selection, `@Note`, `@path`, and `.base` context
 - Dismissible active/recent-note suggestion pills
 - Inline collapsible ReAct traces
-- Approval/rejection cards for destructive tools
+- Dashboard handoff for approval/rejection of destructive tools
 - Tail-aware auto-scroll and lifecycle-safe cancellation
 
 ## Architecture
@@ -192,7 +199,7 @@ Obsidian desktop
 │   ├── FolderIndexer → protected _index.md manifests
 │   └── DailyEngine + InboxTriager + CapacityEngine
 ├── Metacognition and knowledge layer
-│   ├── TopographySweep + LogicDiscoveryLoop → localized topology/profile JSON
+│   ├── TopographySweep + dashboard LogicDiscovery → localized topology/profile JSON
 │   ├── ChunkingEngine → H2/H3 chunks + tags/aliases/wikilinks
 │   ├── DialecticRAG → normalized embedding ingestion → memory / injected SQLite-VSS
 │   ├── HybridRetriever → BM25 + embeddings + weighted RRF
@@ -268,12 +275,9 @@ Command Center auto-detects common global npm locations. On Windows it resolves 
 
 ## First-run onboarding
 
-Launch onboarding from either:
+Launch onboarding in the full-page dashboard from either the Command Center ribbon action or **Command Center: Start Setup / Onboarding Interview**. Discovery, confirmation, and synthesis stay in the central workspace instead of opening a separate setup modal.
 
-- The first-run **Command Center — Start Here** modal, or
-- Command palette → **Command Center: Start Setup / Onboarding Interview**
-
-The six discovery phases are:
+The six configuration phases are:
 
 1. **Topology** — inboxes, daily notes, managed folders, and vault structure
 2. **Life map** — domains, projects, time horizons, and completion definitions
@@ -316,7 +320,9 @@ Each provider has a collapsible card for enablement, endpoint configuration, hea
 
 Select **Manage API Keys** to open the secure credential-vault modal. A Vault Master Key derives an AES-256-GCM key with PBKDF2-SHA-256 and a random salt; only ciphertext, salt, IV, and non-secret derivation parameters are persisted. Master passwords, derived keys, and decrypted API keys remain memory-only and are wiped when the vault is locked or the plugin unloads. Existing keys cannot be revealed or copied back into the UI.
 
-Credentials are resolved only at request time. When the vault is locked, keyed cloud providers are unavailable and routing remains local-first. Credentials are excluded from interviews, generated workflows, CLI/URI arguments, subprocess argv/environment, logs, and repository examples.
+Authentication metadata distinguishes **required**, **optional**, and **unsupported** credentials. LM Studio's Require Authentication token, authenticated Ollama proxies, and custom OpenAI-compatible bearer tokens use the same encrypted vault without making a key mandatory for ordinary local operation. Tokens are applied consistently to inference, streaming, model discovery, health checks, transcription, and local model lifecycle requests.
+
+Credentials are resolved only at request time. When the vault is locked, required-key cloud providers and authenticated local endpoints are unavailable, while unauthenticated local routes remain available. Credentials are excluded from interviews, generated workflows, CLI/URI arguments, subprocess argv/environment, logs, and repository examples.
 
 ### 3. Task Routing Matrix
 
@@ -346,13 +352,15 @@ Review provider state, test one provider, refresh all providers, and inspect act
 
 Open Command Center from the ribbon or command palette. The dashboard includes:
 
+- Embedded Socratic discovery and onboarding
 - Daemon Start / Stop / Restart controls
 - Pending, running, completed, and failed queue counts
-- Per-task live output
-- Task history
-- ReAct event monitor and filters
-- Debug stepping and session export
+- Provider-normalized orchestrator output and per-task live output
+- Task history, ReAct filters, debug stepping, and session export
+- Dashboard-owned approval cards for destructive or bulk mutations
 - Daily-cycle controls and consolidated silent-start summaries
+- Per-vault widget ordering, sizing, collapse/visibility controls, and responsive layout persistence
+- Review-before-send dictation plus opt-in audio cues and AI read-aloud
 
 ### Chat panel
 
@@ -578,7 +586,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Artifact upload
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are both currently `1.0.6`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are both currently `1.1.0`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**. Its remaining advisory warnings are non-blocking recommendations, primarily sentence-case UI labels and declarative settings-search adoption.
 
@@ -619,7 +627,7 @@ Check that:
 
 ### A destructive tool is paused
 
-Open the action card, inspect its target list and diff preview, then choose **Approve & Apply** or **Reject**. Closing chat rejects pending confirmations safely.
+Open the Command Center dashboard, inspect the Mutation Approval card's target list and diff preview, then choose **Approve & Apply** or **Reject**. Closing the dashboard rejects pending confirmations safely.
 
 ## Donations and developer support
 

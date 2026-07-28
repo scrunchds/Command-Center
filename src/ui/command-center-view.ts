@@ -13,9 +13,15 @@ import {
 	type EventRef,
 } from 'obsidian';
 import type CommandCenterPlugin from '../main';
-import type { QueueStats } from '../types';
+import type { QueueStats, ToolConfirmationDecision, ToolConfirmationRequest } from '../types';
 import type { StoredTask } from '../persistence';
 import type { ReActTraceEvent, TraceEventCallback } from '../react/react-trace';
+import type { InterviewEngine } from '../onboarding/InterviewEngine';
+import type { OnboardingConfig } from '../onboarding/OnboardingTypes';
+import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings';
+import { DashboardOnboarding } from './DashboardOnboarding';
+import { CredentialVaultModal } from '../security/CredentialVaultModal';
+import { ChatActionCard } from './chat-action-card';
 
 const MAX_TRACE_ENTRIES = 50;
 const MAX_COMPLETED_STREAMS = 3;
@@ -54,8 +60,8 @@ export interface TraceRenderStats {
 	overBudgetFrames: number;
 }
 
+/** Stable persisted ID retained for workspace compatibility; placement is root-only. */
 export const VIEW_TYPE_COMMAND_CENTER = 'command-center-sidebar';
-/** Compatibility alias used by existing commands and plugin lifecycle code. */
 export const COMMAND_CENTER_VIEW_TYPE = VIEW_TYPE_COMMAND_CENTER;
 export const COMMAND_CENTER_VIEW_DISPLAY_TEXT = 'Command Center';
 
@@ -104,6 +110,13 @@ export class CommandCenterView extends ItemView {
 	private chatMessagesEl: HTMLElement | null = null;
 	private chatInputEl: HTMLTextAreaElement | null = null;
 	private currentDailyFile: TFile | null = null;
+	private dashboardWorkspaceEl: HTMLElement | null = null;
+	private telemetryEl: HTMLElement | null = null;
+	private basesTelemetryEl: HTMLElement | null = null;
+	private approvalQueueEl: HTMLElement | null = null;
+	private widgetHostEl: HTMLElement | null = null;
+	private layoutEditorEl: HTMLElement | null = null;
+	private readonly approvalCards = new Set<ChatActionCard>();
 	private viewEventRefs: EventRef[] = [];
 	private monitorTimer: number | null = null;
 	private chatFrame: number | null = null;
@@ -148,14 +161,25 @@ export class CommandCenterView extends ItemView {
 		container.addClass('command-center-view');
 
 		const title = container.createDiv({ cls: 'command-center-title-row' });
-		title.createEl('h2', { text: 'Command Center' });
+		const identity = title.createDiv({ cls: 'command-center-identity' });
+		identity.createEl('h2', { text: 'Command Center' });
+		identity.createEl('span', { text: 'Agentic operating system', cls: 'command-center-subtitle' });
 		this.renderHeader(title);
-		this.renderDailyControls(container);
-		this.renderWorkflowMonitor(container);
-		this.renderOrchestratorChat(container);
+		this.telemetryEl = container.createDiv({ cls: 'cc-dashboard-telemetry' });
+		this.renderTelemetry();
+		this.layoutEditorEl = container.createDiv({ cls: 'cc-dashboard-layout-editor is-hidden' });
+		this.widgetHostEl = container.createDiv({ cls: 'cc-dashboard-widget-grid' });
+		const widgetHost = this.widgetHostEl;
+		this.dashboardWorkspaceEl = widgetHost.createEl('section', { cls: 'command-center-section cc-dashboard-workspace' });
+		this.renderDashboardWorkspace();
+		this.renderApprovalQueue(widgetHost);
+		this.renderBasesController(widgetHost);
+		this.renderDailyControls(widgetHost);
+		this.renderWorkflowMonitor(widgetHost);
+		this.renderOrchestratorChat(widgetHost);
 
 		/* ─── Daemon Section ──────────────────────── */
-		const daemonSection = container.createEl('section', {
+		const daemonSection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
 		daemonSection.createEl('h3', { text: 'Daemon' });
@@ -209,7 +233,7 @@ export class CommandCenterView extends ItemView {
 		});
 
 		/* ─── Stats Section ───────────────────────── */
-		const statsSection = container.createEl('section', {
+		const statsSection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
 		statsSection.createEl('h3', { text: 'Task Queue' });
@@ -224,7 +248,7 @@ export class CommandCenterView extends ItemView {
 		};
 
 		/* ─── History Section ─────────────────────── */
-		const historySection = container.createEl('section', {
+		const historySection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
 		const histHeader = historySection.createDiv({
@@ -249,7 +273,7 @@ export class CommandCenterView extends ItemView {
 		});
 
 		/* ─── Live Stream Section ─────────────────── */
-		const streamSection = container.createEl('section', {
+		const streamSection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
 		const streamHeader = streamSection.createDiv({
@@ -270,7 +294,7 @@ export class CommandCenterView extends ItemView {
 		});
 
 		/* ─── ReAct Monitor Section ──────────────── */
-		const reactSection = container.createEl('section', {
+		const reactSection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
 		const reactHeader = reactSection.createDiv({
@@ -352,9 +376,60 @@ export class CommandCenterView extends ItemView {
 		this.pendingTraceEvents.push(...retained.slice(-MAX_TRACE_ENTRIES));
 		this.scheduleRender();
 
+		this.markWidget(this.dashboardWorkspaceEl, 'workspace');
+		this.markWidget(daemonSection, 'daemon');
+		this.markWidget(statsSection, 'queue');
+		this.markWidget(historySection, 'history');
+		this.markWidget(streamSection, 'live');
+		this.markWidget(reactSection, 'react');
+		this.applyDashboardLayout();
 		this.updateDaemonStatus();
 		this.bindOperationalRefresh();
 		this.refreshConfigurationState();
+	}
+
+	/** Replace the operational overview with the consent-led setup interview. */
+	async openOnboarding(
+		engine: InterviewEngine,
+		onComplete: (config: OnboardingConfig) => void | Promise<void>,
+	): Promise<void> {
+		if (!this.dashboardWorkspaceEl) throw new Error('Command Center dashboard workspace is unavailable.');
+		const onboarding = new DashboardOnboarding(
+			this.app,
+			this.plugin,
+			this.dashboardWorkspaceEl,
+			this,
+			engine,
+			{
+				onComplete,
+				onClose: () => this.renderDashboardWorkspace(),
+			},
+		);
+		await onboarding.open();
+	}
+
+	private renderDashboardWorkspace(): void {
+		if (!this.dashboardWorkspaceEl) return;
+		this.dashboardWorkspaceEl.empty();
+		this.dashboardWorkspaceEl.removeClass('cc-dashboard-onboarding');
+		const heading = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-heading' });
+		heading.createEl('div', { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
+		heading.createEl('h2', { text: 'Operational overview' });
+		heading.createEl('p', { text: 'Observe, understand, propose, approve, execute, evaluate, and remember.' });
+		const cards = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-cards' });
+		for (const [title, copy] of [
+			['Agents', 'Multi-agent plans and active work'],
+			['Queue', 'Pending and running operations'],
+			['Memory', 'Vault context and semantic retrieval'],
+			['Providers', 'Local-first routing and health'],
+		] as const) {
+			const card = cards.createDiv({ cls: 'cc-dashboard-workspace-card' });
+			card.createEl('strong', { text: title });
+			card.createDiv({ text: copy });
+		}
+		const actions = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-actions' });
+		const discovery = actions.createEl('button', { text: 'Start or revise discovery', cls: 'mod-cta' });
+		discovery.addEventListener('click', () => this.plugin.openOnboarding());
 	}
 
 	async onClose(): Promise<void> {
@@ -381,6 +456,14 @@ export class CommandCenterView extends ItemView {
 		this.chatMessagesEl = null;
 		this.chatInputEl = null;
 		this.currentDailyFile = null;
+		this.dashboardWorkspaceEl = null;
+		this.telemetryEl = null;
+		this.basesTelemetryEl = null;
+		this.approvalQueueEl = null;
+		this.widgetHostEl = null;
+		this.layoutEditorEl = null;
+		for (const card of this.approvalCards) card.dispose();
+		this.approvalCards.clear();
 		this.pendingTraceEvents.length = 0;
 		for (const row of this.traceRows) row.event = null;
 		this.traceRows.length = 0;
@@ -396,19 +479,170 @@ export class CommandCenterView extends ItemView {
 	/* ─── Operational Sidebar ───────────────────────── */
 
 	private renderHeader(title: HTMLElement): void {
-		title.createEl('h2', { text: 'Command Center' });
-		const exportWorkflowBtn = title.createEl('button', {
-			text: 'Export Active Workflow to Canvas',
+		const actions = title.createDiv({ cls: 'command-center-header-actions' });
+		const exportWorkflowBtn = actions.createEl('button', { text: 'Export workflow to Canvas' });
+		exportWorkflowBtn.addEventListener('click', () => void this.plugin.exportActiveWorkflowToCanvas());
+		const customize = actions.createEl('button', { text: 'Customize dashboard' });
+		customize.addEventListener('click', () => this.toggleLayoutEditor(customize));
+		const vault = actions.createEl('button', { text: 'Secure vault' });
+		vault.addEventListener('click', () => new CredentialVaultModal(this.app, this.plugin, () => this.renderTelemetry()).open());
+	}
+
+	private renderTelemetry(): void {
+		if (!this.telemetryEl) return;
+		this.telemetryEl.empty();
+		const route = this.plugin.nativeAutoRouter.resolve('text');
+		const items = [
+			{ label: 'Route', value: `${route.providerId} · ${route.modelId ?? 'default'}`, state: route.source === 'fail-closed' ? 'warning' : 'ok' },
+			{ label: 'Depth', value: `${this.plugin.nativeAutoRouter.getDepth()} / 10`, state: 'neutral' },
+			{ label: 'Pi daemon', value: this.plugin.daemon.isRunning() ? 'Running' : 'Stopped', state: this.plugin.daemon.isRunning() ? 'ok' : 'warning' },
+			{ label: 'Secure vault', value: this.plugin.credentialVault.unlocked ? 'Unlocked' : 'Locked · local only', state: this.plugin.credentialVault.unlocked ? 'ok' : 'secure' },
+		] as const;
+		for (const item of items) {
+			const card = this.telemetryEl.createDiv({ cls: `cc-telemetry-card is-${item.state}` });
+			card.createDiv({ text: item.label, cls: 'cc-telemetry-label' });
+			card.createDiv({ text: item.value, cls: 'cc-telemetry-value' });
+		}
+	}
+
+	private toggleLayoutEditor(button: HTMLButtonElement): void {
+		if (!this.layoutEditorEl) return;
+		const opening = this.layoutEditorEl.hasClass('is-hidden');
+		this.layoutEditorEl.toggleClass('is-hidden', !opening);
+		button.setText(opening ? 'Done customizing' : 'Customize dashboard');
+		if (opening) this.renderLayoutEditor();
+	}
+
+	private renderLayoutEditor(): void {
+		if (!this.layoutEditorEl) return;
+		this.layoutEditorEl.empty();
+		const heading = this.layoutEditorEl.createDiv({ cls: 'command-center-section-header' });
+		heading.createEl('h3', { text: 'Dashboard layout' });
+		const reset = heading.createEl('button', { text: 'Reset default layout' });
+		reset.addEventListener('click', () => {
+			this.plugin.settings.dashboardLayout = DEFAULT_DASHBOARD_LAYOUT.map(widget => ({ ...widget }));
+			void this.plugin.saveSettings();
+			this.applyDashboardLayout();
+			this.renderLayoutEditor();
 		});
-		exportWorkflowBtn.addEventListener('click', () => {
-			void this.plugin.exportActiveWorkflowToCanvas();
+		const list = this.layoutEditorEl.createDiv({ cls: 'cc-layout-list' });
+		for (const widget of this.normalizedLayout()) {
+			const row = list.createDiv({ cls: 'cc-layout-row' });
+			row.createEl('strong', { text: this.widgetLabel(widget.id) });
+			const up = row.createEl('button', { text: '↑', attr: { 'aria-label': `Move ${this.widgetLabel(widget.id)} up` } });
+			const down = row.createEl('button', { text: '↓', attr: { 'aria-label': `Move ${this.widgetLabel(widget.id)} down` } });
+			up.addEventListener('click', () => this.moveWidget(widget.id, -1));
+			down.addEventListener('click', () => this.moveWidget(widget.id, 1));
+			const size = row.createEl('select', { attr: { 'aria-label': `${this.widgetLabel(widget.id)} size` } });
+			for (const value of ['compact', 'standard', 'expanded'] as const) size.createEl('option', { value, text: value });
+			size.value = widget.size;
+			size.addEventListener('change', () => this.updateWidget(widget.id, { size: size.value as DashboardWidgetSize }));
+			const protectedWidget = widget.id === 'approvals';
+			const collapse = row.createEl('button', { text: widget.collapsed ? 'Expand' : 'Collapse' });
+			collapse.disabled = protectedWidget;
+			collapse.title = protectedWidget ? 'Mutation approvals must remain visible.' : '';
+			collapse.addEventListener('click', () => this.updateWidget(widget.id, { collapsed: !widget.collapsed }));
+			const visibility = row.createEl('button', { text: widget.hidden ? 'Show' : 'Hide' });
+			visibility.disabled = protectedWidget;
+			visibility.title = protectedWidget ? 'Mutation approvals cannot be hidden.' : '';
+			visibility.addEventListener('click', () => this.updateWidget(widget.id, { hidden: !widget.hidden }));
+		}
+	}
+
+	private normalizedLayout(): DashboardWidgetLayout[] {
+		const configured = new Map(this.plugin.settings.dashboardLayout.map(widget => [widget.id, widget]));
+		const ordered = this.plugin.settings.dashboardLayout.filter(widget => DEFAULT_DASHBOARD_LAYOUT.some(item => item.id === widget.id));
+		for (const fallback of DEFAULT_DASHBOARD_LAYOUT) if (!configured.has(fallback.id)) ordered.push({ ...fallback });
+		return ordered.map(widget => widget.id === 'approvals' ? { ...widget, hidden: false, collapsed: false } : { ...widget });
+	}
+
+	private applyDashboardLayout(): void {
+		if (!this.widgetHostEl) return;
+		const layout = this.normalizedLayout();
+		this.plugin.settings.dashboardLayout = layout;
+		for (const widget of layout) {
+			const element = this.widgetHostEl.querySelector<HTMLElement>(`[data-widget-id="${widget.id}"]`);
+			if (!element) continue;
+			element.toggleClass('is-widget-hidden', widget.hidden);
+			element.toggleClass('is-widget-collapsed', widget.collapsed);
+			element.removeClass('is-size-compact', 'is-size-standard', 'is-size-expanded');
+			element.addClass(`is-size-${widget.size}`);
+			this.widgetHostEl.appendChild(element);
+		}
+	}
+
+	private markWidget(element: HTMLElement, id: string): void { element.dataset.widgetId = id; }
+	private widgetLabel(id: string): string { return ({ workspace: 'Dashboard workspace', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id; }
+	private updateWidget(id: string, patch: Partial<DashboardWidgetLayout>): void {
+		this.plugin.settings.dashboardLayout = this.normalizedLayout().map(widget => widget.id === id ? { ...widget, ...patch, ...(id === 'approvals' ? { hidden: false, collapsed: false } : {}) } : widget);
+		void this.plugin.saveSettings();
+		this.applyDashboardLayout();
+		this.renderLayoutEditor();
+	}
+	private moveWidget(id: string, direction: -1 | 1): void {
+		const layout = this.normalizedLayout();
+		const index = layout.findIndex(widget => widget.id === id);
+		const target = index + direction;
+		if (index < 0 || target < 0 || target >= layout.length) return;
+		[layout[index], layout[target]] = [layout[target]!, layout[index]!];
+		this.plugin.settings.dashboardLayout = layout;
+		void this.plugin.saveSettings();
+		this.applyDashboardLayout();
+		this.renderLayoutEditor();
+	}
+
+	private renderApprovalQueue(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-dashboard-approvals' });
+		this.markWidget(section, 'approvals');
+		const heading = section.createDiv({ cls: 'command-center-section-header' });
+		heading.createEl('h3', { text: 'Mutation Approvals' });
+		heading.createEl('span', { text: 'Destructive and bulk operations stop here before any file is touched.', cls: 'cc-widget-caption' });
+		this.approvalQueueEl = section.createDiv({ cls: 'cc-dashboard-approval-queue' });
+		this.approvalQueueEl.createEl('p', { text: 'No operations awaiting approval.', cls: 'command-center-empty' });
+	}
+
+	async requestMutationApproval(request: ToolConfirmationRequest): Promise<ToolConfirmationDecision> {
+		if (!this.approvalQueueEl || !this.isViewOpen) return 'rejected';
+		this.approvalQueueEl.querySelector('.command-center-empty')?.remove();
+		const card = new ChatActionCard(this.approvalQueueEl, {
+			...request,
+			timeoutMs: request.timeoutMs ?? 60_000,
 		});
+		this.approvalCards.add(card);
+		const decision = await card.wait();
+		this.approvalCards.delete(card);
+		return decision;
+	}
+
+	private renderBasesController(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-bases-controller' });
+		this.markWidget(section, 'bases');
+		const heading = section.createDiv({ cls: 'command-center-section-header' });
+		heading.createEl('h3', { text: 'Bases Queue Controller' });
+		heading.createEl('span', { text: 'Native .base views remain the queue definition and execution surface.', cls: 'cc-widget-caption' });
+		this.basesTelemetryEl = section.createDiv({ cls: 'cc-bases-telemetry' });
+		this.refreshBasesTelemetry();
+	}
+
+	private refreshBasesTelemetry(): void {
+		if (!this.basesTelemetryEl) return;
+		this.basesTelemetryEl.empty();
+		const telemetry = this.plugin.getBasesQueueTelemetry();
+		for (const [label, value] of [
+			['Pending', telemetry.pending], ['Running', telemetry.running],
+			['Active notes', telemetry.activeNotes], ['Synced completions', telemetry.synchronized],
+		] as const) {
+			const item = this.basesTelemetryEl.createDiv({ cls: 'cc-bases-telemetry-item' });
+			item.createEl('strong', { text: String(value) });
+			item.createSpan({ text: label });
+		}
 	}
 
 	private renderDailyControls(container: HTMLElement): void {
 		const section = container.createEl('section', {
 			cls: 'command-center-section cc-daily-controls',
 		});
+		this.markWidget(section, 'daily');
 		section.createEl('h3', { text: 'Daily Cycle' });
 		const controls = section.createDiv({
 			cls: 'command-center-daemon-controls',
@@ -441,6 +675,7 @@ export class CommandCenterView extends ItemView {
 		const section = container.createEl('section', {
 			cls: 'command-center-section cc-system-monitor',
 		});
+		this.markWidget(section, 'system');
 		section.createEl('h3', { text: 'System & Workflow State' });
 		this.configStateEl = section.createDiv({ cls: 'cc-config-state' });
 		this.workflowStateEl = section.createDiv({ cls: 'cc-workflow-state' });
@@ -450,19 +685,44 @@ export class CommandCenterView extends ItemView {
 		const section = container.createEl('section', {
 			cls: 'command-center-section cc-orchestrator-chat',
 		});
-		section.createEl('h3', { text: 'Orchestrator' });
+		this.markWidget(section, 'orchestrator');
+		const header = section.createDiv({ cls: 'command-center-section-header' });
+		header.createEl('h3', { text: 'Orchestrator' });
+		header.createEl('span', { text: 'Dashboard agent workspace', cls: 'cc-widget-caption' });
 		this.chatMessagesEl = section.createDiv({
-			cls: 'cc-sidebar-chat-messages',
+			cls: 'cc-dashboard-orchestrator-messages',
+			attr: { role: 'log', 'aria-live': 'polite' },
 		});
 		this.appendChatMessage(
 			'assistant',
 			'Ready. Prompts are routed through the configured reasoning tier.',
 		);
 		this.chatInputEl = section.createEl('textarea', {
-			cls: 'cc-sidebar-chat-input',
-			attr: { rows: '3', placeholder: 'Ask the Orchestrator…' },
+			cls: 'cc-dashboard-orchestrator-input',
+			attr: { rows: '6', placeholder: 'Ask the Orchestrator…', 'aria-label': 'Orchestrator prompt' },
 		});
-		const send = section.createEl('button', {
+		this.chatInputEl.addEventListener('input', () => this.resizeOrchestratorInput());
+		this.resizeOrchestratorInput();
+		const controls = section.createDiv({ cls: 'cc-dashboard-input-actions' });
+		const dictate = controls.createEl('button', { text: '🎙 Dictate' });
+		let stopDictation: (() => Promise<string>) | null = null;
+		dictate.addEventListener('click', () => void (async () => {
+			if (stopDictation) {
+				dictate.disabled = true;
+				try {
+					const text = await stopDictation();
+					if (this.chatInputEl) {
+						this.chatInputEl.value = [this.chatInputEl.value.trim(), text].filter(Boolean).join(' ');
+						this.resizeOrchestratorInput();
+					}
+				} catch (error) { new Notice(`Dictation failed: ${(error as Error).message}`); }
+				finally { stopDictation = null; dictate.disabled = false; dictate.setText('🎙 Dictate'); }
+			} else {
+				try { const session = await this.plugin.accessibilityAudio.dictate(); stopDictation = session.stop; dictate.setText('■ Stop dictation'); }
+				catch (error) { new Notice(`Dictation failed: ${(error as Error).message}`); }
+			}
+		})());
+		const send = controls.createEl('button', {
 			text: 'Send',
 			cls: 'mod-cta',
 		});
@@ -476,6 +736,15 @@ export class CommandCenterView extends ItemView {
 		});
 	}
 
+	private resizeOrchestratorInput(): void {
+		if (!this.chatInputEl) return;
+		const minimum = 132;
+		const maximum = Math.max(minimum, Math.floor(window.innerHeight * 0.45));
+		this.chatInputEl.style.height = 'auto';
+		this.chatInputEl.style.height = `${Math.min(maximum, Math.max(minimum, this.chatInputEl.scrollHeight))}px`;
+		this.chatInputEl.style.overflowY = this.chatInputEl.scrollHeight > maximum ? 'auto' : 'hidden';
+	}
+
 	appendChatMessage(
 		role: 'user' | 'assistant' | 'error',
 		message: string,
@@ -487,9 +756,15 @@ export class CommandCenterView extends ItemView {
 				this.chatMessagesEl.clientHeight <
 			28;
 		const row = this.chatMessagesEl.createDiv({
-			cls: `cc-sidebar-chat-message is-${role}`,
+			cls: `cc-dashboard-orchestrator-message is-${role}`,
 		});
 		row.setText(message);
+		if (role === 'assistant' && message.trim()) {
+			const read = row.createEl('button', { text: '🔊 Read aloud', cls: 'cc-read-aloud' });
+			read.addEventListener('click', () => this.plugin.accessibilityAudio.speak(message));
+			if (this.plugin.settings.autoReadAiResponses) this.plugin.accessibilityAudio.speak(message);
+			this.plugin.accessibilityAudio.cue('complete');
+		}
 		if (pinned) {
 			this.pendingChatScroll = true;
 			this.scheduleChatScroll();
@@ -504,6 +779,7 @@ export class CommandCenterView extends ItemView {
 		if (!prompt) return;
 		this.plugin.requireInitialized();
 		if (this.chatInputEl) this.chatInputEl.value = '';
+		this.resizeOrchestratorInput();
 		this.appendChatMessage('user', prompt);
 		button.disabled = true;
 		const responseEl = this.appendChatMessage('assistant', '');
@@ -518,23 +794,21 @@ export class CommandCenterView extends ItemView {
 				status: 'queued',
 				createdAt: Date.now(),
 				onStream: (delta) => {
-					streamed += delta;
-					responseEl?.appendText(delta);
+					const normalizedDelta = this.plugin.normalizeDashboardOutput({ success: true, content: delta });
+					if (!normalizedDelta.content) return;
+					streamed += normalizedDelta.content;
+					responseEl?.appendText(normalizedDelta.content);
 					this.pendingChatScroll = true;
 					this.scheduleChatScroll();
 				},
 			});
-			if (!streamed)
-				responseEl?.setText(
-					result.taskResult.output ??
-						result.taskResult.summary ??
-						'Completed.',
-				);
-			if (!result.servedBy)
-				throw new Error(
-					result.taskResult.output ||
-						'No reasoning provider completed the request.',
-				);
+			const normalized = this.plugin.normalizeDashboardOutput({
+				success: Boolean(result.servedBy),
+				content: result.taskResult.output ?? result.taskResult.summary ?? '',
+				...(result.servedBy ? {} : { error: result.taskResult.output ?? 'No reasoning provider completed the request.' }),
+			});
+			if (!normalized.success) throw new Error(normalized.error ?? 'Agent execution failed safely.');
+			if (!streamed) responseEl?.setText(normalized.content || 'Completed.');
 		} catch (error) {
 			responseEl?.remove();
 			this.appendChatMessage('error', (error as Error).message);
@@ -705,7 +979,11 @@ export class CommandCenterView extends ItemView {
 	}
 
 	private bindOperationalRefresh(): void {
-		const refresh = () => this.refreshConfigurationState();
+		const refresh = () => {
+			this.refreshConfigurationState();
+			this.renderTelemetry();
+			this.refreshBasesTelemetry();
+		};
 		this.viewEventRefs.push(
 			this.app.vault.on('create', refresh),
 			this.app.vault.on('delete', refresh),

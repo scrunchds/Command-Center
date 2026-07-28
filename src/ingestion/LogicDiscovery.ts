@@ -20,8 +20,8 @@ export interface LogicDiscoveryState {
 	nextQuestion: string;
 }
 
-/** Hook implemented by the Triptych Command Deck center/context panes. */
-export interface TriptychDiscoveryHook {
+/** Rendering boundary for a discovery mode hosted by the canonical dashboard. */
+export interface DashboardDiscoveryHost {
 	openDiscovery(state: LogicDiscoveryState): void | Promise<void>;
 	updateDiscovery(state: LogicDiscoveryState): void;
 	closeDiscovery(): void;
@@ -74,13 +74,13 @@ export class LogicDiscovery {
 	private turns: SocraticTurn[] = [];
 	private evidence: DiscoveryEvidence[] = [];
 
-	constructor(private readonly topography: TopographyMap, private readonly deck: TriptychDiscoveryHook) {}
+	constructor(private readonly topography: TopographyMap, private readonly dashboard: DashboardDiscoveryHost) {}
 
 	async start(): Promise<LogicDiscoveryState> {
 		this.turns = [];
 		this.evidence = this.observeCandidates();
 		const state = this.state(this.initialQuestion());
-		await this.deck.openDiscovery(state);
+		await this.dashboard.openDiscovery(state);
 		return state;
 	}
 
@@ -96,7 +96,7 @@ export class LogicDiscovery {
 		const nextQuestion = this.nextQuestion();
 		this.turns.push({ role: 'assistant', content: nextQuestion });
 		const state = this.state(nextQuestion);
-		this.deck.updateDiscovery(state);
+		this.dashboard.updateDiscovery(state);
 		return state;
 	}
 
@@ -106,12 +106,12 @@ export class LogicDiscovery {
 		if (this.turns.at(-1)?.role === 'assistant') this.turns[this.turns.length - 1] = { role: 'assistant', content: value };
 		else this.turns.push({ role: 'assistant', content: value });
 		const state = this.state(value);
-		this.deck.updateDiscovery(state);
+		this.dashboard.updateDiscovery(state);
 		return state;
 	}
 
 	finish(): void {
-		this.deck.closeDiscovery();
+		this.dashboard.closeDiscovery();
 	}
 
 	getState(): LogicDiscoveryState {

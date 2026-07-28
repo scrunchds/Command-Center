@@ -9,8 +9,6 @@ import { resolveChatContext, type ChatContextAttachment, type ResolvedChatContex
 import { createObsidianTools } from '../obsidian-tools';
 import { DEFAULT_REACT_CONFIG } from '../react';
 import type { ReActTraceEvent } from '../react/react-trace';
-import type { ToolConfirmationDecision, ToolConfirmationRequest } from '../types';
-import { ChatActionCard } from './chat-action-card';
 import { AudioRecorder } from '../audio/audio-recorder';
 import { TranscriberAdapter } from '../audio/transcriber';
 import { createVaultSearchTool } from '../rag/rag-tool';
@@ -22,6 +20,7 @@ type ChatMode = 'quick' | 'react' | 'workflow';
 type MessageRole = 'user' | 'assistant';
 
 interface ChatMessageElements {
+	role: MessageRole;
 	bubble: HTMLElement;
 	content: HTMLElement;
 	markdown: string;
@@ -60,7 +59,6 @@ export class CommandCenterChatView extends ItemView {
 	private transcriptionAbort: AbortController | null = null;
 	private isTranscribing = false;
 	private readonly animationFrames = new Set<number>();
-	private readonly actionCards = new Set<ChatActionCard>();
 
 	constructor(leaf: WorkspaceLeaf, plugin: CommandCenterPlugin) {
 		super(leaf);
@@ -184,8 +182,6 @@ export class CommandCenterChatView extends ItemView {
 		for (const frame of this.animationFrames) window.cancelAnimationFrame(frame);
 		this.animationFrames.clear();
 		this.plugin.daemon.setToolConfirmationHandler(null);
-		for (const card of this.actionCards) card.dispose();
-		this.actionCards.clear();
 		this.contextResolveGeneration++;
 		this.detectedContext = { cleanedPrompt: '', contextString: '', attachments: [] };
 		this.dismissedAttachments.clear();
@@ -470,7 +466,11 @@ export class CommandCenterChatView extends ItemView {
 			text: new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date()),
 			attr: { title: new Date().toLocaleString() },
 		});
-		const message = { bubble, content, markdown: text, renderVersion: 0 };
+		const message = { role, bubble, content, markdown: text, renderVersion: 0 };
+		if (role === 'assistant') {
+			const read = bubble.createEl('button', { text: '🔊 Read aloud', cls: 'cc-read-aloud', attr: { 'aria-label': 'Read AI response aloud' } });
+			read.addEventListener('click', () => this.plugin.accessibilityAudio.speak(message.markdown));
+		}
 		void this.renderMessage(message);
 		this.pinnedToBottom = true;
 		this.scrollToBottom(true);
@@ -562,6 +562,10 @@ export class CommandCenterChatView extends ItemView {
 			new Notice(`Command Center chat failed: ${(error as Error).message}`);
 		} finally {
 			assistant.bubble.removeClass('is-pending');
+			if (assistant.markdown.trim()) {
+				this.plugin.accessibilityAudio.cue('complete');
+				if (this.plugin.settings.autoReadAiResponses) this.plugin.accessibilityAudio.speak(assistant.markdown);
+			}
 			this.setSending(false);
 			this.scrollToBottom();
 		}
@@ -586,21 +590,6 @@ export class CommandCenterChatView extends ItemView {
 		if (!streamed) this.setMessage(assistant, result.output || result.summary || 'Task completed.');
 	}
 
-	private requestToolConfirmation(request: ToolConfirmationRequest): Promise<ToolConfirmationDecision> {
-		if (!this.isOpen) return Promise.resolve('rejected');
-		const row = this.historyEl.createDiv({ cls: 'cc-chat-message cc-chat-message-action' });
-		const card = new ChatActionCard(row, {
-			...request,
-			timeoutMs: request.timeoutMs ?? 60_000,
-		});
-		this.actionCards.add(card);
-		this.scrollToBottom();
-		return card.wait().finally(() => {
-			this.actionCards.delete(card);
-			this.scrollToBottom();
-		});
-	}
-
 	private async runReActTask(prompt: string, assistant: ChatMessageElements): Promise<void> {
 		const ready = await this.plugin.ensureDaemonRunning();
 		if (!ready) throw new Error(this.plugin.daemon.startError ?? 'Pi daemon is unavailable.');
@@ -615,7 +604,7 @@ export class CommandCenterChatView extends ItemView {
 		});
 		let answer = '';
 		let finalReceived = false;
-		this.plugin.daemon.setToolConfirmationHandler(request => this.requestToolConfirmation(request));
+		this.plugin.daemon.setToolConfirmationHandler(request => this.plugin.requestDashboardApproval(request));
 		try {
 			const response = await this.plugin.router.withJitModel('reasoning', () =>
 				this.plugin.daemon.executeReActSession(

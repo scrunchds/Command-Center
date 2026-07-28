@@ -195,6 +195,16 @@ export class PluginSettingsTab extends PluginSettingTab {
 				return d;
 			});
 
+		new Setting(body)
+			.setName('Audio cues')
+			.setDesc('Play restrained cues when dictation starts/stops and AI work completes.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.audioCues).onChange(value => this.saveSetting('audioCues', value)));
+
+		new Setting(body)
+			.setName('Automatically read AI responses')
+			.setDesc('Use the operating system speech synthesizer to read completed AI responses aloud. Every response also has a manual Read aloud control.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.autoReadAiResponses).onChange(value => this.saveSetting('autoReadAiResponses', value)));
+
 		// Max tokens
 		new Setting(body)
 			.setName('Max Tokens')
@@ -536,17 +546,11 @@ export class PluginSettingsTab extends PluginSettingTab {
 		cardHeader.createSpan({ cls: 'cc-provider-icon', text: meta.icon });
 		const info = cardHeader.createSpan({ cls: 'cc-provider-info' });
 		info.createSpan({ cls: 'cc-provider-name', text: meta.label });
-		if (meta.requiresKey) {
-			info.createSpan({
-				cls: 'cc-provider-key-badge',
-				text: '🔑 Key Required',
-			});
-		} else {
-			info.createSpan({
-				cls: 'cc-provider-key-badge free',
-				text: '🆓 No Key',
-			});
-		}
+		const authentication = meta.authentication ?? (meta.requiresKey ? 'required' : 'none');
+		info.createSpan({
+			cls: `cc-provider-key-badge ${authentication === 'none' ? 'free' : ''}`,
+			text: authentication === 'required' ? '🔑 Key Required' : authentication === 'optional' ? '🔐 Optional Authentication' : '🆓 No Key',
+		});
 
 		// Enable toggle (in header)
 		const toggleContainer = cardHeader.createDiv({
@@ -618,13 +622,13 @@ export class PluginSettingsTab extends PluginSettingTab {
 			text: `📐 ${this.formatContext(caps.maxContextWindow)} ctx`,
 		});
 
-		// API keys are managed only inside the isolated credential modal.
-		if (meta.requiresKey) {
+		// Required and optional API keys are managed only in the encrypted modal.
+		if (authentication !== 'none') {
 			const keyRow = cardBody.createDiv({ cls: 'cc-credential-row' });
-			keyRow.createSpan({ cls: 'cc-credential-label', text: 'API Key' });
+			keyRow.createSpan({ cls: 'cc-credential-label', text: authentication === 'required' ? 'API Key' : 'Optional API Key' });
 			keyRow.createSpan({
 				cls: 'cc-provider-key-badge',
-				text: !this.plugin.credentialVault.unlocked ? '🔒 Vault locked' : this.plugin.credentialVault.has(pid) ? '🔐 Configured' : 'Not configured',
+				text: !this.plugin.credentialVault.unlocked ? '🔒 Vault locked' : this.plugin.credentialVault.has(pid) ? '🔐 Configured' : authentication === 'optional' ? 'Not configured · unauthenticated' : 'Not configured',
 			});
 			const manage = keyRow.createEl('button', { text: 'Manage Securely' });
 			manage.addEventListener('click', () => new CredentialVaultModal(this.app, this.plugin, () => this.update()).open());

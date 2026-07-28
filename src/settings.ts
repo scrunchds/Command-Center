@@ -12,6 +12,28 @@ import { DEFAULT_ROUTING } from './routing';
 
 /* ─── Settings Interface ────────────────────────────────── */
 
+export type DashboardWidgetSize = 'compact' | 'standard' | 'expanded';
+export interface DashboardWidgetLayout {
+	id: string;
+	hidden: boolean;
+	collapsed: boolean;
+	size: DashboardWidgetSize;
+}
+
+export const DEFAULT_DASHBOARD_LAYOUT: DashboardWidgetLayout[] = [
+	{ id: 'workspace', hidden: false, collapsed: false, size: 'expanded' },
+	{ id: 'approvals', hidden: false, collapsed: false, size: 'expanded' },
+	{ id: 'orchestrator', hidden: false, collapsed: false, size: 'expanded' },
+	{ id: 'queue', hidden: false, collapsed: false, size: 'standard' },
+	{ id: 'react', hidden: false, collapsed: false, size: 'expanded' },
+	{ id: 'bases', hidden: false, collapsed: false, size: 'standard' },
+	{ id: 'daily', hidden: false, collapsed: false, size: 'standard' },
+	{ id: 'system', hidden: false, collapsed: false, size: 'standard' },
+	{ id: 'daemon', hidden: false, collapsed: false, size: 'compact' },
+	{ id: 'live', hidden: false, collapsed: false, size: 'expanded' },
+	{ id: 'history', hidden: false, collapsed: false, size: 'standard' },
+];
+
 export interface CommandCenterSettings {
 	activeProfile: string;
 	maxTokens: number;
@@ -26,6 +48,12 @@ export interface CommandCenterSettings {
 	 * Integer only. Drives NativeAutoRouter intent resolution against
 	 * model_matrix.json. Lower = local/cheap, higher = cloud/premium. */
 	metacognitiveDepth: number;
+	/** Play restrained nonverbal cues for recording and completed responses. */
+	audioCues: boolean;
+	/** Automatically read completed AI responses aloud. */
+	autoReadAiResponses: boolean;
+	/** Per-vault dashboard widget order, visibility, collapse, and width. */
+	dashboardLayout: DashboardWidgetLayout[];
 	/** AES-GCM ciphertext only; plaintext credentials are memory-only. */
 	encryptedCredentialVault?: EncryptedCredentialPayload;
 }
@@ -46,6 +74,9 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	silentDailyStartup: false,
 	multiProvider: DEFAULT_MULTI_PROVIDER,
 	metacognitiveDepth: 3,
+	audioCues: false,
+	autoReadAiResponses: false,
+	dashboardLayout: DEFAULT_DASHBOARD_LAYOUT.map(widget => ({ ...widget })),
 };
 
 /** Bounds for the Metacognitive Depth slider (Directive 1.6). */

@@ -53,14 +53,17 @@ export class CredentialVaultModal extends Modal {
 	private renderEditor(): void {
 		if (!this.plugin.credentialVault.unlocked) return this.renderUnlock();
 		this.contentEl.empty(); this.setTitle('Manage API Keys');
-		this.contentEl.createEl('p', { text: 'Existing keys are never displayed. Empty fields preserve their current values.' });
+		this.contentEl.createEl('p', { text: 'Required and optional endpoint keys are AES-GCM encrypted. Existing keys are never displayed; empty fields preserve current values.' });
 		const pending = new Map<ProviderId, string>();
 		for (const id of PROVIDERS) {
 			const meta = PROVIDER_REGISTRY[id];
-			if (!meta.requiresKey) continue;
+			const authentication = meta.authentication ?? (meta.requiresKey ? 'required' : 'none');
+			if (authentication === 'none') continue;
 			const row = this.contentEl.createDiv({ cls: 'cc-credential-row' });
-			row.createSpan({ cls: 'cc-credential-label', text: meta.label });
-			const input = row.createEl('input', { type: 'password', cls: 'cc-key-input', attr: { placeholder: this.plugin.credentialVault.has(id) ? 'Configured — enter replacement' : 'Enter API key', autocomplete: 'new-password', spellcheck: 'false' } });
+			const label = row.createDiv({ cls: 'cc-credential-label' });
+			label.createSpan({ text: meta.label });
+			label.createEl('small', { text: authentication === 'required' ? 'Required' : 'Optional bearer token' });
+			const input = row.createEl('input', { type: 'password', cls: 'cc-key-input', attr: { placeholder: this.plugin.credentialVault.has(id) ? 'Configured — enter replacement' : authentication === 'required' ? 'Enter API key' : 'Optional API key / bearer token', autocomplete: 'new-password', spellcheck: 'false' } });
 			input.addEventListener('input', () => pending.set(id, input.value));
 			const remove = row.createEl('button', { text: 'Remove' });
 			remove.disabled = !this.plugin.credentialVault.has(id);

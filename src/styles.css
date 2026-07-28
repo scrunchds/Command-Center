@@ -51,7 +51,10 @@ Command Center — Agentic OS for Obsidian
 /* ─── Command Center View ───────────────────────── */
 
 .command-center-view {
-	padding: 12px 16px;
+	width: 100%;
+	max-width: 1600px;
+	margin: 0 auto;
+	padding: clamp(12px, 2vw, 28px);
 	overflow-y: auto;
 	height: 100%;
 }
@@ -75,6 +78,53 @@ Command Center — Agentic OS for Obsidian
 .command-center-title-row button {
 	font-size: var(--font-smallest);
 }
+.command-center-identity { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.command-center-subtitle { color: var(--text-muted); font-size: var(--font-small); }
+.command-center-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.cc-dashboard-telemetry { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 8px; margin-bottom: 18px; }
+.cc-dashboard-layout-editor { margin-bottom: 14px; padding: 12px; border: 1px solid var(--interactive-accent); border-radius: var(--radius-l); background: var(--background-secondary); }
+.cc-layout-list { display: flex; flex-direction: column; gap: 6px; }
+.cc-layout-row { display: grid; grid-template-columns: minmax(150px, 1fr) auto auto minmax(100px, auto) auto auto; gap: 6px; align-items: center; }
+.cc-layout-row button { padding: 3px 8px; }
+.cc-dashboard-widget-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.cc-dashboard-widget-grid > [data-widget-id] { grid-column: span 6; min-width: 0; margin-bottom: 0; }
+.cc-dashboard-widget-grid > .is-size-compact { grid-column: span 4; }
+.cc-dashboard-widget-grid > .is-size-standard { grid-column: span 6; }
+.cc-dashboard-widget-grid > .is-size-expanded { grid-column: 1 / -1; }
+.cc-dashboard-widget-grid > .is-widget-hidden { display: none; }
+.cc-dashboard-widget-grid > .is-widget-collapsed > :not(h3):not(.command-center-section-header):not(.cc-dashboard-workspace-heading) { display: none; }
+.cc-dashboard-widget-grid > .is-widget-collapsed { min-height: 48px; overflow: hidden; }
+@media (max-width: 1000px) { .cc-dashboard-widget-grid > .is-size-compact { grid-column: span 6; } }
+@media (max-width: 720px) { .cc-dashboard-widget-grid > [data-widget-id] { grid-column: 1 / -1; } .cc-layout-row { grid-template-columns: 1fr repeat(2, auto); } .cc-layout-row select, .cc-layout-row button:nth-last-child(-n+2) { grid-row: 2; } }
+.cc-telemetry-card { min-width: 0; padding: 10px 12px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-secondary); }
+.cc-telemetry-card.is-ok { border-left: 3px solid var(--color-green); }
+.cc-telemetry-card.is-warning { border-left: 3px solid var(--color-orange); }
+.cc-telemetry-card.is-secure { border-left: 3px solid var(--color-blue); }
+.cc-telemetry-label { color: var(--text-muted); font-size: var(--font-smallest); letter-spacing: .04em; text-transform: uppercase; }
+.cc-telemetry-value { margin-top: 3px; overflow: hidden; font-size: var(--font-small); font-weight: var(--font-semibold); text-overflow: ellipsis; white-space: nowrap; }
+.cc-dashboard-approvals, .cc-bases-controller { padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); }
+.cc-dashboard-approvals { border-color: hsla(var(--color-orange-hsl), .35); }
+.cc-dashboard-approval-queue { display: flex; flex-direction: column; gap: 10px; }
+.cc-dashboard-approval-queue .cc-chat-action-card { max-width: none; }
+.cc-widget-caption { color: var(--text-muted); font-size: var(--font-smallest); }
+.cc-bases-telemetry { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.cc-bases-telemetry-item { display: flex; flex-direction: column; padding: 10px; border-radius: var(--radius-m); background: var(--background-secondary); text-align: center; }
+.cc-bases-telemetry-item strong { font-size: var(--font-ui-large); }
+.cc-bases-telemetry-item span { color: var(--text-muted); font-size: var(--font-smallest); }
+@media (max-width: 900px) { .cc-dashboard-telemetry, .cc-bases-telemetry { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .cc-dashboard-telemetry, .cc-bases-telemetry { grid-template-columns: 1fr; } }
+.cc-dashboard-workspace { padding: clamp(14px, 2vw, 24px); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); background: var(--background-primary-alt); }
+.cc-dashboard-workspace-heading { position: relative; }
+.cc-dashboard-workspace-heading h2 { margin: 2px 0 5px; }
+.cc-dashboard-workspace-heading p { max-width: 760px; margin: 0; color: var(--text-muted); }
+.cc-dashboard-workspace-heading > button { position: absolute; top: 0; right: 0; }
+.cc-dashboard-workspace-kicker { color: var(--interactive-accent); font-size: var(--font-smallest); font-weight: var(--font-semibold); letter-spacing: .12em; }
+.cc-dashboard-workspace-cards { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 8px; margin-top: 18px; }
+.cc-dashboard-workspace-card { padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); }
+.cc-dashboard-workspace-card div { margin-top: 3px; color: var(--text-muted); font-size: var(--font-small); }
+.cc-dashboard-workspace-actions { display: flex; gap: 8px; margin-top: 12px; }
+@media (max-width: 800px) { .cc-dashboard-workspace-cards { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .cc-dashboard-workspace-cards { grid-template-columns: 1fr; } .cc-dashboard-workspace-heading > button { position: static; margin-top: 10px; } }
 
 .command-center-section {
 	margin-bottom: 20px;
@@ -829,6 +879,16 @@ Command Center — Agentic OS for Obsidian
 .cc-onboarding-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .cc-onboarding-status { min-height: 18px; margin-top: 5px; color: var(--text-muted); font-size: var(--font-smallest); }
 .cc-onboarding-status.is-error { color: var(--color-red); }
+.cc-read-aloud { display: inline-flex; align-items: center; margin-top: 6px; padding: 2px 7px; color: var(--text-muted); font-size: var(--font-smallest); }
+.cc-orchestrator-chat { display: flex; flex-direction: column; min-width: 0; padding: clamp(12px, 1.5vw, 20px); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); background: var(--background-primary-alt); }
+.cc-dashboard-orchestrator-messages { display: flex; flex-direction: column; gap: 9px; width: 100%; min-height: clamp(180px, 26vh, 360px); height: clamp(240px, 34vh, 520px); max-height: 65vh; padding: 12px; overflow: auto; resize: vertical; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); }
+.cc-dashboard-orchestrator-message { align-self: flex-start; max-width: min(86%, 900px); padding: 9px 12px; overflow-wrap: anywhere; white-space: pre-wrap; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); background: var(--background-secondary); }
+.cc-dashboard-orchestrator-message.is-user { align-self: flex-end; border-color: hsla(var(--interactive-accent-hsl), .35); background: hsla(var(--interactive-accent-hsl), .12); }
+.cc-dashboard-orchestrator-message.is-error { color: var(--color-red); border-color: hsla(var(--color-red-hsl), .35); background: hsla(var(--color-red-hsl), .08); }
+.cc-dashboard-orchestrator-input { box-sizing: border-box; display: block; width: 100%; min-height: 132px; max-height: 45vh; margin-top: 10px; padding: 12px; overflow-y: hidden; resize: vertical; line-height: 1.5; font-family: var(--font-interface); }
+.cc-dashboard-input-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.cc-dashboard-input-actions button { min-width: 96px; }
+@media (max-width: 600px) { .cc-dashboard-orchestrator-messages { height: 32vh; min-height: 180px; } .cc-dashboard-orchestrator-message { max-width: 96%; } .cc-dashboard-orchestrator-input { min-height: 110px; } .cc-dashboard-input-actions button { flex: 1 1 120px; } }
 
 /* UX: suggested context, diff review, and trace filtering */
 .cc-chat-context-pill.is-suggested { border-style: dashed; color: var(--text-muted); background: hsla(var(--interactive-accent-hsl), 0.05); }
@@ -843,20 +903,6 @@ Command Center — Agentic OS for Obsidian
 .cc-react-filters { display: flex; flex-wrap: wrap; gap: 5px; margin: -2px 0 7px; }
 .cc-react-filters button { padding: 2px 8px; font-size: var(--font-smallest); }
 .cc-react-entry.cc-react-agent-error { border-left: 3px solid var(--color-red); background: hsla(var(--color-red-hsl), .08); }
-
-/* ─── Triptych Command Deck ─── */
-.cc-command-deck { display: grid; grid-template-columns: minmax(110px, 0.7fr) minmax(260px, 2.6fr) minmax(110px, 0.7fr); gap: 12px; height: 100%; padding: 12px; }
-.cc-deck-rail { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); background: var(--background-secondary); }
-.cc-deck-rail h3 { margin: 0 0 6px; color: var(--text-muted); font-size: var(--font-small); text-transform: uppercase; }
-.cc-deck-tool { width: 100%; }
-.cc-deck-center-stage { min-width: 0; overflow-y: auto; padding: 16px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); background: var(--background-primary); }
-.cc-deck-center-stage h2 { margin-top: 0; }
-.cc-deck-empty { color: var(--text-muted); text-align: center; }
-.cc-deck-transcript { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-.cc-deck-turn { max-width: 88%; padding: 9px 11px; border-radius: var(--radius-l); background: var(--background-secondary); white-space: pre-wrap; }
-.cc-deck-turn-user { align-self: flex-end; background: hsla(var(--interactive-accent-hsl), .14); }
-.cc-deck-answer { display: block; width: 100%; min-height: 84px; margin-bottom: 8px; resize: vertical; }
-@media (max-width: 700px) { .cc-command-deck { grid-template-columns: 1fr; } .cc-deck-rail { flex-direction: row; flex-wrap: wrap; } .cc-deck-rail h3 { width: 100%; } }
 
 /* ─── Metacognitive Depth (Command-Center) ─── */
 .cc-metacognitive-depth-value {

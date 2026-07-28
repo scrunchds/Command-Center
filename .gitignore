@@ -21,6 +21,8 @@ data.json
 .command-center/Audit/
 .command-center/vault-topology.json
 .command-center/style-guide.md
+/vault_topography.json
+/user_logic_profile.json
 .command-center/templates/
 .command-center/workflows/
 .command-center/
@@ -67,3 +69,8 @@ release/
 benchmark-results.json
 npm-audit*.json
 sanitize-report*.json
+
+# Generated backup, diagnostic log, and execution trace files
+*.bak.*
+CC_*_Log.md
+CC_*_Trace.md

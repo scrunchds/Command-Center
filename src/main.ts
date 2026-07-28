@@ -1,4 +1,4 @@
-import { Modal, Notice, normalizePath, Plugin, TFile } from 'obsidian';
+import { Modal, Notice, normalizePath, Plugin, TFile, type WorkspaceLeaf } from 'obsidian';
 import {
 	PiAgentDaemon,
 	detectPiPath,
@@ -29,7 +29,7 @@ import {
 import { TaskQueue, type TaskExecutor } from './task-queue';
 import { VaultWatcher } from './vault-watcher';
 import { CommandCenterStatusBar } from './status-bar';
-import type { Task, TaskResult, ToolDefinition } from './types';
+import type { Task, TaskResult, ToolConfirmationDecision, ToolConfirmationRequest, ToolDefinition } from './types';
 import { TOKEN_LIMITS } from './types';
 import type { Conversation, Turn } from './conversation';
 import { ConversationManager } from './conversation';
@@ -73,22 +73,18 @@ import { ConfigManager } from './engine/ConfigManager';
 import { InterviewEngine } from './engine/InterviewEngine';
 import { Orchestrator } from './engine/Orchestrator';
 import { ModelRouter as EndpointModelRouter } from './engine/ModelRouter';
-import { InterviewModal } from './ui/InterviewModal';
 import { CommandCenterCommandBridge } from './cli/command-bridge';
-import { TopographySweep, type TopographyMap } from './ingestion/TopographySweep';
-import { LogicDiscovery, LOGIC_DISCOVERY_SYSTEM_PROMPT } from './ingestion/LogicDiscovery';
 import { NativeAutoRouter } from './routing/NativeAutoRouter';
 import { DataNormalizer } from './execution/DataNormalizer';
 import { ExecutionRouter } from './execution/ExecutionRouter';
 import { PythonWorkerTransport } from './execution/PythonWorkerTransport';
 import { BUNDLED_PYTHON_WORKER } from './execution/BundledPythonWorker';
-import { CommandDeck, COMMAND_DECK_VIEW_TYPE } from './ui/CommandDeck';
 import { MemoryCredentialVault } from './security/VaultCrypto';
 import { TopographySweep as PersistentTopographySweep, type VaultTopography } from './metacognition/TopographySweep';
-import { LogicDiscoveryLoop } from './metacognition/LogicDiscoveryLoop';
 import { SemanticDatabase } from './metacognition/SemanticDatabase';
 import { DialecticRAG } from './metacognition/DialecticRAG';
 import { ShadowTestHarness } from './testing/ShadowTestHarness';
+import { AccessibilityAudio } from './audio/AccessibilityAudio';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
@@ -126,17 +122,16 @@ export default class CommandCenterPlugin extends Plugin {
 	pythonWorker!: PythonWorkerTransport;
 	semanticDatabase!: SemanticDatabase;
 	dialecticRag!: DialecticRAG;
-	topographySweep!: TopographySweep;
-	private topography: TopographyMap | null = null;
+	accessibilityAudio!: AccessibilityAudio;
 	private persistentTopography: VaultTopography | null = null;
-	private commandDeck: CommandDeck | null = null;
 
 	private taskHistory: StoredTask[] = [];
+	private readonly baseQueueTasks = new Map<string, { status: 'queued' | 'running'; targetPath: string }>();
+	private readonly normalizer = new DataNormalizer();
 	private readonly maxHistory = 100;
 	/** Coalesces worker/session completions into metadata-cache-visible vault writes. */
 	private frontmatterSync!: DebouncedFrontmatterSync;
 	private commandBridge!: CommandCenterCommandBridge;
-	private activeDiscovery: LogicDiscovery | null = null;
 
 	/** Daemon auto-retry state for missing/failed pi binary. */
 	private daemonRetryTimer: number | null = null;
@@ -156,6 +151,10 @@ export default class CommandCenterPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			data.settings as Partial<CommandCenterSettings>,
 		);
+		this.settings.dashboardLayout = Array.isArray(this.settings.dashboardLayout)
+			? this.settings.dashboardLayout
+			: DEFAULT_SETTINGS.dashboardLayout.map(widget => ({ ...widget }));
+		this.accessibilityAudio = new AccessibilityAudio(this);
 		// Ensure multiProvider exists (migration from v1)
 		if (!this.settings.multiProvider) {
 			this.settings.multiProvider = DEFAULT_MULTI_PROVIDER;
@@ -280,24 +279,13 @@ export default class CommandCenterPlugin extends Plugin {
 			this.pythonWorker,
 			this.semanticDatabase,
 		);
-		// Silent, read-only background topology observation. Results remain in memory.
-		this.topographySweep = new TopographySweep(this.app);
-		void this.topographySweep.run().then(snapshot => { this.topography = snapshot; }).catch(error => {
-			console.warn('[CC] Background topography sweep unavailable:', error);
-		});
+		// One canonical silent, read-only topology observation. It retains the
+		// snapshot in memory and writes only the plugin-localized map.
 		const persistentSweep = new PersistentTopographySweep(this.app);
 		void persistentSweep.run().then(snapshot => { this.persistentTopography = snapshot; }).catch(error => {
 			console.warn('[CC] Localized topography map unavailable:', error);
 		});
-		this.addCommand({
-			id: 'open-logic-discovery-loop',
-			name: 'Open Logic Discovery onboarding',
-			callback: () => { void (async () => {
-				const topology = this.persistentTopography ?? await persistentSweep.run();
-				this.persistentTopography = topology;
-				new LogicDiscoveryLoop(this.app, topology).open();
-			})(); },
-		});
+
 		this.router = new ModelRouter(
 			this.providerFactory,
 			() => this.settings.multiProvider,
@@ -394,6 +382,11 @@ export default class CommandCenterPlugin extends Plugin {
 
 		// ── Queue events → status bar + history + persistence + streaming ──
 		const onQueueEvent = (_event: string, task: Task) => {
+			const baseTask = this.baseQueueTasks.get(task.id);
+			if (baseTask) {
+				if (_event === 'started') baseTask.status = 'running';
+				else if (_event === 'completed' || _event === 'failed') this.baseQueueTasks.delete(task.id);
+			}
 			const stats = this.taskQueue.getStats();
 			this.statusBar.setStats(stats);
 			this.statusBar.setState(
@@ -474,17 +467,6 @@ export default class CommandCenterPlugin extends Plugin {
 			this.commandCenterChatView = view;
 			return view;
 		});
-		this.registerView(COMMAND_DECK_VIEW_TYPE, (leaf) => {
-			const deck = new CommandDeck(leaf);
-			this.commandDeck = deck;
-			deck.setAnswerHandler(answer => {
-				void this.submitDiscoveryAnswer(answer).catch(error => {
-					console.error('[CC] Logic Discovery execution failed:', error);
-					new Notice(`Logic Discovery failed: ${error instanceof Error ? error.message : String(error)}`, 15000);
-				});
-			});
-			return deck;
-		});
 		const basesRegistered = this.registerBasesView(
 			COMMAND_CENTER_BASES_VIEW_ID,
 			commandCenterBasesRegistration(this),
@@ -520,13 +502,8 @@ export default class CommandCenterPlugin extends Plugin {
 			name: 'Run Shadow-Clone Diagnostics',
 			callback: () => { void this.runShadowCloneDiagnostics(); },
 		});
-		this.addCommand({
-			id: 'open-triptych-logic-discovery',
-			name: 'Open Triptych Logic Discovery',
-			callback: () => { void this.openTriptychDiscovery(); },
-		});
 
-		// Defer the first-run modal until Obsidian's workspace is ready. The
+		// Defer first-run discovery until Obsidian's workspace is ready. The
 		// vault configuration file is the durable completion marker.
 		this.app.workspace.onLayoutReady(() => {
 			if (
@@ -556,20 +533,35 @@ export default class CommandCenterPlugin extends Plugin {
 		);
 	}
 
-	/** Open (or restart) the native conversational setup interview. */
+	/** Route every destructive mutation decision through the full-page dashboard. */
+	async requestDashboardApproval(request: ToolConfirmationRequest): Promise<ToolConfirmationDecision> {
+		await this.activateCommandCenterView();
+		const view = this.commandCenterView;
+		if (!view) return 'rejected';
+		return view.requestMutationApproval(request);
+	}
+
+	/** Normalize a provider/agent result before it reaches dashboard UI. */
+	normalizeDashboardOutput(payload: unknown): ReturnType<DataNormalizer['normalize']> {
+		return this.normalizer.normalize(payload, 'provider-dispatcher');
+	}
+
+	/** Open (or restart) discovery inside the full-page Command Center dashboard. */
 	openOnboarding(): void {
-		const engine = new InterviewEngine(
-			this.app,
-			this.dispatcher,
-			this.configManager,
-		);
-		new InterviewModal(this.app, engine, {
-			onComplete: async (config) => {
+		void (async () => {
+			await this.activateCommandCenterView();
+			const view = this.commandCenterView;
+			if (!view) throw new Error('Command Center dashboard failed to initialize.');
+			const engine = new InterviewEngine(this.app, this.dispatcher, this.configManager);
+			await view.openOnboarding(engine, async (config) => {
 				await this.folderIndexer.initialize(config.managedFolders);
 				this.configureDailyEngines(config);
 				await this.dailyEngine.ready();
-			},
-		}).open();
+			});
+		})().catch((error: unknown) => {
+			console.error('[CC] Dashboard onboarding failed:', error);
+			new Notice(`Command Center setup failed: ${error instanceof Error ? error.message : String(error)}`, 15000);
+		});
 	}
 
 	private confirmResetConfiguration(): void {
@@ -675,43 +667,6 @@ export default class CommandCenterPlugin extends Plugin {
 		};
 	}
 
-	private async submitDiscoveryAnswer(answer: string): Promise<void> {
-		const discovery = this.activeDiscovery;
-		if (!discovery) throw new Error('No active Logic Discovery session.');
-		discovery.answer(answer);
-		const state = discovery.getState();
-		const topographyContext = this.serializeTopographyForDiscovery();
-		const resolution = this.nativeAutoRouter.resolve('text');
-		const normalized = await this.executionRouter.execute({
-			resolution,
-			request: {
-				systemPrompt: `${LOGIC_DISCOVERY_SYSTEM_PROMPT}\n\nCurrent TopographySweep evidence (do not mention before the contextual baseline is complete):\n${topographyContext}`,
-				userPrompt: `Conversation so far:\n${state.turns.map(turn => `${turn.role}: ${turn.content}`).join('\n')}\n\nRespond with only the next concise Socratic question.`,
-				taskId: `logic-discovery-${Date.now()}`,
-				config: {
-					model: resolution.modelId,
-					maxTokens: 320,
-					temperature: 0.4,
-					extra: { reasoning: 'off' },
-				},
-			},
-		});
-		if (!normalized.success) throw new Error(normalized.error ?? 'Logic Discovery provider execution failed.');
-		if (!normalized.content.trim()) throw new Error('The selected provider returned an empty assistant response.');
-		discovery.applyAssistantResponse(normalized.content);
-	}
-
-	private serializeTopographyForDiscovery(): string {
-		if (!this.topography) return JSON.stringify({ status: 'unavailable' });
-		return JSON.stringify({
-			generatedAt: this.topography.generatedAt,
-			notes: [...this.topography.nodes.values()],
-			folders: [...this.topography.folders.values()],
-			tagCounts: Object.fromEntries(this.topography.tagCounts),
-			frontmatterFieldCounts: Object.fromEntries(this.topography.frontmatterFieldCounts),
-		}, null, 2);
-	}
-
 	private async runShadowCloneDiagnostics(): Promise<void> {
 		const harness = new ShadowTestHarness(this.nativeAutoRouter);
 		const report = await harness.runDiagnostics();
@@ -720,22 +675,9 @@ export default class CommandCenterPlugin extends Plugin {
 		new Notice(`Shadow-Clone diagnostics: ${report.passed}/${report.total} passed. See developer console for the sanitized report.`, 8000);
 	}
 
-	private async openTriptychDiscovery(): Promise<void> {
-		if (!this.topography) this.topography = await this.topographySweep.run();
-		let leaf = this.app.workspace.getLeavesOfType(COMMAND_DECK_VIEW_TYPE)[0];
-		if (!leaf) {
-			leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf(true);
-			await leaf.setViewState({ type: COMMAND_DECK_VIEW_TYPE, active: true });
-		}
-		await this.app.workspace.revealLeaf(leaf);
-		const deck = leaf.view instanceof CommandDeck ? leaf.view : this.commandDeck;
-		if (!deck) throw new Error('Command Deck view failed to initialize.');
-		this.activeDiscovery = new LogicDiscovery(this.topography, deck);
-		await this.activeDiscovery.start();
-	}
-
 	onunload(): void {
 		this.credentialVault.lock();
+		this.accessibilityAudio?.dispose();
 		void this.unloadAsync().catch((error: unknown) => {
 			console.error('[CC] Final unload flush failed:', error);
 		});
@@ -1017,6 +959,22 @@ export default class CommandCenterPlugin extends Plugin {
 
 	/* ─── Native Bases queue ────────────────────────── */
 
+	/** Aggregate non-sensitive state for the dashboard's Bases controller. */
+	getBasesQueueTelemetry(): { pending: number; running: number; activeNotes: number; synchronized: number } {
+		let pending = 0;
+		let running = 0;
+		for (const task of this.baseQueueTasks.values()) {
+			if (task.status === 'running') running++;
+			else pending++;
+		}
+		return {
+			pending,
+			running,
+			activeNotes: new Set([...this.baseQueueTasks.values()].map(task => task.targetPath)).size,
+			synchronized: this.taskHistory.filter(task => Boolean(task.targetPath) && task.status === 'completed').length,
+		};
+	}
+
 	/** Enqueue Base files in bounded tiers, refreshing after each tier's state writes settle. */
 	enqueueBaseFiles(
 		files: TFile[],
@@ -1041,6 +999,8 @@ export default class CommandCenterPlugin extends Plugin {
 				});
 			};
 			for (const file of batch) {
+				const taskId = crypto.randomUUID();
+				this.baseQueueTasks.set(taskId, { status: 'queued', targetPath: file.path });
 				const prompt = promptTemplate.replace(
 					/\{\{\s*file\.(path|name|basename)\s*\}\}/g,
 					(_match, field: string) => {
@@ -1051,14 +1011,17 @@ export default class CommandCenterPlugin extends Plugin {
 				);
 				this.taskQueue.enqueue(
 					{
-					id: crypto.randomUUID(),
+					id: taskId,
 					workerProfile,
 					prompt,
 					targetPath: file.path,
 					status: 'queued',
 					createdAt: Date.now(),
 					},
-					{ onComplete: settled, onError: settled },
+					{
+						onComplete: () => { this.baseQueueTasks.delete(taskId); settled(); },
+						onError: () => { this.baseQueueTasks.delete(taskId); settled(); },
+					},
 				);
 			}
 		};
@@ -1377,18 +1340,26 @@ export default class CommandCenterPlugin extends Plugin {
 
 	async activateCommandCenterView(): Promise<void> {
 		const { workspace } = this.app;
-		const existing = workspace.getLeavesOfType(COMMAND_CENTER_VIEW_TYPE);
-		if (existing.length > 0) {
-			void workspace.revealLeaf(existing[0]!);
+		const allDashboards = workspace.getLeavesOfType(COMMAND_CENTER_VIEW_TYPE);
+		const rootLeaves = new Set<WorkspaceLeaf>();
+		workspace.iterateRootLeaves(leaf => rootLeaves.add(leaf));
+		const rootDashboard = allDashboards.find(leaf => rootLeaves.has(leaf));
+
+		if (rootDashboard) {
+			// Keep one canonical main-area dashboard and remove stale duplicates,
+			// including instances restored into either sidebar by older versions.
+			for (const leaf of allDashboards) if (leaf !== rootDashboard) leaf.detach();
+			await workspace.revealLeaf(rootDashboard);
 			return;
 		}
-		const leaf = workspace.getRightLeaf(false);
-		if (!leaf) return;
-		await leaf.setViewState({
-			type: COMMAND_CENTER_VIEW_TYPE,
-			active: true,
-		});
-		void workspace.revealLeaf(leaf);
+
+		// `tab` always targets the root workspace, even when a sidebar currently
+		// has focus. Create the replacement before detaching a legacy sidebar leaf
+		// so dashboard state remains continuously available during migration.
+		const leaf = workspace.getLeaf('tab');
+		await leaf.setViewState({ type: COMMAND_CENTER_VIEW_TYPE, active: true });
+		for (const stale of allDashboards) stale.detach();
+		await workspace.revealLeaf(leaf);
 	}
 
 	/** Reveal the existing chat panel or create a split in the right sidebar. */

@@ -14,12 +14,17 @@ export type ProviderId =
 	| 'openrouter' | 'ollama' | 'groq' | 'deepinfra'
 	| 'mistral' | 'cohere' | 'lmstudio' | 'custom';
 
+export type ProviderAuthentication = 'none' | 'optional' | 'required';
+
 export interface ProviderMeta {
 	id: ProviderId;
 	label: string;
 	description: string;
 	icon: string;
+	/** Legacy required-key gate retained for adapter compatibility. */
 	requiresKey: boolean;
+	/** Endpoint authentication contract. Optional credentials are still encrypted. */
+	authentication?: ProviderAuthentication;
 	defaultBaseUrl?: string;
 	models: ProviderModel[];
 	/** Declares what this provider can do. Used by the dispatcher for smart routing. */

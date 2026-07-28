@@ -53,6 +53,13 @@ export class ProviderFactory {
 		return instance;
 	}
 
+	/** Resolve an ephemeral required or optional endpoint key from secure memory. */
+	getApiKey(id: ProviderId): string {
+		return this.credentialVault?.get(id)
+			?? (this.getSettings().credentials[id] as unknown as { apiKey?: string } | undefined)?.apiKey
+			?? '';
+	}
+
 	/** Resolve the current URL lazily so settings edits apply immediately. */
 	getBaseUrl(id: ProviderId): string {
 		const credentials = this.getSettings().credentials[id];
@@ -190,9 +197,7 @@ export class ProviderFactory {
 		const meta = { ...PROVIDER_REGISTRY[id] };
 		return {
 			id, meta,
-			getApiKey: () => this.credentialVault?.get(id)
-				?? (this.getSettings().credentials[id] as unknown as { apiKey?: string } | undefined)?.apiKey
-				?? '',
+			getApiKey: () => this.getApiKey(id),
 			getBaseUrl: () => this.getBaseUrl(id),
 		};
 	}

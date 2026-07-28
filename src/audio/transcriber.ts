@@ -27,6 +27,8 @@ export interface TranscriberAdapterOptions {
 	maxAttempts?: number;
 	backoffMs?: number;
 	fetch?: typeof fetch;
+	/** Resolve an ephemeral key from the memory-only credential vault. */
+	getApiKey?: (providerId: ProviderId) => string;
 	/** Cancels model discovery, transcription fetches, retries, and backoff waits. */
 	signal?: AbortSignal;
 }
@@ -51,7 +53,11 @@ export class TranscriberAdapter {
 
 	constructor(options: TranscriberAdapterOptions) {
 		this.options = options;
-		this.jitModelManager = new JitModelManager({ fetch: options.fetch, signal: options.signal });
+		this.jitModelManager = new JitModelManager({
+			fetch: options.fetch,
+			signal: options.signal,
+			getApiKey: () => options.getApiKey?.(options.providerId) ?? '',
+		});
 	}
 
 	/** Query an OpenAI-compatible model catalog and retain only likely STT models. */
@@ -219,7 +225,7 @@ export class TranscriberAdapter {
 		const credentials = settings.credentials[this.options.providerId];
 		const meta = PROVIDER_REGISTRY[this.options.providerId];
 		if (!credentials?.enabled) throw new TranscriptionError(`${meta.label} is not enabled for transcription.`, undefined, false);
-		const apiKey = credentials.apiKey?.trim() ?? '';
+		const apiKey = this.options.getApiKey?.(this.options.providerId).trim() || credentials?.apiKey?.trim() || '';
 		if (meta.requiresKey && !apiKey) throw new TranscriptionError(`API key not configured for ${meta.label}.`, undefined, false);
 		const baseUrl = sanitizeBaseUrl(credentials?.baseUrl || meta.defaultBaseUrl || '');
 		if (!baseUrl) throw new TranscriptionError(`Base URL not configured for ${meta.label}.`, undefined, false);

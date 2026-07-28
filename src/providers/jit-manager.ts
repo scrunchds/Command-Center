@@ -4,6 +4,8 @@ import { detectLocalRuntime, isLocalBaseUrl } from './provider-types';
 
 export interface JitModelManagerOptions {
 	fetch?: typeof fetch;
+	/** Optional bearer token resolver for authenticated local runtimes. */
+	getApiKey?: () => string;
 	signal?: AbortSignal;
 	/** Maximum time for this optional optimization. Defaults to five seconds. */
 	timeoutMs?: number;
@@ -13,40 +15,42 @@ export class JitModelManager {
 	private readonly fetchFn: typeof fetch | undefined;
 	private readonly signal?: AbortSignal;
 	private readonly timeoutMs: number;
+	private readonly getApiKey: () => string;
 
 	constructor(options: JitModelManagerOptions = {}) {
 		this.fetchFn = options.fetch ?? window.fetch.bind(window);
 		this.signal = options.signal;
+		this.getApiKey = options.getApiKey ?? (() => '');
 		// Native model loads can legitimately take well beyond five seconds for
 		// large local weights. Keep the operation bounded, but allow startup.
 		this.timeoutMs = Math.max(0, options.timeoutMs ?? 120_000);
 	}
 
 	/** Check local state and pre-warm an unloaded model. Never blocks normal inference on failure. */
-	async ensureModelLoaded(baseURL: string, modelId: string, ttlSeconds = 300): Promise<boolean> {
+	async ensureModelLoaded(baseURL: string, modelId: string, ttlSeconds = 300, bearerToken = this.getApiKey()): Promise<boolean> {
 		if (!isLocalBaseUrl(baseURL) || !modelId.trim() || !Number.isFinite(ttlSeconds) || ttlSeconds < 0) return false;
 		const ollama = detectLocalRuntime(baseURL) === 'ollama';
-		const state = await this.modelState(baseURL, modelId, ollama);
+		const state = await this.modelState(baseURL, modelId, ollama, bearerToken);
 		if (state === true) return true;
 		if (ollama) {
 			// Ollama loads on first generation. An empty, zero-output generation is
 			// the least expensive portable warm-up supported by local releases.
 			return this.post(this.ollamaEndpoint(baseURL), {
 				model: modelId, prompt: '', stream: false, options: { num_predict: 0 }, keep_alive: ttlSeconds,
-			});
+			}, bearerToken);
 		}
-		return this.post(this.lmStudioEndpoint(baseURL, 'load'), { model: modelId, ttl: ttlSeconds });
+		return this.post(this.lmStudioEndpoint(baseURL, 'load'), { model: modelId, ttl: ttlSeconds }, bearerToken);
 	}
 
 	/** Immediately release a local model after a bounded batch or ReAct session. */
-	async evictModel(baseURL: string, modelId: string): Promise<boolean> {
+	async evictModel(baseURL: string, modelId: string, bearerToken = this.getApiKey()): Promise<boolean> {
 		if (!isLocalBaseUrl(baseURL) || !modelId.trim()) return false;
 		if (detectLocalRuntime(baseURL) === 'ollama') {
 			return this.post(this.ollamaEndpoint(baseURL), {
 				model: modelId, prompt: '', stream: false, keep_alive: 0,
-			});
+			}, bearerToken);
 		}
-		return this.post(this.lmStudioEndpoint(baseURL, 'unload'), { instance_id: modelId });
+		return this.post(this.lmStudioEndpoint(baseURL, 'unload'), { instance_id: modelId }, bearerToken);
 	}
 
 	/** Backward-compatible lifecycle aliases. */
@@ -57,12 +61,12 @@ export class JitModelManager {
 		return this.evictModel(baseURL, modelId);
 	}
 
-	private async modelState(baseURL: string, modelId: string, ollama: boolean): Promise<boolean | undefined> {
+	private async modelState(baseURL: string, modelId: string, ollama: boolean, bearerToken: string): Promise<boolean | undefined> {
 		const endpoints = ollama
 			? [`${this.serverRoot(baseURL)}/api/tags`, `${this.serverRoot(baseURL)}/v1/models`]
 			: [`${this.serverRoot(baseURL)}/api/v1/models`, `${this.serverRoot(baseURL)}/v1/models`];
 		for (const endpoint of endpoints) {
-			const payload = await this.getJson(endpoint);
+			const payload = await this.getJson(endpoint, bearerToken);
 			if (!payload) continue;
 			const entries = (Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : []) as unknown[];
 			return entries.some(entry => {
@@ -80,19 +84,19 @@ export class JitModelManager {
 		return undefined;
 	}
 
-	private async getJson(endpoint: string): Promise<Record<string, unknown> | undefined> {
+	private async getJson(endpoint: string, bearerToken: string): Promise<Record<string, unknown> | undefined> {
 		if (!this.fetchFn || this.signal?.aborted) return undefined;
 		try {
-			const response = await this.fetchWithTimeout(endpoint, { method: 'GET' });
+			const response = await this.fetchWithTimeout(endpoint, { method: 'GET', headers: this.authHeaders(bearerToken) });
 			return response.ok ? await response.json() as Record<string, unknown> : undefined;
 		} catch { return undefined; }
 	}
 
-	private async post(endpoint: string, payload: Record<string, unknown>): Promise<boolean> {
+	private async post(endpoint: string, payload: Record<string, unknown>, bearerToken: string): Promise<boolean> {
 		if (!this.fetchFn || this.signal?.aborted) return false;
 		try {
 			const response = await this.fetchWithTimeout(endpoint, {
-				method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+				method: 'POST', headers: { 'Content-Type': 'application/json', ...this.authHeaders(bearerToken) }, body: JSON.stringify(payload),
 			});
 			return response.ok;
 		} catch {
@@ -112,6 +116,11 @@ export class JitModelManager {
 			if (timer !== undefined) window.clearTimeout(timer);
 			this.signal?.removeEventListener('abort', abort);
 		}
+	}
+
+	private authHeaders(bearerToken = this.getApiKey()): Record<string, string> {
+		const apiKey = bearerToken.trim();
+		return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 	}
 
 	private serverRoot(baseURL: string): string {

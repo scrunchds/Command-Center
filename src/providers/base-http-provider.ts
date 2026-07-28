@@ -42,7 +42,7 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 	protected getBaseUrl: () => string;
 	protected timeoutMs: number;
 	protected abortController: AbortController | null = null;
-	private readonly jitModelManager = new JitModelManager();
+	private readonly jitModelManager: JitModelManager;
 
 	constructor(opts: BaseHttpProviderOptions) {
 		this.id = opts.id;
@@ -55,6 +55,7 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 		// payload decisions, and isLocalBaseUrl/detectLocalRuntime checks.
 		this.getBaseUrl = () => sanitizeBaseUrl(opts.getBaseUrl());
 		this.timeoutMs = opts.timeoutMs ?? 120_000;
+		this.jitModelManager = new JitModelManager({ getApiKey: this.getApiKey });
 	}
 
 	/* ─── IProviderAdapter core ─────────────────────── */

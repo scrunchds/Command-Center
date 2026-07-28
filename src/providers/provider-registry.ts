@@ -36,7 +36,7 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 	'pi-daemon': {
 		id: 'pi-daemon', label: 'Pi Daemon (Local)', icon: '🖥️',
 		description: 'Local Pi RPC; offline and keyless.',
-		requiresKey: false,
+		requiresKey: false, authentication: 'none',
 		capabilities: caps({ vision: false, embeddings: false, tokenCounting: true, maxContextWindow: 128_000 }),
 		models: [m('pi-default', 'Pi Default', 128_000, 8192, { cost: 'free' })],
 	},
@@ -87,8 +87,8 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 	},
 	'ollama': {
 		id: 'ollama', label: 'Ollama (Local)', icon: '🦙',
-		description: 'Run open models locally.',
-		requiresKey: false, defaultBaseUrl: 'http://localhost:11434/v1',
+		description: 'Run open models locally or through an authenticated OpenAI-compatible proxy.',
+		requiresKey: false, authentication: 'optional', defaultBaseUrl: 'http://localhost:11434/v1',
 		capabilities: caps({ vision: false, embeddings: false, maxContextWindow: 128_000 }),
 		models: [
 			m('llama3.1:8b', 'Llama 3.1 8B', 128_000, 4096, { cost: 'free', strengths: ['fast', 'reading', 'reasoning'] }),
@@ -141,8 +141,8 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 	},
 	'lmstudio': {
 		id: 'lmstudio', label: 'LM Studio (Local)', icon: '💻',
-		description: 'Local OpenAI-compatible GGUF server.',
-		requiresKey: false, defaultBaseUrl: 'http://localhost:1234/v1',
+		description: 'Local OpenAI-compatible server; supports an optional bearer token when Require Authentication is enabled.',
+		requiresKey: false, authentication: 'optional', defaultBaseUrl: 'http://localhost:1234/v1',
 		capabilities: caps({ vision: false, embeddings: false, maxContextWindow: 128_000 }),
 		models: [
 			m('local-model', 'Local Model (auto-detect)', 128_000, 4096, { cost: 'free', strengths: ['reasoning', 'coding', 'fast', 'reading'] }),
@@ -150,8 +150,8 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 	},
 	'custom': {
 		id: 'custom', label: 'Custom Endpoint', icon: '🔌',
-		description: 'Custom OpenAI-compatible endpoint.',
-		requiresKey: false, defaultBaseUrl: 'http://localhost:8000/v1',
+		description: 'Custom OpenAI-compatible endpoint with optional bearer authentication.',
+		requiresKey: false, authentication: 'optional', defaultBaseUrl: 'http://localhost:8000/v1',
 		capabilities: caps(),
 		models: [
 			m('custom-model', 'Custom Model', 128_000, 4096, { cost: 'free', strengths: ['reasoning', 'coding', 'fast', 'reading'] }),
