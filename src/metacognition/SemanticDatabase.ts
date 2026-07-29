@@ -1,6 +1,7 @@
 import { normalizePath } from 'obsidian';
 
-export const SEMANTIC_DATABASE_PATH = '.obsidian/plugins/command-center/data/semantic-memory.sqlite3';
+
+export const SEMANTIC_DATABASE_PATH = 'plugins/command-center/data/semantic-memory.sqlite3';
 
 export interface SQLiteStatement { run(...parameters: unknown[]): Promise<void>; all<T>(...parameters: unknown[]): Promise<T[]>; }
 export interface SQLiteConnection { exec(sql: string): Promise<void>; prepare(sql: string): SQLiteStatement; close(): Promise<void>; }
@@ -13,14 +14,14 @@ export class SemanticDatabase {
 	private connection: SQLiteConnection | null = null;
 	private readonly memory = new Map<string, SemanticChunkRecord>();
 	private opened = false;
-	constructor(private readonly driver: SQLiteDriver | undefined, private readonly dimensions: number, private readonly path = SEMANTIC_DATABASE_PATH, private readonly vssExtension = 'vss0') {
+	constructor(private readonly driver: SQLiteDriver | undefined, private readonly dimensions: number, private readonly vaultConfigDir = '.obsidian', private readonly path = SEMANTIC_DATABASE_PATH, private readonly vssExtension = 'vss0') {
 		if (!Number.isInteger(dimensions) || dimensions < 1) throw new Error('Embedding dimensions must be a positive integer.');
 	}
 
 	async open(): Promise<void> {
 		if (this.opened) return;
 		if (!this.driver) { this.opened = true; return; }
-		const connection = await this.driver.open(normalizePath(this.path));
+		const connection = await this.driver.open(normalizePath(`${this.vaultConfigDir}/${this.path}`));
 		try {
 			await this.driver.loadExtension(connection, this.vssExtension);
 			await connection.exec(`

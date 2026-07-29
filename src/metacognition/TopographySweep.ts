@@ -1,6 +1,6 @@
 import { App, getAllTags, normalizePath, TAbstractFile, TFile, TFolder } from 'obsidian';
 
-export const VAULT_TOPOGRAPHY_PATH = '.obsidian/plugins/command-center/vault_topography.json';
+export const VAULT_TOPOGRAPHY_PATH = 'plugins/command-center/vault_topography.json';
 
 export interface FolderTopology { path: string; parent: string | null; noteCount: number; children: string[]; }
 export interface HubNote { path: string; title: string; inboundLinks: number; outboundLinks: number; }
@@ -58,7 +58,7 @@ export class TopographySweep {
 				.filter(note => note.inboundLinks > 0 || note.outboundLinks > 0)
 				.sort((a, b) => b.inboundLinks - a.inboundLinks || b.outboundLinks - a.outboundLinks).slice(0, 100),
 		};
-		await this.app.vault.adapter.write(normalizePath(this.outputPath), JSON.stringify(map, null, 2));
+		await this.app.vault.adapter.write(normalizePath(`${this.app.vault.configDir}/${this.outputPath}`), JSON.stringify(map, null, 2));
 		return map;
 	}
 }

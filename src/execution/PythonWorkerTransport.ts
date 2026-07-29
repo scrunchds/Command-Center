@@ -68,7 +68,7 @@ export class PythonWorkerTransport implements PythonWorkerTransportContract {
 			const finish = (error?: Error, value?: unknown): void => {
 				if (settled) return;
 				settled = true;
-				clearTimeout(timer);
+				window.clearTimeout(timer);
 				signal?.removeEventListener('abort', abort);
 				this.active.delete(child);
 				if (error) { this.recordFailure(); reject(error); }
@@ -76,7 +76,7 @@ export class PythonWorkerTransport implements PythonWorkerTransportContract {
 			};
 			const terminate = (): void => { if (!child.killed) child.kill(); };
 			const abort = (): void => { terminate(); finish(new Error('Python worker execution was cancelled.')); };
-			const timer = setTimeout(() => { terminate(); finish(new Error('Python worker timed out.')); }, this.timeoutMs);
+			const timer = window.setTimeout(() => { terminate(); finish(new Error('Python worker timed out.')); }, this.timeoutMs);
 			signal?.addEventListener('abort', abort, { once: true });
 			const collect = (target: 'stdout' | 'stderr', chunk: Buffer): void => {
 				bytes += chunk.byteLength;

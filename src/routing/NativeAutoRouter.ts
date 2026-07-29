@@ -136,7 +136,7 @@ export class AutoRouteError extends Error {
  */
 export class NativeAutoRouter {
 	/** Path of the shipped matrix relative to the vault root (plugin folder). */
-	private static readonly MATRIX_PATH = '.obsidian/plugins/command-center/model_matrix.json';
+	private static readonly MATRIX_PATH = 'plugins/command-center/model_matrix.json';
 
 	private matrix: ModelMatrixFile | null = null;
 	private matrixState: 'unloaded' | 'loaded' | 'invalid' = 'unloaded';
@@ -152,7 +152,7 @@ export class NativeAutoRouter {
 	/** Load (or reload) model_matrix.json. Hot-reloadable. Fails closed. */
 	async reload(): Promise<void> {
 		try {
-			const file = this.app.vault.getAbstractFileByPath(NativeAutoRouter.MATRIX_PATH);
+			const file = this.app.vault.getAbstractFileByPath(`${this.app.vault.configDir}/${NativeAutoRouter.MATRIX_PATH}`);
 			if (!(file instanceof TFile)) {
 				this.matrix = null;
 				this.matrixState = 'invalid';

@@ -275,8 +275,8 @@ export class CommandCenterChatView extends ItemView {
 	}
 
 	private resizeTextarea(): void {
-		this.textareaEl.setCssStyles({ height: 'auto' });
-		this.textareaEl.setCssStyles({ height: `${Math.min(this.textareaEl.scrollHeight, 160)}px` });
+		this.textareaEl.setCssStyles({ height: 'auto', overflowY: 'hidden' });
+		this.textareaEl.setCssStyles({ height: `${Math.min(this.textareaEl.scrollHeight, 160)}px`, overflowY: this.textareaEl.scrollHeight > 160 ? 'auto' : 'hidden' });
 	}
 
 	private async toggleRecording(): Promise<void> {
