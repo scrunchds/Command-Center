@@ -37,6 +37,8 @@ export const DEFAULT_DASHBOARD_LAYOUT: DashboardWidgetLayout[] = [
 export interface CommandCenterSettings {
 	activeProfile: string;
 	maxTokens: number;
+	/** Character budget for passive memory + vault context injection. */
+	contextCharLimit: number;
 	piPath: string;
 	enableDaemon: boolean;
 	memoryMaxNotes: number;
@@ -68,6 +70,7 @@ export const DEFAULT_MULTI_PROVIDER: MultiProviderSettings = {
 export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	activeProfile: 'default-orchestrator',
 	maxTokens: 4096,
+	contextCharLimit: 16_000,
 	piPath: 'pi',
 	enableDaemon: true,
 	memoryMaxNotes: 100,

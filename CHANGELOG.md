@@ -4,6 +4,31 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-07-29
+
+### Added
+
+- Added tabbed settings navigation with accessible keyboard support and clearer grouping for core, providers, routing, and health controls.
+- Added an adjustable passive prompt context budget for chat, ReAct, and voice prompts.
+
+### Changed
+
+- Reduced prompt inflation in chat and voice fallback paths by separating user prompt text from attached context display.
+- Increased passive context limits and made them configurable in Settings.
+- Improved settings panel layout to better match Obsidian-style navigation and spacing.
+
+### Fixed
+
+- Preserved onboarding interview conversation history while removing unnecessary prompt concatenation from chat UI flows.
+- Kept the onboarding interview context flow intact across turns.
+- Maintained all verification coverage at 151 passing tests.
+
+### Security
+
+- Retained onboarding credential/endpoint guards and release validation checks.
+
+[1.1.3]: https://github.com/scrunchds/Command-Center/compare/1.1.2...1.1.3
+
 ## [1.1.2] - 2026-07-29
 
 ### Changed

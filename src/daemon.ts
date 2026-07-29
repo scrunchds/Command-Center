@@ -379,7 +379,7 @@ export class PiAgentDaemon {
 	private executionStateCallback: AgentExecutionStateCallback | null = null;
 	private memoryStore: AgentMemoryStore | null = null;
 	private retriever: HybridRetriever | null = null;
-	private contextCharLimit = 8_000;
+	private contextCharLimit = 16_000;
 
 	/** Recovery infrastructure. */
 	readonly circuitBreaker = new CircuitBreaker();
@@ -402,9 +402,9 @@ export class PiAgentDaemon {
 	/** Attach vault-native long-term memory for prompt injection/session learning. */
 	setMemoryStore(store: AgentMemoryStore | null): void { this.memoryStore = store; }
 	/** Attach passive hybrid retrieval. The limit bounds all injected memory + RAG text. */
-	setRetriever(retriever: HybridRetriever | null, contextCharLimit = 8_000): void {
+	setRetriever(retriever: HybridRetriever | null, contextCharLimit = 16_000): void {
 		this.retriever = retriever;
-		this.contextCharLimit = Math.max(0, contextCharLimit);
+		this.contextCharLimit = Math.max(2_000, contextCharLimit);
 	}
 
 	setDebugStepMode(enabled: boolean): void { this.stepController.setEnabled(enabled); }

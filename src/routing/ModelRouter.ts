@@ -573,7 +573,7 @@ export class ModelRouter {
 		(this._pendingPreprocessing).set(task.id, preprocessingPromise);
 
 		const memoryPrompt = this.config.memoryStore?.getSystemMemoryPrompt(task.prompt) ?? '';
-		const contextLimit = Math.max(0, this.config.contextCharLimit ?? 8_000);
+		const contextLimit = Math.max(2_000, this.config.contextCharLimit ?? 16_000);
 		const systemPrefix = `You are a ${task.workerProfile} agent in an Obsidian vault.`;
 		const contextPromise = this.config.retriever?.search(task.prompt, 5)
 			.then(matches => {

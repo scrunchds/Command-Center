@@ -42,6 +42,21 @@ Command Center — Agentic OS for Obsidian
 	margin-bottom: 1.5em;
 }
 
+.cc-settings { display: flex; flex-direction: column; gap: 14px; }
+.cc-settings-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cc-save-indicator { min-height: 18px; color: var(--text-muted); font-size: var(--font-smallest); }
+.cc-save-indicator.visible { color: var(--color-green); }
+.cc-settings-tabs {
+	display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); background: var(--background-secondary); position: sticky; top: 0; z-index: 2;
+}
+.cc-settings-tab {
+	display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 5px 12px; border-radius: 999px; border: 1px solid transparent; background: transparent; color: var(--text-muted); font-size: var(--font-small); font-weight: var(--font-medium); cursor: pointer;
+}
+.cc-settings-tab:hover { background: var(--background-primary); color: var(--text-normal); }
+.cc-settings-tab:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.cc-settings-tab.is-active { border-color: var(--interactive-accent); background: hsla(var(--interactive-accent-hsl), 0.12); color: var(--text-normal); }
+.cc-settings-content { display: flex; flex-direction: column; gap: 14px; }
+
 .command-center-settings h3 {
 	font-size: var(--font-ui-medium);
 	font-weight: var(--font-semibold);
@@ -486,85 +501,177 @@ Command Center — Agentic OS for Obsidian
 
 /* ─── Plugin Settings Tab ─────────────────────── */
 
-.cc-settings { padding-bottom: 40px; }
+.cc-settings {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	padding-bottom: 40px;
+	max-width: 1100px;
+	margin: 0 auto;
+}
 
 .cc-settings-header {
-	display: flex; align-items: center; justify-content: space-between;
-	margin-bottom: 20px; padding-bottom: 12px;
-	border-bottom: 2px solid var(--background-modifier-border);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
 }
-.cc-settings-header h1 { margin: 0; font-size: var(--font-ui-large); }
-
 .cc-save-indicator {
-	font-size: var(--font-small); color: var(--color-green);
-	opacity: 0; transition: opacity 0.3s;
+	min-height: 18px;
+	color: var(--text-muted);
+	font-size: var(--font-smallest);
+	opacity: 0;
+	transition: opacity 0.2s ease;
 }
-.cc-save-indicator.visible { opacity: 1; }
+.cc-save-indicator.visible { opacity: 1; color: var(--color-green); }
+
+.cc-settings-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
+	background: var(--background-secondary);
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	backdrop-filter: blur(4px);
+}
+.cc-settings-tab {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 32px;
+	padding: 5px 12px;
+	border-radius: 999px;
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: var(--font-small);
+	font-weight: var(--font-medium);
+	cursor: pointer;
+}
+.cc-settings-tab:hover { background: var(--background-primary); color: var(--text-normal); }
+.cc-settings-tab:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.cc-settings-tab.is-active { border-color: var(--interactive-accent); background: hsla(var(--interactive-accent-hsl), 0.12); color: var(--text-normal); }
+.cc-settings-content { display: flex; flex-direction: column; gap: 14px; }
 
 /* Section headers */
-.cc-section-header {
-	display: flex; align-items: center; justify-content: space-between;
-	margin: 24px 0 8px; padding: 8px 12px;
-	background: var(--background-secondary); border-radius: 8px;
+.cc-section-header,
+.cc-provider-card,
+.cc-developer-support,
+.cc-dashboard-layout-editor,
+.cc-telemetry-card,
+.cc-bases-telemetry-item {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
+	background: var(--background-primary);
+	box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
 }
-.cc-section-header-left { display: flex; align-items: center; gap: 10px; }
+.cc-section-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 12px 14px 10px;
+	margin-top: 2px;
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+.cc-section-header-left { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
 .cc-section-collapse {
-	font-size: 12px; cursor: pointer; padding: 2px 6px;
-	border-radius: 4px; color: var(--text-muted);
+	font-size: 12px;
+	cursor: pointer;
+	padding: 2px 6px;
+	border-radius: 4px;
+	color: var(--text-muted);
+	line-height: 1.2;
 }
 .cc-section-collapse:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .cc-section-title-group h2 { margin: 0; font-size: var(--font-ui-medium); font-weight: var(--font-semibold); }
 .cc-section-desc { margin: 2px 0 0; font-size: var(--font-smallest); color: var(--text-muted); }
-.cc-section-body { padding: 4px 0; }
+.cc-section-body {
+	padding: 12px 14px 14px;
+	border: 1px solid var(--background-modifier-border);
+	border-top: 0;
+	border-bottom-left-radius: var(--radius-l);
+	border-bottom-right-radius: var(--radius-l);
+	background: var(--background-primary);
+}
 .cc-section-body.cc-collapsed { display: none; }
 
 /* Developer support */
 .cc-developer-support {
-	display: flex; align-items: center; justify-content: space-between; gap: 16px;
-	margin-top: 28px; padding: 14px 16px;
-	border: 1px solid var(--background-modifier-border); border-radius: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	margin-top: 14px;
+	padding: 14px 16px;
 	background: var(--background-secondary);
 }
 .cc-developer-support-copy { min-width: 0; }
 .cc-developer-support-copy h3 { margin: 0 0 4px; font-size: var(--font-ui-medium); }
 .cc-developer-support-copy p { margin: 0; color: var(--text-muted); font-size: var(--font-small); }
 .cc-developer-support-button {
-	display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-	padding: 7px 12px; border-radius: 6px; text-decoration: none; white-space: nowrap;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	padding: 7px 12px;
+	border-radius: 6px;
+	text-decoration: none;
+	white-space: nowrap;
 }
 .cc-developer-support-button:hover { text-decoration: none; }
-@media (max-width: 600px) {
+
+@media (max-width: 720px) {
+	.cc-settings { max-width: none; }
+	.cc-settings-tabs { position: static; }
 	.cc-developer-support { align-items: stretch; flex-direction: column; }
 	.cc-developer-support-button { align-self: flex-start; }
 }
 
 /* Provider action bar */
-.cc-provider-actions { display: flex; gap: 6px; }
+.cc-provider-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .cc-provider-actions button { font-size: var(--font-smallest); padding: 2px 10px; }
 
 /* Provider card grid */
 .cc-provider-grid {
-	display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 10px;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+	gap: 12px;
 }
 
 /* Provider card */
 .cc-provider-card {
-	background: var(--background-primary); border: 1px solid var(--background-modifier-border);
-	border-radius: 8px; overflow: hidden; transition: border-color 0.2s;
+	overflow: hidden;
+	transition: border-color 0.2s, transform 0.15s ease;
 }
+.cc-provider-card:hover { transform: translateY(-1px); }
 .cc-provider-card.healthy { border-left: 3px solid var(--color-green); }
 .cc-provider-card.unhealthy { border-left: 3px solid var(--color-red); }
 .cc-provider-card.collapsed { opacity: 0.7; }
 
 .cc-provider-card-header {
-	display: flex; align-items: center; gap: 8px;
-	padding: 10px 12px; background: var(--background-secondary);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 12px;
+	background: var(--background-secondary);
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
 /* Health dot */
 .cc-health-dot {
-	width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--text-faint);
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	background: var(--text-faint);
 }
 .cc-health-dot.ok { background: var(--color-green); box-shadow: 0 0 4px hsla(var(--color-green-hsl), 0.5); }
 .cc-health-dot.error { background: var(--color-red); box-shadow: 0 0 4px hsla(var(--color-red-hsl), 0.5); }
@@ -574,12 +681,16 @@ Command Center — Agentic OS for Obsidian
 @keyframes cc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
 .cc-provider-icon { font-size: 18px; flex-shrink: 0; }
-.cc-provider-info { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cc-provider-info { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .cc-provider-name { font-weight: var(--font-semibold); font-size: var(--font-small); }
 
 .cc-provider-key-badge {
-	font-size: 9px; padding: 1px 6px; border-radius: 10px;
-	background: hsla(var(--color-yellow-hsl), 0.15); color: var(--color-yellow); white-space: nowrap;
+	font-size: 9px;
+	padding: 1px 6px;
+	border-radius: 10px;
+	background: hsla(var(--color-yellow-hsl), 0.15);
+	color: var(--color-yellow);
+	white-space: nowrap;
 }
 .cc-provider-key-badge.free { background: hsla(var(--color-green-hsl), 0.15); color: var(--color-green); }
 
