@@ -4,6 +4,27 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-07-29
+
+### Changed
+
+- Reduced Obsidian review warnings by shortening command labels and removing redundant plugin-name wording.
+- Switched compatibility-sensitive timers to `window.setTimeout()` / `window.clearTimeout()` in browser-facing paths.
+- Replaced direct style mutations in dashboard textarea resizing with Obsidian-compatible CSS helper updates.
+- Replaced `globalThis.crypto` access with `window.crypto` for popout-safe compatibility.
+- Moved localized plugin data paths to vault-config-dir-aware resolution for topography, semantic memory, and native auto-routing.
+
+### Fixed
+
+- Removed unnecessary diagnostic console noise from Shadow-Clone diagnostics.
+- Aligned release tests with the cleaned command label.
+
+### Security
+
+- Preserved the plugin's sanitization, validation, and release packaging checks.
+
+[1.1.2]: https://github.com/scrunchds/Command-Center/compare/1.1.1...1.1.2
+
 ## [1.1.1] - 2026-07-29
 
 ### Changed
