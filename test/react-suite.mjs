@@ -1790,7 +1790,7 @@ assert.match(modalSource, /cc-voice-stt-badge/);
 pass('27i: voice modal discovers STT, transcribes, resolves context, and dispatches selected dropdown mode');
 const commandSource = await readFile(join(SRC, 'commands.ts'), 'utf8');
 const mainSource = await readFile(join(SRC, 'main.ts'), 'utf8');
-assert.match(commandSource, /name: 'Quick Voice Prompt'/);
+assert.match(commandSource, /name: 'Voice prompt'/);
 assert.match(mainSource, /mode === 'workflow'/);
 assert.match(mainSource, /mode === 'react'/);
 assert.match(mainSource, /executeProviderTurn/);

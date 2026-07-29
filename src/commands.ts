@@ -38,25 +38,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function registerCommands(plugin: CommandCenterPlugin) {
 	plugin.addCommand({
 		id: 'open-dashboard',
-		name: 'Open Command Center',
+		name: 'Dashboard',
 		callback: () => plugin.activateCommandCenterView(),
 	});
 
 	plugin.addCommand({
 		id: 'open-chat-panel',
-		name: 'Open Chat Panel',
+		name: 'Chat panel',
 		callback: () => plugin.activateCommandCenterChatView(),
 	});
 
 	plugin.addCommand({
 		id: 'quick-voice-prompt',
-		name: 'Quick Voice Prompt',
+		name: 'Voice prompt',
 		callback: () => new VoicePromptModal(plugin).open(),
 	});
 
 	plugin.addCommand({
 		id: 'export-active-workflow-to-canvas',
-		name: 'Export Active Workflow to Canvas',
+		name: 'Export workflow to canvas',
 		callback: () => plugin.exportActiveWorkflowToCanvas(),
 	});
 

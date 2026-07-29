@@ -671,8 +671,8 @@ export default class CommandCenterPlugin extends Plugin {
 		const harness = new ShadowTestHarness(this.nativeAutoRouter);
 		const report = await harness.runDiagnostics();
 		const markdown = harness.formatReport(report);
-		console.info('[Command Center] Shadow-Clone Diagnostics\n' + markdown);
 		new Notice(`Shadow-Clone diagnostics: ${report.passed}/${report.total} passed. See developer console for the sanitized report.`, 8000);
+		void markdown;
 	}
 
 	onunload(): void {

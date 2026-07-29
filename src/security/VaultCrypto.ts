@@ -16,8 +16,8 @@ export interface EncryptedCredentialPayload {
 export type DecryptedCredentials = Record<string, string>;
 
 function webCrypto(): Crypto {
-	if (!globalThis.crypto?.subtle) throw new Error('Web Crypto is unavailable.');
-	return globalThis.crypto;
+	if (!window.crypto?.subtle) throw new Error('Web Crypto is unavailable.');
+	return window.crypto;
 }
 
 function encodeBase64(bytes: Uint8Array): string {

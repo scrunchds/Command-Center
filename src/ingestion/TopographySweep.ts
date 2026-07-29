@@ -36,7 +36,7 @@ export interface TopographySweepOptions {
 	yieldEvery?: number;
 }
 
-const isExcluded = (path: string): boolean => path === '.obsidian' || path.startsWith('.obsidian/') || path === '.trash' || path.startsWith('.trash/');
+const isExcluded = (path: string, configDir: string): boolean => path === configDir || path.startsWith(`${configDir}/`) || path === '.trash' || path.startsWith('.trash/');
 const parentPath = (path: string): string => path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
 
 /**
@@ -57,9 +57,9 @@ export class TopographySweep {
 	}
 
 	async run(options: TopographySweepOptions = {}): Promise<TopographyMap> {
-		const files = this.app.vault.getMarkdownFiles().filter(file => !isExcluded(file.path));
+		const files = this.app.vault.getMarkdownFiles().filter(file => !isExcluded(file.path, this.app.vault.configDir));
 		const folderPaths = this.app.vault.getAllLoadedFiles()
-			.filter((entry): entry is TFolder => entry instanceof TFolder && !isExcluded(entry.path))
+			.filter((entry): entry is TFolder => entry instanceof TFolder && !isExcluded(entry.path, this.app.vault.configDir))
 			.map(folder => folder.path);
 		const mutableNodes = new Map<string, TopographyNode>();
 		const tagCounts = new Map<string, number>();
@@ -90,7 +90,7 @@ export class TopographySweep {
 				inboundLinks: [],
 			});
 			options.onProgress?.({ processed: index + 1, total: files.length, currentPath: file.path });
-			if ((index + 1) % yieldEvery === 0) await new Promise<void>(resolve => setTimeout(resolve, 0));
+			if ((index + 1) % yieldEvery === 0) await new Promise<void>(resolve => window.setTimeout(resolve, 0));
 		}
 
 		for (const source of mutableNodes.values()) {

@@ -740,9 +740,11 @@ export class CommandCenterView extends ItemView {
 		if (!this.chatInputEl) return;
 		const minimum = 132;
 		const maximum = Math.max(minimum, Math.floor(window.innerHeight * 0.45));
-		this.chatInputEl.style.height = 'auto';
-		this.chatInputEl.style.height = `${Math.min(maximum, Math.max(minimum, this.chatInputEl.scrollHeight))}px`;
-		this.chatInputEl.style.overflowY = this.chatInputEl.scrollHeight > maximum ? 'auto' : 'hidden';
+		this.chatInputEl.setCssStyles({ height: 'auto', overflowY: 'hidden' });
+		this.chatInputEl.setCssStyles({
+			height: `${Math.min(maximum, Math.max(minimum, this.chatInputEl.scrollHeight))}px`,
+			overflowY: this.chatInputEl.scrollHeight > maximum ? 'auto' : 'hidden',
+		});
 	}
 
 	appendChatMessage(
