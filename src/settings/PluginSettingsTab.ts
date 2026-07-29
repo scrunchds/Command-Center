@@ -99,6 +99,8 @@ function makeSyncState(): ModelSyncState {
    PluginSettingsTab
    ═══════════════════════════════════════════════════════════ */
 
+type SettingsTabId = 'all' | 'core' | 'providers' | 'routing' | 'health';
+
 export class PluginSettingsTab extends PluginSettingTab {
 	plugin: CommandCenterPlugin;
 
@@ -109,6 +111,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 	>();
 	private healthErrors = new Map<ProviderId, string>();
 	private collapsedSections = new Set<string>();
+	private selectedTab: SettingsTabId = 'all';
 	private saveIndicator: HTMLElement | null = null;
 	private routesContainer: HTMLElement | null = null;
 
@@ -139,32 +142,27 @@ export class PluginSettingsTab extends PluginSettingTab {
 		containerEl.empty();
 		containerEl.addClass('cc-settings');
 
-		// ── Save status ───────────────────────────────
 		const header = containerEl.createDiv({ cls: 'cc-settings-header' });
 		this.saveIndicator = header.createDiv({ cls: 'cc-save-indicator' });
+		this.renderTabBar(containerEl);
 
-		// ── Section 1: Core Settings ───────────────────
-		this.renderCoreSettings(containerEl);
+		const content = containerEl.createDiv({ cls: 'cc-settings-content', attr: { role: 'tabpanel', 'aria-label': 'Command Center settings content' } });
+		if (this.selectedTab === 'all' || this.selectedTab === 'core') {
+			this.renderCoreSettings(content);
+			this.renderMetacognitiveDepth(content);
+		}
+		if (this.selectedTab === 'all' || this.selectedTab === 'providers') {
+			this.renderProviderCredentials(content);
+		}
+		if (this.selectedTab === 'all' || this.selectedTab === 'routing') {
+			this.renderRoutingMatrix(content);
+			this.renderFallbackPipeline(content);
+		}
+		if (this.selectedTab === 'all' || this.selectedTab === 'health') {
+			this.renderHealthDashboard(content);
+		}
 
-		// ── Section 1b: Metacognitive Depth (Command-Center) ────
-		this.renderMetacognitiveDepth(containerEl);
-
-		// ── Section 2: Provider Credentials ────────────
-		this.renderProviderCredentials(containerEl);
-
-		// ── Section 3: Task Routing Matrix ─────────────
-		this.renderRoutingMatrix(containerEl);
-
-		// ── Section 4: Fallback Pipeline ───────────────
-		this.renderFallbackPipeline(containerEl);
-
-		// ── Section 5: Health Dashboard ────────────────
-		this.renderHealthDashboard(containerEl);
-
-		// ── Footer actions ────────────────────────────
 		this.renderFooter(containerEl);
-
-		// Start background sync when the settings tab is visible
 		this.startBackgroundSync();
 	}
 
@@ -216,6 +214,16 @@ export class PluginSettingsTab extends PluginSettingTab {
 					.setLimits(512, 16384, 512)
 					.setValue(this.plugin.settings.maxTokens)
 					.onChange((v) => this.saveSetting('maxTokens', v)),
+			);
+
+		new Setting(body)
+			.setName('Passive Prompt Context Budget')
+			.setDesc('Controls how much memory and vault retrieval can be injected into chat, ReAct, and voice prompts. Higher values help long-context work; the interview flow is unaffected.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(2_000, 64_000, 1_000)
+					.setValue(this.plugin.settings.contextCharLimit)
+					.onChange((v) => this.saveSetting('contextCharLimit', v)),
 			);
 
 		// Pi path with auto-detect button and status
@@ -1325,6 +1333,46 @@ export class PluginSettingsTab extends PluginSettingTab {
 	/* ═══════════════════════════════════════════════════════
 	   Footer
 	   ═══════════════════════════════════════════════════════ */
+
+	private renderTabBar(containerEl: HTMLElement): void {
+		const tabs = containerEl.createDiv({ cls: 'cc-settings-tabs', attr: { role: 'tablist', 'aria-label': 'Command Center settings sections' } });
+		const tabsDef: Array<{ id: SettingsTabId; label: string; desc: string }> = [
+			{ id: 'all', label: 'All', desc: 'Show every settings group' },
+			{ id: 'core', label: 'Core', desc: 'General behavior, memory, and prompt budget' },
+			{ id: 'providers', label: 'Providers', desc: 'Credentials, endpoints, and model sync' },
+			{ id: 'routing', label: 'Routing', desc: 'Task routing and fallback pipeline' },
+			{ id: 'health', label: 'Health', desc: 'Connection checks and diagnostics' },
+		];
+		const buttons: HTMLButtonElement[] = [];
+		const activate = (tabId: SettingsTabId): void => {
+			this.selectedTab = tabId;
+			this.update();
+		};
+		for (const tab of tabsDef) {
+			const active = this.selectedTab === tab.id;
+			const btn = tabs.createEl('button', {
+				text: tab.label,
+				cls: `cc-settings-tab${active ? ' is-active' : ''}`,
+				attr: {
+					role: 'tab',
+					'aria-selected': String(active),
+					tabindex: active ? '0' : '-1',
+					title: tab.desc,
+				},
+			});
+			buttons.push(btn);
+			btn.addEventListener('click', () => activate(tab.id));
+			btn.addEventListener('keydown', (event: KeyboardEvent) => {
+				const currentIndex = buttons.indexOf(btn);
+				if (event.key === 'ArrowRight' || event.key === 'ArrowLeft' || event.key === 'Home' || event.key === 'End') {
+					event.preventDefault();
+					const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : event.key === 'ArrowRight' ? (currentIndex + 1) % buttons.length : (currentIndex - 1 + buttons.length) % buttons.length;
+					buttons[nextIndex]?.focus();
+					activate(tabsDef[nextIndex]!.id);
+				}
+			});
+		}
+	}
 
 	private renderFooter(containerEl: HTMLElement): void {
 		const support = containerEl.createDiv({ cls: 'cc-developer-support' });

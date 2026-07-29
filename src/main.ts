@@ -225,10 +225,7 @@ export default class CommandCenterPlugin extends Plugin {
 			embeddings: new EmbeddingAdapter(embeddingConnection),
 		});
 		await this.hybridRetriever.indexVault(this.app);
-		const contextCharLimit = Math.min(
-			TOKEN_LIMITS.MAX_PROMPT_CHARS / 2,
-			Math.max(2_000, this.settings.maxTokens * 4),
-		);
+		const contextCharLimit = Math.max(2_000, this.settings.contextCharLimit ?? 16_000);
 		this.daemon.setMemoryStore(this.agentMemory);
 		this.daemon.setRetriever(this.hybridRetriever, contextCharLimit);
 		this.conversations = new ConversationManager(
@@ -1224,9 +1221,6 @@ export default class CommandCenterPlugin extends Plugin {
 		}
 
 		const prompt = resolved.cleanedPrompt || spokenText;
-		const enrichedPrompt = resolved.contextString
-			? `${prompt}\n\n${resolved.contextString}`
-			: prompt;
 		const activeFile = this.app.workspace.getActiveFile();
 
 		if (mode === 'workflow') {
@@ -1247,7 +1241,7 @@ export default class CommandCenterPlugin extends Plugin {
 				throw new Error('The active workflow has no executable steps.');
 			await this.executeWorkflow(
 				workflow,
-				{ prompt: enrichedPrompt, voicePrompt: enrichedPrompt },
+				{ prompt, voicePrompt: prompt },
 				activeFile,
 			);
 			return;
@@ -1271,7 +1265,7 @@ export default class CommandCenterPlugin extends Plugin {
 					'reasoning',
 					() =>
 					this.daemon.executeReActSession(
-						enrichedPrompt,
+						prompt,
 						activeFile?.path,
 						createObsidianTools(this.app),
 						DEFAULT_REACT_CONFIG,
@@ -1296,8 +1290,8 @@ export default class CommandCenterPlugin extends Plugin {
 				);
 			} else {
 				const request = activeFile
-					? `${enrichedPrompt}\n\nActive vault context: [[${activeFile.path}]]`
-					: enrichedPrompt;
+					? `${prompt}\n\nActive vault context: [[${activeFile.path}]]`
+					: prompt;
 				let streamed = '';
 				const result = await this.conversations.executeProviderTurn(
 					this.dispatcher,

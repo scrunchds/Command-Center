@@ -543,7 +543,9 @@ export class CommandCenterChatView extends ItemView {
 		if (!input || this.isSending) return;
 		const resolved = this.activeResolvedContext(await resolveChatContext(this.plugin.app, input, { suggestRecent: true }));
 		const prompt = resolved.cleanedPrompt || input;
-		const enrichedPrompt = resolved.contextString ? `${prompt}\n\n${resolved.contextString}` : prompt;
+		// Keep the user prompt intact; attached context is surfaced in the UI and
+		// should not be concatenated into the chat prompt here.
+		const enrichedPrompt = prompt;
 		this.textareaEl.value = '';
 		this.detectedContext = { cleanedPrompt: '', contextString: '', attachments: [] };
 		this.dismissedAttachments.clear();
