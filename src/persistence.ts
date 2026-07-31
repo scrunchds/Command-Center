@@ -85,6 +85,7 @@ export class PersistenceManager {
 	async load(): Promise<PersistedData> {
 		const raw = (await this.plugin.loadData()) as Record<string, unknown> | null;
 		const data = raw ? this.migrate(raw) : this.empty();
+		data.settings = sanitizeSettings(data.settings);
 		this.settingsSnapshot = data.settings;
 		this.history = data.history;
 		this.queue = data.queue ?? [];
@@ -104,7 +105,7 @@ export class PersistenceManager {
 		if (schema === CURRENT_SCHEMA) {
 			// Already current — validate and return
 			return {
-				schema, settings: (raw.settings as Record<string, unknown>) ?? {},
+				schema, settings: sanitizeSettings((raw.settings as Record<string, unknown>) ?? {}),
 				history: this.validateHistory(raw.history),
 				sessions: raw.sessions as StoredSessions | null ?? null,
 				queue: raw.queue as StoredTask[] | null ?? null,
@@ -115,7 +116,7 @@ export class PersistenceManager {
 		if (schema === 1) {
 			return {
 				schema: CURRENT_SCHEMA,
-				settings: (raw.settings as Record<string, unknown>) ?? {},
+				settings: sanitizeSettings((raw.settings as Record<string, unknown>) ?? {}),
 				history: this.validateHistory(raw.taskHistory ?? raw.history),
 				sessions: null,
 				queue: null,
@@ -123,7 +124,7 @@ export class PersistenceManager {
 		}
 
 		// Unknown version: reset to empty, keep settings if possible
-		return { schema: CURRENT_SCHEMA, settings: (raw.settings as Record<string, unknown>) ?? {}, history: [], sessions: null, queue: null };
+		return { schema: CURRENT_SCHEMA, settings: sanitizeSettings((raw.settings as Record<string, unknown>) ?? {}), history: [], sessions: null, queue: null };
 	}
 
 	/** Validate and compact loaded history entries.
@@ -163,7 +164,7 @@ export class PersistenceManager {
 	/* ─── Push state (callers: main.ts, conversation.ts, etc.) ─── */
 
 	setSettings(settings: Record<string, unknown>): void {
-		this.settingsSnapshot = settings;
+		this.settingsSnapshot = sanitizeSettings(settings);
 		this.markDirty();
 	}
 
@@ -197,7 +198,7 @@ export class PersistenceManager {
 
 		const payload: PersistedData = {
 			schema: CURRENT_SCHEMA,
-			settings: this.settingsSnapshot,
+			settings: sanitizeSettings(this.settingsSnapshot),
 			history: this.history,
 			sessions: this.sessions,
 			queue: this.queue,
@@ -217,11 +218,35 @@ export class PersistenceManager {
 			this.dirty = false;
 			await this.plugin.saveData({
 				schema: CURRENT_SCHEMA,
-				settings: this.settingsSnapshot,
+				settings: sanitizeSettings(this.settingsSnapshot),
 				history: this.history,
 				sessions: this.sessions,
 				queue: this.queue,
 			});
 		}
 	}
+}
+
+function sanitizeSettings(settings: Record<string, unknown>): Record<string, unknown> {
+	if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return {};
+	return clonePlainObject(settings);
+}
+
+function clonePlainObject(value: Record<string, unknown>): Record<string, unknown> {
+	const clone: Record<string, unknown> = {};
+	for (const [key, child] of Object.entries(value)) {
+		if (isSecretKey(key)) continue;
+		clone[key] = clonePlainValue(child);
+	}
+	return clone;
+}
+
+function clonePlainValue(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(item => clonePlainValue(item));
+	if (value && typeof value === 'object') return clonePlainObject(value as Record<string, unknown>);
+	return value;
+}
+
+function isSecretKey(key: string): boolean {
+	return /^(?:api.?key|password|passphrase|access.?token|secret|authorization)$/i.test(key);
 }

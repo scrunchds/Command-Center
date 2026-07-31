@@ -211,12 +211,13 @@ export default class CommandCenterPlugin extends Plugin {
 		}
 
 		// ── Subsystems ─────────────────────────────────
+		const obsidianTools = createObsidianTools(this.app);
 		this.daemon = new PiAgentDaemon(vaultPath, this.settings.piPath);
 		this.frontmatterSync = new DebouncedFrontmatterSync(this.app, 750);
 		this.daemon.setExecutionStateCallback((state) =>
 			this.queueAgentStateUpdate(state),
 		);
-		this.daemon.registerTools(createObsidianTools(this.app));
+		this.daemon.registerTools(obsidianTools);
 		this.memoryBank = new ReActMemoryBank(this.app);
 		this.agentMemory = new AgentMemoryStore(this.app);
 		await this.agentMemory.ready();
@@ -238,11 +239,10 @@ export default class CommandCenterPlugin extends Plugin {
 		);
 
 		// ── Multi-Provider Subsystem ──────────────────
-		this.daemon.registerTools([
-			createVaultSearchTool(this.hybridRetriever, {
-				canReadVault: () => true,
-			}),
-		]);
+		const vaultSearchTool = createVaultSearchTool(this.hybridRetriever, {
+			canReadVault: () => true,
+		});
+		this.daemon.registerTools([vaultSearchTool]);
 		this.providerFactory = new ProviderFactory(
 			this.daemon,
 			() => this.settings.multiProvider,
@@ -288,7 +288,7 @@ export default class CommandCenterPlugin extends Plugin {
 			() => this.settings.multiProvider,
 			() => [
 				...obsidianTools,
-				createVaultSearchTool(this.hybridRetriever),
+				vaultSearchTool,
 			],
 			{
 				vaultPath,
@@ -300,11 +300,13 @@ export default class CommandCenterPlugin extends Plugin {
 		);
 		this.endpointRouter = new EndpointModelRouter(this.configManager, {
 			resolveCredential: (reference, endpoint) => {
-				const key = reference || endpoint.provider;
-				return Object.values(
-					this.settings.multiProvider.credentials,
-				).find((credentials) => credentials?.providerId === key)
-					?.apiKey;
+				const key = reference?.trim() || endpoint.provider;
+				return this.credentialVault.get(key).trim()
+					|| this.credentialVault.get(endpoint.provider).trim()
+					|| Object.values(
+						this.settings.multiProvider.credentials,
+					).find((credentials) => credentials?.providerId === key)
+						?.apiKey?.trim();
 			},
 		});
 		this.workflowEngine = new WorkflowEngine(
@@ -318,7 +320,6 @@ export default class CommandCenterPlugin extends Plugin {
 			() => this.configManager.requireStyleGuide(),
 		);
 
-		const obsidianTools = createObsidianTools(this.app);
 		const executor: TaskExecutor = {
 			execute: async (task: Task): Promise<TaskResult> => {
 				this.requireInitialized();
@@ -645,12 +646,13 @@ export default class CommandCenterPlugin extends Plugin {
 			'custom',
 		] as const;
 		for (const providerId of candidates) {
-			const credentials =
-				this.settings.multiProvider.credentials[providerId];
+			const credentials = this.settings.multiProvider.credentials[providerId];
+			const meta = PROVIDER_REGISTRY[providerId];
 			if (!credentials?.enabled || !credentials.baseUrl) continue;
+			if (meta.requiresKey && !this.credentialVault.has(providerId)) continue;
 			return {
 				baseUrl: sanitizeBaseUrl(credentials.baseUrl),
-				apiKey: this.credentialVault.get(providerId),
+				apiKey: this.credentialVault.get(providerId).trim(),
 				providerId,
 				ttl: this.settings.multiProvider.defaults.ttl,
 				keepAlive: this.settings.multiProvider.defaults.keepAlive,
@@ -1248,6 +1250,7 @@ export default class CommandCenterPlugin extends Plugin {
 		}
 
 		await this.activateCommandCenterView();
+		const voiceTools = createObsidianTools(this.app);
 		const streamId = `voice-${mode}-${Date.now().toString(36)}`;
 		this.commandCenterView?.startTaskStream(
 			streamId,
@@ -1267,7 +1270,7 @@ export default class CommandCenterPlugin extends Plugin {
 					this.daemon.executeReActSession(
 						prompt,
 						activeFile?.path,
-						createObsidianTools(this.app),
+						voiceTools,
 						DEFAULT_REACT_CONFIG,
 							(event) => {
 								if (
