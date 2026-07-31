@@ -528,6 +528,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		const collapsed = this.collapsedSections.has(`provider-${pid}`);
 		const health = this.healthStatus.get(pid) ?? 'idle';
+		const credentialReady = !meta.requiresKey || this.plugin.credentialVault.has(pid);
 		const enabled = cred.enabled;
 
 		const card = container.createDiv({
@@ -741,9 +742,13 @@ export class PluginSettingsTab extends PluginSettingTab {
 			});
 			if (
 				syncState.status === 'syncing' ||
-				(!enabled && meta.requiresKey)
+				(!enabled && meta.requiresKey) ||
+				!credentialReady
 			) {
 				refreshBtn.disabled = true;
+				if (!credentialReady) {
+					refreshBtn.setAttribute('title', 'Unlock the credential vault to refresh live models.');
+				}
 			}
 			refreshBtn.addEventListener('click',  () => { void (async () => {
 				await this.syncProviderModels(pid);
@@ -1273,7 +1278,9 @@ export class PluginSettingsTab extends PluginSettingTab {
 			if (!meta) continue;
 
 			const cred = mp.credentials[pid];
-			const enabled = cred?.enabled ?? pid === 'pi-daemon';
+			const configured = cred?.enabled ?? pid === 'pi-daemon';
+			const credentialReady = pid === 'pi-daemon' || !meta.requiresKey || this.plugin.credentialVault.has(pid);
+			const enabled = configured && credentialReady;
 			const health = this.healthStatus.get(pid) ?? 'idle';
 
 			const card = body.createDiv({
@@ -1287,10 +1294,15 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 			// Center: status text
 			const center = card.createDiv({ cls: 'cc-health-center' });
-			if (!enabled) {
+			if (!configured) {
 				center.createSpan({
 					cls: 'cc-health-status muted',
 					text: 'Disabled',
+				});
+			} else if (!credentialReady) {
+				center.createSpan({
+					cls: 'cc-health-status muted',
+					text: '🔒 Vault locked',
 				});
 			} else if (health === 'checking') {
 				center.createSpan({
@@ -1322,7 +1334,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 				text: 'Test',
 				cls: 'cc-health-test-btn',
 			});
-			if (health === 'checking') testBtn.disabled = true;
+			if (health === 'checking' || !enabled) testBtn.disabled = true;
 			testBtn.addEventListener('click',  () => { void (async () => {
 				await this.runHealthCheck(pid);
 				this.update();
@@ -1822,7 +1834,10 @@ export class PluginSettingsTab extends PluginSettingTab {
 		const mp = this.plugin.settings.multiProvider;
 		const toCheck = PROVIDER_ORDER.filter((pid) => {
 			const cred = mp.credentials[pid];
-			return pid === 'pi-daemon' || cred?.enabled;
+			const meta = PROVIDER_REGISTRY[pid];
+			const enabled = pid === 'pi-daemon' || cred?.enabled;
+			const credentialReady = pid === 'pi-daemon' || !meta?.requiresKey || this.plugin.credentialVault.has(pid);
+			return enabled && credentialReady;
 		});
 
 		// Mark all as checking

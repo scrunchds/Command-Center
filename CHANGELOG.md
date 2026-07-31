@@ -4,6 +4,25 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-07-31
+
+### Changed
+
+- Reused a single Obsidian tool registration path so the daemon, routing layer, and voice-prompt fallback no longer construct duplicate tool arrays.
+- Tightened provider usability checks so locked credential vaults are reflected consistently in routing, model refresh, and health-check UX.
+- Simplified credential resolution for compute endpoints by preferring the process-memory vault and trimming stale settings fallbacks.
+
+### Fixed
+
+- Prevented settings-time model refresh and health checks from advertising locked cloud providers as actionable.
+- Made the embedding bootstrap skip cloud providers that are configured but not yet unlocked, reducing confusing offline fallbacks.
+- Kept legacy plaintext API-key cleanup in place while preserving backward-compatible settings loading.
+
+### Security
+
+- Reduced the chance of stale credential data being surfaced in endpoint resolution or refresh flows.
+- Preserved the encrypted vault boundary for provider credentials and local-only fallback behavior.
+
 ## [1.1.3] - 2026-07-29
 
 ### Added
