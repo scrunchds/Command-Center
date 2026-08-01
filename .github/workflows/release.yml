@@ -136,13 +136,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ steps.release_params.outputs.tag }}"
-          echo "Creating release: ${tag}"
+          echo "Publishing release: ${tag}"
 
-          gh release create "$tag" \
-            --title="$tag" \
-            ${{ steps.release_params.outputs.draft_flag }} \
-            ${{ steps.release_params.outputs.prerelease_flag }} \
-            --generate-notes \
-            release/command-center/main.js \
-            release/command-center/manifest.json \
-            release/command-center/styles.css
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release already exists; uploading assets with clobber."
+            gh release upload "$tag" --clobber \
+              release/command-center/main.js \
+              release/command-center/manifest.json \
+              release/command-center/styles.css
+          else
+            gh release create "$tag" \
+              --title="$tag" \
+              ${{ steps.release_params.outputs.draft_flag }} \
+              ${{ steps.release_params.outputs.prerelease_flag }} \
+              --generate-notes \
+              release/command-center/main.js \
+              release/command-center/manifest.json \
+              release/command-center/styles.css
+          fi
