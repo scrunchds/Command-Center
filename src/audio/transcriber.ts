@@ -33,6 +33,65 @@ export interface TranscriberAdapterOptions {
 	signal?: AbortSignal;
 }
 
+export interface TranscriptionCandidate {
+	providerId: ProviderId;
+	model?: string;
+	label: string;
+	local: boolean;
+}
+
+const TRANSCRIPTION_PROVIDER_ORDER: ProviderId[] = [
+	'lmstudio',
+	'ollama',
+	'groq',
+	'openai',
+	'deepinfra',
+	'openrouter',
+	'custom',
+];
+
+function getConfiguredTranscriptionModel(settings: MultiProviderSettings | CommandCenterSettings): string | undefined {
+	if ('speechToTextModel' in settings && typeof settings.speechToTextModel === 'string') {
+		const configured = settings.speechToTextModel.trim();
+		if (configured) return configured;
+	}
+	const mp = 'multiProvider' in settings ? settings.multiProvider : settings;
+	const configured = (mp.defaults as Record<string, unknown>).transcriptionModel;
+	return typeof configured === 'string' && configured.trim() ? configured.trim() : undefined;
+}
+
+function getPreferredTranscriptionProvider(settings: MultiProviderSettings | CommandCenterSettings): 'auto' | ProviderId {
+	return 'speechToTextProviderId' in settings ? settings.speechToTextProviderId : 'auto';
+}
+
+function providerOrder(preferred: 'auto' | ProviderId): ProviderId[] {
+	if (preferred === 'auto' || !TRANSCRIPTION_PROVIDER_ORDER.includes(preferred)) return [...TRANSCRIPTION_PROVIDER_ORDER];
+	return [preferred, ...TRANSCRIPTION_PROVIDER_ORDER.filter(providerId => providerId !== preferred)];
+}
+
+export function buildTranscriptionCandidates(
+	settings: MultiProviderSettings | CommandCenterSettings,
+	options: {
+		hasApiKey?: (providerId: ProviderId) => boolean;
+	} = {},
+): TranscriptionCandidate[] {
+	if ('speechToTextEnabled' in settings && settings.speechToTextEnabled === false) return [];
+	const mp = 'multiProvider' in settings ? settings.multiProvider : settings;
+	const configuredModel = getConfiguredTranscriptionModel(settings);
+	const preferred = getPreferredTranscriptionProvider(settings);
+	return providerOrder(preferred).flatMap(providerId => {
+		const credentials = mp.credentials[providerId];
+		const meta = PROVIDER_REGISTRY[providerId];
+		if (!credentials?.enabled || (!credentials.baseUrl && !meta.defaultBaseUrl)) return [];
+		if (meta.requiresKey && options.hasApiKey && !options.hasApiKey(providerId)) return [];
+		const local = providerId === 'lmstudio' || providerId === 'ollama';
+		const persisted = mp.liveModels?.[providerId]?.find(model => /(whisper|speech[-_ ]?to[-_ ]?text|transcri|\bstt\b)/i.test(model.id));
+		const model = persisted?.id ?? configuredModel ?? (providerId === 'groq' ? 'whisper-large-v3' : local ? undefined : 'whisper-large-v3-turbo');
+		const providerLabel = providerId === 'lmstudio' ? 'Local LM Studio' : providerId === 'ollama' ? 'Local Ollama' : meta.label;
+		return [{ providerId, model, label: `${providerLabel} (${model ?? 'automatic Whisper'})`, local }];
+	});
+}
+
 export class TranscriptionError extends Error {
 	readonly status?: number;
 	readonly retryable: boolean;

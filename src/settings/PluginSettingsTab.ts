@@ -198,10 +198,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.setDesc('Play restrained cues when dictation starts/stops and AI work completes.')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.audioCues).onChange(value => this.saveSetting('audioCues', value)));
 
-		new Setting(body)
-			.setName('Automatically read AI responses')
-			.setDesc('Use the operating system speech synthesizer to read completed AI responses aloud. Every response also has a manual Read aloud control.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.autoReadAiResponses).onChange(value => this.saveSetting('autoReadAiResponses', value)));
+		this.renderSpeechSettings(body);
 
 		// Max tokens
 		new Setting(body)
@@ -451,6 +448,67 @@ export class PluginSettingsTab extends PluginSettingTab {
 		);
 	}
 
+	private renderSpeechSettings(containerEl: HTMLElement): void {
+		this.renderSectionHeader(containerEl, 'speech', '🗣️ Accessibility & Speech');
+
+		const body = this.getSectionBody(containerEl, 'speech');
+
+		new Setting(body)
+			.setName('Enable text to speech')
+			.setDesc('Read assistant output aloud with the browser or system speech engine.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.textToSpeechEnabled).onChange(value => this.saveSetting('textToSpeechEnabled', value)));
+
+		window.setTimeout(() => this.updateVoiceSelects(), 0);
+
+		const voices = this.getSpeechVoices();
+		new Setting(body)
+			.setName('Text-to-speech voice')
+			.setDesc(voices.length > 0 ? 'Choose a specific browser or system voice, or leave it on the default.' : 'No browser voices were reported yet; the default voice will be used.')
+			.addDropdown(dropdown => {
+				dropdown.selectEl.addClass('cc-text-to-speech-voice');
+				dropdown.addOption('', 'Default voice');
+				for (const voice of voices) {
+					dropdown.addOption(voice.name, `${voice.name}${voice.default ? ' (default)' : voice.lang ? ` · ${voice.lang}` : ''}`);
+				}
+				dropdown.setValue(this.plugin.settings.textToSpeechVoice);
+				dropdown.onChange(value => this.saveSetting('textToSpeechVoice', value));
+				return dropdown;
+			});
+
+		new Setting(body)
+			.setName('Text-to-speech rate')
+			.setDesc('Control how fast spoken responses are read.')
+			.addSlider(slider => slider.setLimits(0.5, 2.0, 0.1).setValue(this.plugin.settings.textToSpeechRate).onChange(value => this.saveSetting('textToSpeechRate', value)));
+
+		new Setting(body)
+			.setName('Automatically read AI responses')
+			.setDesc('Read completed AI responses aloud automatically. Every response also has a manual Read aloud control.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.autoReadAiResponses).onChange(value => this.saveSetting('autoReadAiResponses', value)));
+
+		new Setting(body)
+			.setName('Enable speech to text')
+			.setDesc('Allow voice recording and transcription for chat, workflow voice prompts, and dictation.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.speechToTextEnabled).onChange(value => this.saveSetting('speechToTextEnabled', value)));
+
+		const sttProviders: Array<'auto' | ProviderId> = ['auto', 'lmstudio', 'ollama', 'groq', 'openai', 'deepinfra', 'openrouter', 'custom'];
+		new Setting(body)
+			.setName('Speech-to-text provider')
+			.setDesc('Auto uses the normal fallback order; pick a provider to prefer it first.')
+			.addDropdown(dropdown => {
+				for (const providerId of sttProviders) {
+					dropdown.addOption(providerId, providerId === 'auto' ? 'Auto' : PROVIDER_REGISTRY[providerId].label);
+				}
+				dropdown.setValue(this.plugin.settings.speechToTextProviderId);
+				dropdown.onChange(value => this.saveSetting('speechToTextProviderId', value as 'auto' | ProviderId));
+				return dropdown;
+			});
+
+		new Setting(body)
+			.setName('Speech-to-text model')
+			.setDesc('Leave blank to use the provider default or live model discovery.')
+			.addText(text => text.setPlaceholder('whisper-large-v3-turbo').setValue(this.plugin.settings.speechToTextModel).onChange(value => this.saveSetting('speechToTextModel', value)));
+	}
+
 	/* ═══════════════════════════════════════════════════════
 	   Section 2: Provider Credentials
 	   ═══════════════════════════════════════════════════════ */
@@ -472,33 +530,27 @@ export class PluginSettingsTab extends PluginSettingTab {
 			cls: 'cc-provider-key-badge',
 			text: this.plugin.credentialVault.unlocked ? '🔓 Vault unlocked' : '🔒 Vault locked · local-only',
 		});
-		this.createButton(actionBar, 'Test All', async () => {
-			const btns = actionBar.querySelectorAll('button');
-			const testBtn = btns[0] as HTMLButtonElement;
-			testBtn.textContent = 'Testing...';
-			testBtn.disabled = true;
+		const testAllBtn = this.createButton(actionBar, 'Test All', async () => {
+			testAllBtn.setButtonText('Testing...');
+			testAllBtn.setDisabled(true);
 			await this.healthCheckAll();
-			testBtn.textContent = 'Test All';
-			testBtn.disabled = false;
+			testAllBtn.setButtonText('Test All');
+			testAllBtn.setDisabled(false);
 		});
 		// Sync All Models — refreshes live models for all enabled providers
-		this.createButton(actionBar, '🔄 Sync All Models', async () => {
-			const btns = actionBar.querySelectorAll('button');
-			const syncBtn = btns[1] as HTMLButtonElement;
-			syncBtn.textContent = '⏳ Syncing...';
-			syncBtn.disabled = true;
+		const syncAllBtn = this.createButton(actionBar, '🔄 Sync All Models', async () => {
+			syncAllBtn.setButtonText('⏳ Syncing...');
+			syncAllBtn.setDisabled(true);
 			await this.syncAllModels();
-			syncBtn.textContent = '🔄 Sync All Models';
-			syncBtn.disabled = false;
+			syncAllBtn.setButtonText('🔄 Sync All Models');
+			syncAllBtn.setDisabled(false);
 		});
 		this.createButton(actionBar, 'Collapse All', () => {
-			for (const pid of PROVIDER_ORDER)
-				this.collapsedSections.add(`provider-${pid}`);
+			for (const pid of PROVIDER_ORDER) this.collapsedSections.add(`provider-${pid}`);
 			this.update();
 		});
 		this.createButton(actionBar, 'Expand All', () => {
-			for (const pid of PROVIDER_ORDER)
-				this.collapsedSections.delete(`provider-${pid}`);
+			for (const pid of PROVIDER_ORDER) this.collapsedSections.delete(`provider-${pid}`);
 			this.update();
 		});
 
@@ -1482,6 +1534,29 @@ export class PluginSettingsTab extends PluginSettingTab {
 		btn.setButtonText(text);
 		btn.onClick(() => void onClick());
 		return btn;
+	}
+
+	private getSpeechVoices(): SpeechSynthesisVoice[] {
+		if (!('speechSynthesis' in window) || typeof window.speechSynthesis.getVoices !== 'function') return [];
+		return window.speechSynthesis.getVoices().filter(voice => voice && typeof voice.name === 'string');
+	}
+
+	private updateVoiceSelects(): void {
+		const voices = this.getSpeechVoices();
+		for (const select of Array.from(this.containerEl.querySelectorAll('select.cc-text-to-speech-voice'))) {
+			const el = select as HTMLSelectElement;
+			const current = this.plugin.settings.textToSpeechVoice;
+			const selected = Array.from(el.options).find(option => option.value === current);
+			el.innerHTML = '';
+			el.add(new Option('Default voice', ''));
+			for (const voice of voices) {
+				el.add(new Option(
+					`${voice.name}${voice.default ? ' (default)' : voice.lang ? ` · ${voice.lang}` : ''}`,
+					voice.name,
+				));
+			}
+			el.value = selected ? selected.value : current;
+		}
 	}
 
 	/** Save a single settings key and show the save indicator. */

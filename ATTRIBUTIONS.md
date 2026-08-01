@@ -1,6 +1,6 @@
 # Third-Party Attributions and License Audit
 
-This document records the dependency and interoperability review for Command Center 1.0.2. Command Center itself is distributed under the MIT License; see [`LICENSE`](LICENSE).
+This document records the dependency and interoperability review for Command Center 1.1.6. Command Center itself is distributed under the MIT License; see [`LICENSE`](LICENSE).
 
 > This inventory is informational and is not legal advice. Copyright in each third-party project remains with its respective authors. The authoritative license text shipped by each package is available in that package's source distribution and npm tarball.
 
@@ -18,7 +18,7 @@ The installable Obsidian release directory contains Command Center's compiled `m
 | Project | Version reviewed | License | Use | Upstream |
 |---|---:|---|---|---|
 | Obsidian API | 1.12.3 package metadata | MIT | Compile-time API/types; Obsidian is an external proprietary host application and is not redistributed | <https://github.com/obsidianmd/obsidian-api> |
-| Pi coding agent (`@earendil-works/pi-coding-agent`) | 0.82.1 installed companion | MIT | Optional external RPC runner; not an npm dependency and not bundled | <https://github.com/earendil-works/pi/tree/main/packages/coding-agent> |
+| Pi coding agent (`@earendil-works/pi-coding-agent`) | 0.83.0 installed companion | MIT | Optional external RPC runner; not an npm dependency and not bundled | <https://github.com/earendil-works/pi/tree/main/packages/coding-agent> |
 | Node.js APIs | Host-provided | MIT | External desktop runtime APIs | <https://github.com/nodejs/node> |
 | Electron APIs | Host-provided | MIT | External desktop host APIs | <https://github.com/electron/electron> |
 | CodeMirror / Lezer APIs | Host-provided | MIT | Marked external by the build and supplied transitively by Obsidian | <https://github.com/codemirror> |
@@ -71,7 +71,7 @@ The full package-by-package source of truth is `package-lock.json`; npm package 
 
 ## Pi companion dependency review
 
-The locally installed Pi 0.82.1 package declares MIT. A recursive metadata scan of its 122 installed dependency entries found only MIT (50), Apache-2.0 (45), BSD-3-Clause (13), BlueOak-1.0.0 (5), ISC (8), and 0BSD (1). No GPL-family or undeclared license was found. Pi and those dependencies remain a separate installation; users receive their license materials from the Pi npm distribution.
+The locally installed Pi 0.83.0 package declares MIT. A recursive metadata scan of its installed dependency entries found only permissive licenses (MIT, Apache-2.0, BSD-3-Clause, BlueOak-1.0.0, ISC, and 0BSD). No GPL-family or undeclared license was found. Pi and those dependencies remain a separate installation; users receive their license materials from the Pi npm distribution.
 
 ## Build and notice handling
 

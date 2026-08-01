@@ -10,7 +10,7 @@ import { createObsidianTools } from '../obsidian-tools';
 import { DEFAULT_REACT_CONFIG } from '../react';
 import type { ReActTraceEvent } from '../react/react-trace';
 import { AudioRecorder } from '../audio/audio-recorder';
-import { TranscriberAdapter } from '../audio/transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter } from '../audio/transcriber';
 import { createVaultSearchTool } from '../rag/rag-tool';
 
 export const COMMAND_CENTER_CHAT_VIEW_TYPE = 'command-center-chat';
@@ -280,7 +280,7 @@ export class CommandCenterChatView extends ItemView {
 	}
 
 	private async toggleRecording(): Promise<void> {
-		if (this.isSending || this.isTranscribing) return;
+		if (this.isSending || this.isTranscribing || !this.plugin.settings.speechToTextEnabled) return;
 		if (this.audioRecorder?.isRecording()) {
 			await this.stopRecordingAndTranscribe();
 			return;
@@ -347,27 +347,15 @@ export class CommandCenterChatView extends ItemView {
 	}
 
 	private getTranscriptionCandidates(): Array<{ providerId: ProviderId; model?: string; label: string; local: boolean }> {
-		const settings = this.plugin.settings.multiProvider;
-		const configured = (settings.defaults as Record<string, unknown>).transcriptionModel;
-		const configuredModel = typeof configured === 'string' && configured.trim() ? configured.trim() : undefined;
-		// Prefer local inference, then fall through to hosted OpenAI-compatible STT.
-		const order: ProviderId[] = ['lmstudio', 'ollama', 'groq', 'openai', 'deepinfra', 'openrouter', 'custom'];
-		return order.flatMap(providerId => {
-			const credentials = settings.credentials[providerId];
-			const meta = PROVIDER_REGISTRY[providerId];
-			if (!credentials?.enabled || (!credentials.baseUrl && !meta.defaultBaseUrl) || (meta.requiresKey && !credentials.apiKey)) return [];
-			const local = providerId === 'lmstudio' || providerId === 'ollama';
-			const persisted = settings.liveModels?.[providerId]?.find(model => /(whisper|speech[-_ ]?to[-_ ]?text|transcri|\bstt\b)/i.test(model.id));
-			const model = persisted?.id ?? configuredModel ?? (providerId === 'groq' ? 'whisper-large-v3' : local ? undefined : 'whisper-large-v3-turbo');
-			const providerLabel = providerId === 'lmstudio' ? 'Local LM Studio' : providerId === 'ollama' ? 'Local Ollama' : meta.label;
-			return [{ providerId, model, label: `${providerLabel} (${model ?? 'automatic Whisper'})`, local }];
+		return buildTranscriptionCandidates(this.plugin.settings, {
+			hasApiKey: providerId => this.plugin.credentialVault.has(providerId),
 		});
 	}
 
 	private async refreshSttStatus(): Promise<void> {
 		const candidate = this.getTranscriptionCandidates()[0];
-		this.sttStatusEl.setText(candidate ? `STT: ${candidate.label}` : 'STT: not configured');
-		this.sttStatusEl.toggleClass('is-unavailable', !candidate);
+		this.sttStatusEl.setText(candidate ? `STT: ${candidate.label}` : this.plugin.settings.speechToTextEnabled ? 'STT: not configured' : 'STT: disabled');
+		this.sttStatusEl.toggleClass('is-unavailable', !this.plugin.settings.speechToTextEnabled || !candidate);
 		if (!candidate?.local) return;
 		try {
 			const models = await new TranscriberAdapter({
@@ -383,7 +371,7 @@ export class CommandCenterChatView extends ItemView {
 
 	private async transcribeWithFallback(audio: Blob, signal: AbortSignal): Promise<string> {
 		const candidates = this.getTranscriptionCandidates();
-		if (!candidates.length) throw new Error('Enable an OpenAI-compatible provider (such as LM Studio, Groq, or OpenAI) for transcription.');
+		if (!candidates.length) throw new Error('Enable speech to text and configure a local or cloud transcription provider.');
 		const errors: string[] = [];
 		for (let index = 0; index < candidates.length; index++) {
 			if (signal.aborted) throw new Error('Transcription cancelled.');
@@ -438,7 +426,7 @@ export class CommandCenterChatView extends ItemView {
 
 	private resetMicrophoneUi(): void {
 		this.microphoneEl.removeClass('cc-mic-recording', 'is-transcribing');
-		this.microphoneEl.disabled = this.isSending;
+		this.microphoneEl.disabled = this.isSending || !this.plugin.settings.speechToTextEnabled;
 		this.microphoneEl.setAttribute('aria-label', 'Start voice recording');
 		this.microphoneEl.setAttribute('aria-pressed', 'false');
 		this.microphoneEl.setAttribute('title', 'Record voice message');
@@ -686,7 +674,7 @@ export class CommandCenterChatView extends ItemView {
 		this.isSending = sending;
 		if (!this.isOpen) return;
 		this.submitEl.disabled = sending;
-		this.microphoneEl.disabled = sending || this.isTranscribing;
+		this.microphoneEl.disabled = sending || this.isTranscribing || !this.plugin.settings.speechToTextEnabled;
 		this.textareaEl.disabled = sending;
 		this.updateHeader();
 		if (!sending) this.textareaEl.focus();
