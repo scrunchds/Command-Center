@@ -4,7 +4,7 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.5] - 2026-07-31
+## [1.1.6] - 2026-08-01
 
 ### Changed
 
@@ -17,6 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Prevented settings-time model refresh and health checks from advertising locked cloud providers as actionable.
 - Made the embedding bootstrap skip cloud providers that are configured but not yet unlocked, reducing confusing offline fallbacks.
 - Kept legacy plaintext API-key cleanup in place while preserving backward-compatible settings loading.
+- Added explicit accessibility speech controls for text-to-speech and speech-to-text in Settings.
+- Added speech-to-text enablement gates for chat, dashboard dictation, and voice-prompt capture.
+- Made assistant chat text selectable for copy/paste while preserving markdown rendering.
 
 ### Security
 

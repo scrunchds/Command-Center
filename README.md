@@ -1,7 +1,7 @@
 # Command Center for Obsidian
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Obsidian](https://img.shields.io/badge/Obsidian-1.10%2B-7C3AED?logo=obsidian)](https://obsidian.md/)
+[![Obsidian](https://img.shields.io/badge/Obsidian-1.13%2B-7C3AED?logo=obsidian)](https://obsidian.md/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022%20%7C%2024-339933?logo=node.js&logoColor=white)](package.json)
 [![Tests](https://img.shields.io/badge/tests-195%20passing-brightgreen)](#quality-security-and-release-controls)
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
@@ -235,7 +235,7 @@ Obsidian desktop
 - Obsidian **1.13.0 or newer**
 - Desktop Obsidian (the plugin is desktop-only)
 - A provider configured in Command Center settings
-- Optional: Node.js 20+ and Pi 0.82.1+ for local Pi/ReAct execution
+- Optional: Node.js 20+ and Pi 0.83.0+ for local Pi/ReAct execution
 
 ### Manual installation from a GitHub release
 
@@ -309,13 +309,17 @@ To start over, run **Command Center: Reset / Re-Initialize Vault Configuration**
 
 ## Configuration
 
-Open **Settings → Command Center**. The settings UI is organized into five sections.
+Open **Settings → Command Center**. The settings UI is organized into six sections.
 
 ### 1. Core Configuration
 
 Configure the active profile, token limits, Pi path, daemon startup, memory limits, Base batch concurrency, and Silent Daily Startup. Pi detection and status diagnostics are available here.
 
-### 2. Provider Credentials
+### 2. Accessibility & Speech
+
+Configure text-to-speech enablement, speaking voice, speaking rate, speech-to-text enablement, transcription provider preferences, and automatic read-aloud behavior here. Chat and voice recording use the same speech settings.
+
+### 3. Provider Credentials
 
 Each provider has a collapsible card for enablement, endpoint configuration, health checks, and model refresh. API keys are not exposed through ordinary settings fields.
 
@@ -325,7 +329,7 @@ Authentication metadata distinguishes **required**, **optional**, and **unsuppor
 
 Credentials are resolved only at request time. When the vault is locked, required-key cloud providers and authenticated local endpoints are unavailable, while unauthenticated local routes remain available. Credentials are excluded from interviews, generated workflows, CLI/URI arguments, subprocess argv/environment, logs, and repository examples.
 
-### 3. Task Routing Matrix
+### 4. Task Routing Matrix
 
 Assign a provider/model pair to each task class:
 
@@ -339,11 +343,11 @@ Assign a provider/model pair to each task class:
 
 Live-discovered models appear with a network indicator. If discovery fails, the static registry remains available.
 
-### 4. Fallback Pipeline
+### 5. Fallback Pipeline
 
 Enable or disable fallback, then add, remove, and reorder providers. Permanent request/schema errors fail fast; transient failures use backoff and reliability-ranked alternatives without allowing cost optimization to weaken recovery.
 
-### 5. Health Dashboard
+### 6. Health Dashboard
 
 Review provider state, test one provider, refresh all providers, and inspect actionable errors such as a missing Pi binary or unreachable local endpoint.
 
@@ -361,7 +365,7 @@ Open Command Center from the ribbon or command palette. The dashboard includes:
 - Dashboard-owned approval cards for destructive or bulk mutations
 - Daily-cycle controls and consolidated silent-start summaries
 - Per-vault widget ordering, sizing, collapse/visibility controls, and responsive layout persistence
-- Review-before-send dictation plus opt-in audio cues and AI read-aloud
+- Review-before-send dictation plus opt-in audio cues, speech-to-text, and AI read-aloud
 
 ### Chat panel
 
@@ -587,7 +591,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are both currently `1.1.0`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are both currently `1.1.6`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**. Its remaining advisory warnings are non-blocking recommendations, primarily sentence-case UI labels and declarative settings-search adoption.
 

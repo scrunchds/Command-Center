@@ -636,8 +636,21 @@ Command Center — Agentic OS for Obsidian
 }
 
 /* Provider action bar */
-.cc-provider-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.cc-provider-actions button { font-size: var(--font-smallest); padding: 2px 10px; }
+.cc-provider-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+	margin-left: auto;
+	align-self: center;
+	min-width: 0;
+}
+.cc-provider-actions button {
+	font-size: var(--font-smallest);
+	padding: 2px 10px;
+	white-space: nowrap;
+}
 
 /* Provider card grid */
 .cc-provider-grid {
@@ -657,7 +670,8 @@ Command Center — Agentic OS for Obsidian
 .cc-provider-card.collapsed { opacity: 0.7; }
 
 .cc-provider-card-header {
-	display: flex;
+	display: grid;
+	grid-template-columns: auto auto minmax(0, 1fr) auto auto;
 	align-items: center;
 	gap: 8px;
 	padding: 10px 12px;
@@ -681,7 +695,7 @@ Command Center — Agentic OS for Obsidian
 @keyframes cc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
 .cc-provider-icon { font-size: 18px; flex-shrink: 0; }
-.cc-provider-info { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.cc-provider-info { min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cc-provider-name { font-weight: var(--font-semibold); font-size: var(--font-small); }
 
 .cc-provider-key-badge {
@@ -694,13 +708,33 @@ Command Center — Agentic OS for Obsidian
 }
 .cc-provider-key-badge.free { background: hsla(var(--color-green-hsl), 0.15); color: var(--color-green); }
 
-.cc-provider-toggle { flex-shrink: 0; }
-.cc-provider-toggle .setting-item { border: none; padding: 0; }
+.cc-provider-toggle {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+}
+.cc-provider-toggle .setting-item {
+	border: none;
+	padding: 0;
+	margin: 0;
+	min-height: 0;
+	display: flex;
+	align-items: center;
+}
 .cc-provider-toggle .setting-item-info { display: none; }
+.cc-provider-toggle .setting-item-control { margin: 0; display: flex; align-items: center; }
 
 .cc-collapse-toggle {
-	cursor: pointer; padding: 2px 6px; border-radius: 4px;
-	font-size: 11px; color: var(--text-muted); flex-shrink: 0;
+	cursor: pointer;
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 11px;
+	line-height: 1;
+	color: var(--text-muted);
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }
 .cc-collapse-toggle:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 
@@ -720,7 +754,7 @@ Command Center — Agentic OS for Obsidian
 }
 
 /* Credential rows */
-.cc-credential-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cc-credential-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
 .cc-credential-label {
 	font-size: var(--font-smallest); font-weight: var(--font-semibold); color: var(--text-muted);
 	text-transform: uppercase; letter-spacing: 0.3px; width: 65px; flex-shrink: 0;
@@ -744,7 +778,7 @@ Command Center — Agentic OS for Obsidian
 .cc-key-strength.ok { color: var(--color-yellow); }
 .cc-key-strength.good { color: var(--color-green); }
 
-.cc-url-container { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1; }
+.cc-url-container { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px; flex: 1; }
 .cc-url-default-label { font-size: 9px; color: var(--text-faint); white-space: nowrap; }
 .cc-url-warning { display: none; flex-basis: 100%; font-size: 9px; color: var(--color-yellow); white-space: nowrap; }
 .cc-url-warning.is-visible { display: block; }
@@ -768,8 +802,20 @@ Command Center — Agentic OS for Obsidian
 .cc-model-chip-cost, .cc-model-chip-ctx { font-size: 8px; color: var(--text-faint); }
 
 /* Provider actions row */
-.cc-provider-actions-row { display: flex; gap: 6px; padding-top: 8px; border-top: 1px solid var(--background-modifier-border); }
-.cc-provider-actions-row button { font-size: var(--font-smallest); padding: 3px 10px; }
+.cc-provider-actions-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.cc-provider-actions-row button {
+	font-size: var(--font-smallest);
+	padding: 3px 10px;
+	white-space: nowrap;
+}
 .cc-test-btn { background: var(--interactive-accent); color: var(--text-on-accent); }
 .cc-clear-btn { background: transparent; color: var(--text-muted); border: 1px solid var(--background-modifier-border); }
 .cc-clear-btn:hover { color: var(--color-red); border-color: var(--color-red); }
@@ -893,20 +939,22 @@ Command Center — Agentic OS for Obsidian
 .cc-chat-bubble {
 	max-width: min(88%, 680px); padding: 8px 11px; border: 1px solid var(--background-modifier-border);
 	border-radius: 12px; background: var(--background-secondary); overflow-wrap: anywhere;
+	user-select: text; -webkit-user-select: text;
 }
 .cc-chat-message-user .cc-chat-bubble { border-color: hsla(var(--interactive-accent-hsl), 0.35); background: hsla(var(--interactive-accent-hsl), 0.14); }
 .cc-chat-bubble.is-pending:empty::after, .cc-chat-message-content:empty::after { content: "…"; color: var(--text-faint); }
+.cc-chat-message-content { user-select: text; -webkit-user-select: text; }
 .cc-chat-message-content > :first-child { margin-top: 0; }
 .cc-chat-message-content > :last-child { margin-bottom: 0; }
 .cc-chat-message-time { margin-top: 5px; color: var(--text-faint); font-size: 9px; line-height: 1; text-align: left; }
 .cc-chat-message-user .cc-chat-message-time { text-align: right; }
 .cc-chat-react-trace { margin-top: 8px; border-top: 1px solid var(--background-modifier-border); padding-top: 6px; }
 .cc-chat-react-trace summary { cursor: pointer; color: var(--text-muted); font-size: var(--font-smallest); }
-.cc-chat-react-trace-content { max-height: 180px; overflow: auto; padding-top: 6px; white-space: pre-wrap; font: var(--font-smallest) var(--font-monospace); color: var(--text-muted); }
+.cc-chat-react-trace-content { max-height: 180px; overflow: auto; padding-top: 6px; white-space: pre-wrap; font: var(--font-smallest) var(--font-monospace); color: var(--text-muted); user-select: text; -webkit-user-select: text; }
 .cc-chat-composer { flex: 0 0 auto; padding: 8px 10px 10px; border-top: 1px solid var(--background-modifier-border); background: var(--background-secondary); }
 .cc-chat-context-pills { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
 .cc-chat-context-pills.is-empty { display: none; }
-.cc-chat-context-pill { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 6px; border: 1px solid var(--background-modifier-border); border-radius: 12px; background: var(--background-primary); font-size: var(--font-smallest); }
+.cc-chat-context-pill { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 6px; border: 1px solid var(--background-modifier-border); border-radius: 12px; background: var(--background-primary); font-size: var(--font-smallest); user-select: text; -webkit-user-select: text; }
 .cc-chat-context-pill svg { width: 13px; height: 13px; }
 .cc-chat-context-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-chat-context-remove { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; box-shadow: none; background: transparent; color: var(--text-muted); }

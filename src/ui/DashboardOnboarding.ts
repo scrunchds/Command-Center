@@ -94,6 +94,7 @@ export class DashboardOnboarding {
 			return;
 		}
 		try {
+			if (!this.plugin.settings.speechToTextEnabled) throw new Error('Enable speech to text in Settings to use dictation.');
 			const session = await this.plugin.accessibilityAudio.dictate();
 			this.dictationStop = session.stop;
 			button.setText('■ Stop dictation');

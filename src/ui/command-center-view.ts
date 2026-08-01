@@ -718,8 +718,12 @@ export class CommandCenterView extends ItemView {
 				} catch (error) { new Notice(`Dictation failed: ${(error as Error).message}`); }
 				finally { stopDictation = null; dictate.disabled = false; dictate.setText('🎙 Dictate'); }
 			} else {
-				try { const session = await this.plugin.accessibilityAudio.dictate(); stopDictation = session.stop; dictate.setText('■ Stop dictation'); }
-				catch (error) { new Notice(`Dictation failed: ${(error as Error).message}`); }
+				try {
+					if (!this.plugin.settings.speechToTextEnabled) throw new Error('Enable speech to text in Settings to use dictation.');
+					const session = await this.plugin.accessibilityAudio.dictate();
+					stopDictation = session.stop;
+					dictate.setText('■ Stop dictation');
+				} catch (error) { new Notice(`Dictation failed: ${(error as Error).message}`); }
 			}
 		})());
 		const send = controls.createEl('button', {

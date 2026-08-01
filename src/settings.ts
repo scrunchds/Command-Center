@@ -5,7 +5,7 @@
  * This file provides the settings data model, defaults, and convenience re-export.
  */
 
-import type { MultiProviderSettings } from './providers/provider-types';
+import type { MultiProviderSettings, ProviderId } from './providers/provider-types';
 import type { EncryptedCredentialPayload } from './security/VaultCrypto';
 import { DEFAULT_FALLBACK_CONFIG } from './providers/provider-types';
 import { DEFAULT_ROUTING } from './routing';
@@ -52,6 +52,18 @@ export interface CommandCenterSettings {
 	metacognitiveDepth: number;
 	/** Play restrained nonverbal cues for recording and completed responses. */
 	audioCues: boolean;
+	/** Master toggle for spoken output and Read aloud controls. */
+	textToSpeechEnabled: boolean;
+	/** Selected browser/system TTS voice name; empty string uses the default voice. */
+	textToSpeechVoice: string;
+	/** Speaking rate for TTS output. */
+	textToSpeechRate: number;
+	/** Master toggle for speech-to-text capture and transcription fallback. */
+	speechToTextEnabled: boolean;
+	/** Preferred provider for speech-to-text; "auto" preserves fallback ordering. */
+	speechToTextProviderId: 'auto' | ProviderId;
+	/** Preferred transcription model; empty string lets the provider choose automatically. */
+	speechToTextModel: string;
 	/** Automatically read completed AI responses aloud. */
 	autoReadAiResponses: boolean;
 	/** Per-vault dashboard widget order, visibility, collapse, and width. */
@@ -78,6 +90,12 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	multiProvider: DEFAULT_MULTI_PROVIDER,
 	metacognitiveDepth: 3,
 	audioCues: false,
+	textToSpeechEnabled: true,
+	textToSpeechVoice: '',
+	textToSpeechRate: 1,
+	speechToTextEnabled: true,
+	speechToTextProviderId: 'auto',
+	speechToTextModel: '',
 	autoReadAiResponses: false,
 	dashboardLayout: DEFAULT_DASHBOARD_LAYOUT.map(widget => ({ ...widget })),
 };

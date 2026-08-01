@@ -1,8 +1,6 @@
 import type CommandCenterPlugin from '../main';
-import type { ProviderId } from '../providers/provider-types';
-import { PROVIDER_REGISTRY } from '../providers/provider-registry';
+import { buildTranscriptionCandidates, TranscriberAdapter, type TranscriptionCandidate } from './transcriber';
 import { AudioRecorder } from './audio-recorder';
-import { TranscriberAdapter } from './transcriber';
 
 export type AudioCue = 'start' | 'stop' | 'complete' | 'attention';
 
@@ -14,6 +12,9 @@ export class AccessibilityAudio {
 	constructor(private readonly plugin: CommandCenterPlugin) {}
 
 	async dictate(signal?: AbortSignal): Promise<{ recorder: AudioRecorder; stop: () => Promise<string> }> {
+		if (!this.plugin.settings.speechToTextEnabled) {
+			throw new Error('Enable speech to text in Settings to use dictation.');
+		}
 		const recorder = new AudioRecorder({ mimeType: 'audio/webm' });
 		await recorder.start();
 		this.cue('start');
@@ -29,6 +30,7 @@ export class AccessibilityAudio {
 
 	async transcribe(audio: Blob, signal?: AbortSignal): Promise<string> {
 		const candidates = this.transcriptionCandidates();
+		if (!this.plugin.settings.speechToTextEnabled) throw new Error('Enable speech to text in Command Center settings.');
 		if (!candidates.length) throw new Error('Enable a local or cloud speech-to-text provider in Command Center settings.');
 		const errors: string[] = [];
 		for (const candidate of candidates) {
@@ -51,12 +53,18 @@ export class AccessibilityAudio {
 	}
 
 	speak(text: string): boolean {
+		if (!this.plugin.settings.textToSpeechEnabled) return false;
 		if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') return false;
 		const clean = text.replace(/```[\s\S]*?```/g, ' code block ').replace(/[*_#>`~[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
 		if (!clean) return false;
 		this.stopSpeaking();
 		const utterance = new SpeechSynthesisUtterance(clean.slice(0, 20_000));
-		utterance.rate = 1;
+		utterance.rate = this.resolveRate();
+		const voice = this.resolveVoice();
+		if (voice) {
+			utterance.voice = voice;
+			if (voice.lang) utterance.lang = voice.lang;
+		}
 		utterance.onend = () => { if (this.utterance === utterance) this.utterance = null; };
 		utterance.onerror = () => { if (this.utterance === utterance) this.utterance = null; };
 		this.utterance = utterance;
@@ -82,7 +90,9 @@ export class AccessibilityAudio {
 			oscillator.connect(gain).connect(this.context.destination);
 			oscillator.start();
 			oscillator.stop(this.context.currentTime + 0.12);
-		} catch { /* Audio cues are optional and never block work. */ }
+		} catch {
+			/* Audio cues are optional and never block work. */
+		}
 	}
 
 	dispose(): void {
@@ -91,20 +101,31 @@ export class AccessibilityAudio {
 		this.context = null;
 	}
 
-	private transcriptionCandidates(): Array<{ providerId: ProviderId; model?: string; label: string; local: boolean }> {
-		const settings = this.plugin.settings.multiProvider;
-		const configured = (settings.defaults as Record<string, unknown>).transcriptionModel;
-		const configuredModel = typeof configured === 'string' && configured.trim() ? configured.trim() : undefined;
-		const order: ProviderId[] = ['lmstudio', 'ollama', 'groq', 'openai', 'deepinfra', 'openrouter', 'custom'];
-		return order.flatMap(providerId => {
-			const credentials = settings.credentials[providerId];
-			const meta = PROVIDER_REGISTRY[providerId];
-			if (!credentials?.enabled || (!credentials.baseUrl && !meta.defaultBaseUrl)) return [];
-			if (meta.requiresKey && !this.plugin.credentialVault.has(providerId)) return [];
-			const local = providerId === 'lmstudio' || providerId === 'ollama';
-			const persisted = settings.liveModels?.[providerId]?.find(model => /(whisper|speech[-_ ]?to[-_ ]?text|transcri|\bstt\b)/i.test(model.id));
-			const model = persisted?.id ?? configuredModel ?? (providerId === 'groq' ? 'whisper-large-v3' : local ? undefined : 'whisper-large-v3-turbo');
-			return [{ providerId, model, label: meta.label, local }];
+	private resolveRate(): number {
+		const value = Number(this.plugin.settings.textToSpeechRate);
+		if (!Number.isFinite(value)) return 1;
+		return Math.min(3, Math.max(0.5, value));
+	}
+
+	private resolveVoice(): SpeechSynthesisVoice | null {
+		const voices = this.availableVoices();
+		if (!voices.length) return null;
+		const configured = this.plugin.settings.textToSpeechVoice.trim();
+		if (configured) {
+			const exact = voices.find(voice => voice.name === configured);
+			if (exact) return exact;
+		}
+		return voices.find(voice => voice.default) ?? voices[0] ?? null;
+	}
+
+	private availableVoices(): SpeechSynthesisVoice[] {
+		if (!('speechSynthesis' in window) || typeof window.speechSynthesis.getVoices !== 'function') return [];
+		return window.speechSynthesis.getVoices().filter(voice => voice && typeof voice.name === 'string');
+	}
+
+	private transcriptionCandidates(): TranscriptionCandidate[] {
+		return buildTranscriptionCandidates(this.plugin.settings, {
+			hasApiKey: (providerId) => this.plugin.credentialVault.has(providerId),
 		});
 	}
 }

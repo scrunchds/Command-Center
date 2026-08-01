@@ -1,13 +1,11 @@
 import { Modal } from 'obsidian';
 import type CommandCenterPlugin from '../main';
 import { AudioRecorder } from '../audio/audio-recorder';
-import { TranscriberAdapter } from '../audio/transcriber';
-import type { ProviderId } from '../providers/provider-types';
-import { PROVIDER_REGISTRY } from '../providers/provider-registry';
+import { buildTranscriptionCandidates, TranscriberAdapter } from '../audio/transcriber';
 import { resolveChatContext } from './chat-context';
 
 export type VoicePromptMode = 'quick' | 'react' | 'workflow';
-interface SttCandidate { providerId: ProviderId; model?: string; label: string; local: boolean }
+interface SttCandidate { providerId: import('../providers/provider-types').ProviderId; model?: string; label: string; local: boolean }
 
 /** Floating, auto-starting voice capture used by the global palette command. */
 export class VoicePromptModal extends Modal {
@@ -51,9 +49,14 @@ export class VoicePromptModal extends Modal {
 		this.doneEl.disabled = true;
 		this.doneEl.addEventListener('click', () => { void this.finishAndDispatch(); });
 		this.cancelEl.addEventListener('click', () => this.close());
-		this.scope.register([], 'Enter', event => { event.preventDefault(); void this.finishAndDispatch(); return false; });
+		this.scope.register([], 'Enter', event => { if (!this.plugin.settings.speechToTextEnabled) return false; event.preventDefault(); void this.finishAndDispatch(); return false; });
 		void this.refreshSttBadge();
-		void this.beginRecording();
+		if (this.plugin.settings.speechToTextEnabled) void this.beginRecording();
+		else {
+			this.sttBadgeEl.setText('STT disabled');
+			this.statusEl.setText('Enable speech to text in Settings to use voice prompts.');
+			this.doneEl.disabled = true;
+		}
 	}
 
 	onClose(): void {
@@ -67,26 +70,15 @@ export class VoicePromptModal extends Modal {
 	}
 
 	private candidates(): SttCandidate[] {
-		const settings = this.plugin.settings.multiProvider;
-		const configured = (settings.defaults as Record<string, unknown>).transcriptionModel;
-		const configuredModel = typeof configured === 'string' && configured.trim() ? configured.trim() : undefined;
-		const order: ProviderId[] = ['lmstudio', 'ollama', 'groq', 'openai', 'deepinfra', 'openrouter', 'custom'];
-		return order.flatMap(providerId => {
-			const credentials = settings.credentials[providerId];
-			const meta = PROVIDER_REGISTRY[providerId];
-			if (!credentials?.enabled || (!credentials.baseUrl && !meta.defaultBaseUrl) || (meta.requiresKey && !credentials.apiKey)) return [];
-			const local = providerId === 'lmstudio' || providerId === 'ollama';
-			const saved = settings.liveModels?.[providerId]?.find(model => /(whisper|speech[-_ ]?to[-_ ]?text|transcri|\bstt\b)/i.test(model.id));
-			const model = saved?.id ?? configuredModel ?? (providerId === 'groq' ? 'whisper-large-v3' : local ? undefined : 'whisper-large-v3-turbo');
-			const provider = providerId === 'lmstudio' ? 'LM Studio / Local' : providerId === 'ollama' ? 'Ollama / Local' : meta.label;
-			return [{ providerId, model, label: `${provider}${model ? ` / ${model}` : ' / Whisper'}`, local }];
+		return buildTranscriptionCandidates(this.plugin.settings, {
+			hasApiKey: providerId => this.plugin.credentialVault.has(providerId),
 		});
 	}
 
 	private async refreshSttBadge(): Promise<void> {
 		const candidate = this.candidates()[0];
-		this.sttBadgeEl.setText(candidate?.label ?? 'STT not configured');
-		if (!candidate?.local) return;
+		this.sttBadgeEl.setText(this.plugin.settings.speechToTextEnabled ? candidate?.label ?? 'STT not configured' : 'STT disabled');
+		if (!candidate?.local || !this.plugin.settings.speechToTextEnabled) return;
 		try {
 			const models = await new TranscriberAdapter({ providerId: candidate.providerId, getSettings: () => this.plugin.settings }).fetchLiveAudioModels();
 			if (!this.closed && models[0]) this.sttBadgeEl.setText(`${candidate.providerId === 'lmstudio' ? 'LM Studio / Local' : 'Ollama / Local'} / ${models[0]}`);
@@ -117,6 +109,7 @@ export class VoicePromptModal extends Modal {
 	}
 
 	private async finishAndDispatch(): Promise<void> {
+		if (!this.plugin.settings.speechToTextEnabled) return;
 		const recorder = this.recorder;
 		if (this.finishing || !recorder?.isRecording()) return;
 		this.finishing = true;
@@ -147,7 +140,7 @@ export class VoicePromptModal extends Modal {
 
 	private async transcribeWithFallback(blob: Blob, signal: AbortSignal): Promise<string> {
 		const candidates = this.candidates();
-		if (!candidates.length) throw new Error('Enable an OpenAI-compatible transcription provider.');
+		if (!candidates.length) throw new Error('Enable speech to text and configure a local or cloud transcription provider.');
 		const errors: string[] = [];
 		for (const candidate of candidates) {
 			if (signal.aborted) throw new Error('Transcription cancelled.');
