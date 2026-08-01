@@ -1,6 +1,6 @@
 {
 	"name": "command-center",
-	"version": "1.1.6",
+	"version": "1.1.7",
 	"description": "Autonomous agent orchestration layer for your vault. Spawns pi workers for retrieval, summarization, and structural editing.",
 	"private": true,
 	"main": "main.js",
