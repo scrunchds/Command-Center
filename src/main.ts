@@ -156,25 +156,12 @@ export default class CommandCenterPlugin extends Plugin {
 	private readonly DAEMON_RETRY_CAP = 6;
 
 	async onload() {
-		// ── Persistence layer ──────────────────────────
+		// ── Settings & persistence layer ────────────────
+		// Must complete before any view, command, or subsystem registration so
+		// the settings tab and all UI components read fully-hydrated values.
 		this.persist = new PersistenceManager(this);
 		const data = await this.persist.load();
-
-		// ── Settings ───────────────────────────────────
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			data.settings as Partial<CommandCenterSettings>,
-		);
-		this.settings.dashboardLayout = Array.isArray(this.settings.dashboardLayout)
-			? this.settings.dashboardLayout
-			: DEFAULT_SETTINGS.dashboardLayout.map(widget => ({ ...widget }));
-		this.credentialVault = new MemoryCredentialVault(this.app.secretStorage, 'command-center');
-		this.accessibilityAudio = new AccessibilityAudio(this);
-		// Ensure multiProvider exists (migration from v1)
-		if (!this.settings.multiProvider) {
-			this.settings.multiProvider = DEFAULT_MULTI_PROVIDER;
-		}
+		this.loadSettings(data.settings);
 		// Normalize provider `enabled` flags: key-requiring providers with a
 		// configured API key default to enabled (the key is the opt-in). Legacy
 		// installs created credential records with `enabled: false` before the
@@ -838,6 +825,36 @@ export default class CommandCenterPlugin extends Plugin {
 	}
 
 	/* ─── Settings persistence ──────────────────────── */
+
+	/**
+	 * Hydrate the plugin settings object from persisted data, merging with
+	 * DEFAULT_SETTINGS so every field is guaranteed a value. Called once
+	 * synchronously at the top of onload() before any view or subsystem is
+	 * registered.
+	 */
+	private loadSettings(loaded: Record<string, unknown>): void {
+		this.settings = Object.assign(
+			{},
+			DEFAULT_SETTINGS,
+			loaded as Partial<CommandCenterSettings>,
+		);
+		this.settings.dashboardLayout = Array.isArray(this.settings.dashboardLayout)
+			? this.settings.dashboardLayout
+			: DEFAULT_SETTINGS.dashboardLayout.map(widget => ({ ...widget }));
+		this.credentialVault = new MemoryCredentialVault(this.app.secretStorage, 'command-center');
+		this.accessibilityAudio = new AccessibilityAudio(this);
+		// Ensure multiProvider exists (migration from v1)
+		if (!this.settings.multiProvider) {
+			this.settings.multiProvider = DEFAULT_MULTI_PROVIDER;
+		}
+		console.debug('[CC] Settings loaded from persistence', {
+			activeProfile: this.settings.activeProfile,
+			maxTokens: this.settings.maxTokens,
+			piPath: this.settings.piPath,
+			providerCount: Object.keys(this.settings.multiProvider.credentials).length,
+			dashboardLayout: this.settings.dashboardLayout?.length,
+		});
+	}
 
 	async saveSettings(): Promise<void> {
 		// Deep-clone settings so the mutation below never corrupts the live state.
