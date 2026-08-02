@@ -90,8 +90,11 @@ export class AudioRecorder {
 			}
 			this.stream = stream;
 			const recorderOptions: MediaRecorderOptions = {};
+			// Try the preferred MIME type first; fall back to the browser default if unsupported.
+			// This is critical because some browsers (e.g., Firefox on desktop) do not support
+			// 'audio/webm' but work with 'audio/ogg; codecs=opus'.
 			const preferred = this.options.mimeType;
-			if (preferred && (!MediaRecorder.isTypeSupported || MediaRecorder.isTypeSupported(preferred))) {
+			if (preferred && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(preferred)) {
 				recorderOptions.mimeType = preferred;
 			}
 			if (this.options.audioBitsPerSecond) recorderOptions.audioBitsPerSecond = this.options.audioBitsPerSecond;

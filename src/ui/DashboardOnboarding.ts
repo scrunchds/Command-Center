@@ -23,6 +23,10 @@ export class DashboardOnboarding {
 	private phase!: HTMLElement;
 	private busy = false;
 	private dictationStop: (() => Promise<string>) | null = null;
+	private readonly dictationStatusCallback: import('../audio/AccessibilityAudio').TranscriptionStatusCallback = (phase, message) => {
+		if (phase === 'error') this.setStatus?.(message, true);
+		else if (phase === 'connecting' || phase === 'transcribing') this.setStatus?.(message);
+	};
 
 	constructor(
 		private readonly app: App,
@@ -87,15 +91,20 @@ export class DashboardOnboarding {
 			this.dictationStop = null;
 			try {
 				const text = await stop();
-				this.input.value = [this.input.value.trim(), text].filter(Boolean).join(' ');
-				this.setStatus('Dictation inserted. Review it before sending.');
+				if (text.trim()) {
+					this.input.value = [this.input.value.trim(), text].filter(Boolean).join(' ');
+					this.setStatus('Dictation inserted. Review it before sending.');
+					this.plugin.accessibilityAudio.cue('complete');
+				} else {
+					this.setStatus('Dictation was empty — nothing inserted.', true);
+				}
 			} catch (error) { this.setStatus((error as Error).message, true); }
 			finally { button.disabled = false; button.setText('🎙 Dictate'); }
 			return;
 		}
 		try {
 			if (!this.plugin.settings.speechToTextEnabled) throw new Error('Enable speech to text in Settings to use dictation.');
-			const session = await this.plugin.accessibilityAudio.dictate();
+			const session = await this.plugin.accessibilityAudio.dictate(undefined, this.dictationStatusCallback);
 			this.dictationStop = session.stop;
 			button.setText('■ Stop dictation');
 			this.setStatus('Listening…');
