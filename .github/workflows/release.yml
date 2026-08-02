@@ -154,3 +154,19 @@ jobs:
               release/command-center/manifest.json \
               release/command-center/styles.css
           fi
+
+      # ── Verify attestation ────────────────────────
+      - name: Verify artifact attestation
+        if: steps.repository.outputs.visibility == 'public'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.release_params.outputs.tag }}"
+          echo "Verifying attestation for release ${tag}..."
+          for asset in main.js manifest.json styles.css; do
+            echo "Checking ${asset}..."
+            gh release download "$tag" --pattern "${asset}" --dir /tmp/attest-check --clobber
+            gh attestation verify "/tmp/attest-check/${asset}" --repo "${{ github.repository }}"
+            echo "  ✅ ${asset} attestation verified"
+          done
+          echo "All release assets have valid attestations."
