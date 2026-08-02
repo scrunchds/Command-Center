@@ -1,0 +1,50 @@
+#!/bin/sh
+#
+# pre-push hook — runs before every `git push` to catch common release
+# issues before they reach GitHub.  Skips checks when pushing tags.
+#
+# To install: copy this to .git/hooks/pre-push and make it executable.
+#   cp scripts/pre-push.hook .git/hooks/pre-push
+#   chmod +x .git/hooks/pre-push
+
+# Skip during rebase / cherry-pick
+if [ -f "$(git rev-parse --git-dir)/REBASE_HEAD" ]; then
+	exit 0
+fi
+
+# Skip when pushing only tags (not branches)
+if [ -z "$1" ]; then
+	exit 0
+fi
+
+echo ""
+echo "🔍 Pre-push checks..."
+
+# 1. Version sync — verify all version files agree
+node scripts/verify-version-sync.mjs
+if [ $? -ne 0 ]; then
+	echo "❌ Version files are out of sync. Run 'npm run version:sync' to diagnose."
+	exit 1
+fi
+echo "   ✅ Version sync: OK"
+
+# 2. TypeScript — catch type errors before CI
+npx tsc --noEmit 2>/dev/null
+if [ $? -ne 0 ]; then
+	echo "❌ TypeScript type-check failed. Run 'npx tsc --noEmit' to see errors."
+	exit 1
+fi
+echo "   ✅ TypeScript: OK"
+
+# 3. Sanitize — no PII/secrets in staged files
+node scripts/sanitize-repo.mjs --staged 2>/dev/null
+if [ $? -ne 0 ]; then
+	echo "❌ Sanitization check failed."
+	exit 1
+fi
+echo "   ✅ Sanitize: OK"
+
+echo "   ✅ All pre-push checks passed."
+echo ""
+
+exit 0
