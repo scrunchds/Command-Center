@@ -142,9 +142,10 @@ const changelogPath = resolve(ROOT, 'CHANGELOG.md');
 let changelog = readFileSync(changelogPath, 'utf8');
 const today = new Date().toISOString().slice(0, 10);
 const entry = `## [${targetVersion}] - ${today}\n\n### Fixed\n\n- No changelog entry provided. Edit CHANGELOG.md to describe changes.\n\n`;
-if (changelog.startsWith('# Changelog\n\n')) {
-	const insertPoint = changelog.indexOf('\n\n', '# Changelog\n\n'.length) + 2;
-	changelog = changelog.slice(0, insertPoint) + '\n' + entry + changelog.slice(insertPoint).trimStart();
+// Insert before the first existing version entry (## [x.y.z]) or append
+const firstEntry = changelog.indexOf('\n## [');
+if (firstEntry !== -1) {
+	changelog = changelog.slice(0, firstEntry + 1) + entry + changelog.slice(firstEntry + 1);
 	writeFileSync(changelogPath, changelog, 'utf8');
 	console.log(`  ✅ CHANGELOG entry placeholder added for ${targetVersion}.`);
 	console.log('  ⚠️  Edit CHANGELOG.md to describe your changes before pushing!');

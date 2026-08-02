@@ -4,6 +4,19 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.17] - 2026-08-02
+
+### Added
+
+- **One-command release automation**: `scripts/release.mjs` — bumps versions, runs all checks, builds, commits, tags, and pushes in one step.
+- **Pre-push validation hook**: `scripts/pre-push.hook` + `scripts/install-hooks.mjs` — blocks pushes with version sync, type, or sanitize failures.
+- **Version sync checker**: `scripts/verify-version-sync.mjs` — verifies all version files, README, and CHANGELOG agree before any push.
+
+### Fixed
+
+- **Settings hydration lifecycle**: Added `loadSettings()` method called synchronously at the top of `onload()` before any views or subsystems are registered.
+- **Missing `display()` override**: `PluginSettingsTab` now overrides `display()` so the imperative settings UI re-renders when the user navigates to the settings tab.
+
 ## [1.1.16] - 2026-08-02
 
 ### Fixed
