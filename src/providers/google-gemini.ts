@@ -79,7 +79,6 @@ export class GeminiProvider extends BaseHttpProvider {
 
 		let cachedContentName: string | null = null;
 		if (cacheEnabled) {
-			const toolsChecksum = GeminiCacheStore.toolsChecksum(tools as ToolDefinition[]);
 			this.currentCacheKey = generateCacheKey(
 				systemMsg?.content ?? '',
 				tools as ToolDefinition[],
@@ -296,13 +295,12 @@ export class GeminiProvider extends BaseHttpProvider {
 
 			// On cache miss, create a cache entry for future use
 			if (!cacheReadTokens && this.currentCacheKey && this.lastCacheConfig?.enabled) {
-				const toolsChecksum = ''; // not needed for store
 				this.cacheStore.store(
 					this.currentCacheKey,
 					`cached-${this.currentCacheKey}`,
 					this.lastCacheConfig.cacheTtlSeconds,
 					'',
-					toolsChecksum,
+					'',
 				);
 				// Estimate tokens saved for future calls
 				const estimatedTokens = estimatePromptTokens(

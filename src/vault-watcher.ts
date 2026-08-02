@@ -1,70 +1,64 @@
 /**
- * Vault Watcher — polls vault for file changes using Obsidian's native Vault API.
+ * Vault Watcher — observes file changes via Obsidian's native vault events.
  *
- * No direct fs access: uses vault.getFiles() / vault.getAbstractFileByPath()
- * so it works in desktop and mobile Obsidian consistently.
+ * Uses vault.on('create'|'modify'|'delete'|'rename') instead of polling
+ * getFiles(), which is more efficient and avoids guideline violations.
+ *
+ * The public API (start/stop/on/off) is unchanged from the polling version,
+ * so existing consumers need no updates.
  */
 
-import { Vault, TFile } from 'obsidian';
-import type { VaultEvent, VaultEventType } from './types';
+import { Vault, EventRef } from 'obsidian';
+import type { VaultEvent } from './types';
 
 export type VaultWatcherCallback = (event: VaultEvent) => void;
 
 export class VaultWatcher {
 	private vault: Vault;
 	private callbacks: VaultWatcherCallback[] = [];
-	private knownFiles = new Map<string, number>(); // path → mtime
-	private pollTimer: number | null = null;
-	private debounceMs: number;
+	private started = false;
+	private refs: EventRef[] = [];
 
-	constructor(vault: Vault, debounceMs: number = 2000) {
+	constructor(vault: Vault) {
 		this.vault = vault;
-		this.debounceMs = debounceMs;
 	}
 
 	start(): void {
-		if (this.pollTimer) return;
-		this.snapshot();
-		this.pollTimer = window.setInterval(() => this.poll(), 3000);
+		if (this.started) return;
+		this.started = true;
+
+		// Register native vault event listeners
+		this.refs.push(this.vault.on('create', (file) => {
+			this.emit({ type: 'created', filePath: file.path, timestamp: Date.now() });
+		}));
+
+		this.refs.push(this.vault.on('modify', (file) => {
+			this.emit({ type: 'modified', filePath: file.path, timestamp: Date.now() });
+		}));
+
+		this.refs.push(this.vault.on('delete', (file) => {
+			this.emit({ type: 'deleted', filePath: file.path, timestamp: Date.now() });
+		}));
+
+		this.refs.push(this.vault.on('rename', (file, oldPath) => {
+			this.emit({ type: 'deleted', filePath: oldPath, timestamp: Date.now() });
+			this.emit({ type: 'created', filePath: file.path, timestamp: Date.now() });
+		}));
 	}
 
 	stop(): void {
-		if (this.pollTimer) { window.clearInterval(this.pollTimer); this.pollTimer = null; }
+		if (!this.started) return;
+		this.started = false;
+		// Detach all event listeners
+		for (const ref of this.refs) {
+			try { this.vault.offref(ref); } catch { /* guard */ }
+		}
+		this.refs = [];
 	}
 
 	on(callback: VaultWatcherCallback): void { this.callbacks.push(callback); }
 	off(callback: VaultWatcherCallback): void { this.callbacks = this.callbacks.filter(cb => cb !== callback); }
-	isWatching(): boolean { return this.pollTimer !== null; }
-
-	private snapshot(): void {
-		for (const file of this.vault.getFiles()) {
-			this.knownFiles.set(file.path, file.stat.mtime);
-		}
-	}
-
-	private poll(): void {
-		const current = new Map<string, number>();
-		const files = this.vault.getFiles();
-
-		for (const file of files) {
-			current.set(file.path, file.stat.mtime);
-			const prev = this.knownFiles.get(file.path);
-			if (prev === undefined) {
-				this.emit({ type: 'created', filePath: file.path, timestamp: Date.now() });
-			} else if (file.stat.mtime > prev) {
-				this.emit({ type: 'modified', filePath: file.path, timestamp: Date.now() });
-			}
-		}
-
-		// Detect deletions
-		for (const [path] of this.knownFiles) {
-			if (!current.has(path)) {
-				this.emit({ type: 'deleted', filePath: path, timestamp: Date.now() });
-			}
-		}
-
-		this.knownFiles = current;
-	}
+	isWatching(): boolean { return this.started; }
 
 	private emit(event: VaultEvent): void {
 		for (const cb of this.callbacks) {

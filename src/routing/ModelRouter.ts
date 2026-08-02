@@ -174,7 +174,6 @@ export class ModelRouter {
 		const routing = s.routing ?? DEFAULT_ROUTING;
 		return (Object.keys(DEFAULT_ROUTING) as TaskType[]).map(tt => {
 			const r = routing[tt] ?? DEFAULT_ROUTING[tt];
-			const p = this.factory.get(r.providerId);
 			return { taskType: tt, label: TASK_TYPE_LABELS[tt], providerId: r.providerId, providerLabel: PROVIDER_REGISTRY[r.providerId]?.label ?? r.providerId, modelId: r.modelId, available: this.factory.isUsable(r.providerId) };
 		});
 	}

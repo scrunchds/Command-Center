@@ -1,5 +1,5 @@
 import {
-	BasesView, Notice, type BasesEntry, type BasesViewRegistration,
+	BasesView, Notice, type BasesViewRegistration,
 	type QueryController, type TFile,
 } from 'obsidian';
 import type CommandCenterPlugin from '../main';

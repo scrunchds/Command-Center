@@ -1,5 +1,5 @@
 import type { ProviderDispatcher } from '../dispatcher';
-import { AGENT_TAXONOMY, type ComputeTier, type StepFallbackPolicy } from './AgentTypes';
+import { AGENT_TAXONOMY, type ComputeTier } from './AgentTypes';
 import type { ProviderId, ProviderRequest, ProviderResponse, TaskType } from '../providers/provider-types';
 import { isLocalBaseUrl, ProviderError, sanitizeBaseUrl } from '../providers/provider-types';
 import type { MultiProviderSettings } from '../providers/provider-types';

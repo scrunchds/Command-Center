@@ -236,7 +236,7 @@ export class CommandCenterView extends ItemView {
 		const statsSection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
-		statsSection.createEl('h3', { text: 'Task Queue' });
+		statsSection.createEl('h3', { text: 'Task queue' });
 		const grid = statsSection.createDiv({
 			cls: 'command-center-stats-grid',
 		});
@@ -254,7 +254,7 @@ export class CommandCenterView extends ItemView {
 		const histHeader = historySection.createDiv({
 			cls: 'command-center-section-header',
 		});
-		histHeader.createEl('h3', { text: 'Task History' });
+		histHeader.createEl('h3', { text: 'Task history' });
 		const clearBtn = histHeader.createEl('button', { text: 'Clear' });
 		this.registerDomEvent(clearBtn, 'click', () => {
 			this.taskListEl.empty();
@@ -279,9 +279,9 @@ export class CommandCenterView extends ItemView {
 		const streamHeader = streamSection.createDiv({
 			cls: 'command-center-section-header',
 		});
-		streamHeader.createEl('h3', { text: 'Live Output' });
+		streamHeader.createEl('h3', { text: 'Live output' });
 		const clearStreamBtn = streamHeader.createEl('button', {
-			text: 'Clear All',
+			text: 'Clear all',
 		});
 		this.registerDomEvent(clearStreamBtn, 'click', () => this.clearAllStreams());
 
@@ -300,10 +300,10 @@ export class CommandCenterView extends ItemView {
 		const reactHeader = reactSection.createDiv({
 			cls: 'command-center-section-header',
 		});
-		reactHeader.createEl('h3', { text: 'ReAct Monitor' });
+		reactHeader.createEl('h3', { text: 'ReAct monitor' });
 		const reactActions = reactHeader.createDiv({ cls: 'cc-react-actions' });
 		this.debugToggleBtn = reactActions.createEl('button', {
-			text: 'Debug / Step Mode',
+			text: 'Debug / step mode',
 		});
 		this.registerDomEvent(this.debugToggleBtn, 'click', () => {
 			this.plugin.daemon.setDebugStepMode(
@@ -312,21 +312,21 @@ export class CommandCenterView extends ItemView {
 			this.updateDebugControls();
 		});
 		this.nextStepBtn = reactActions.createEl('button', {
-			text: 'Next Step',
+			text: 'Next step',
 		});
 		this.registerDomEvent(this.nextStepBtn, 'click', () => {
 			this.plugin.daemon.nextDebugStep();
 			this.updateDebugControls();
 		});
 		this.resumeSessionBtn = reactActions.createEl('button', {
-			text: 'Resume Session',
+			text: 'Resume session',
 		});
 		this.registerDomEvent(this.resumeSessionBtn, 'click', () => {
 			this.plugin.daemon.resumeDebugSession();
 			this.updateDebugControls();
 		});
 		const exportReactBtn = reactActions.createEl('button', {
-			text: 'Export Session Trace',
+			text: 'Export session trace',
 		});
 		this.registerDomEvent(exportReactBtn, 'click', () => {
 			void this.exportSessionTrace();
@@ -472,15 +472,13 @@ export class CommandCenterView extends ItemView {
 		this.traceFilterButtons = [];
 		this.reactEmptyEl = null;
 		this.taskStreams.clear();
-		if (this.plugin.commandCenterView === this)
-			this.plugin.commandCenterView = null;
 	}
 
 	/* ─── Operational Sidebar ───────────────────────── */
 
 	private renderHeader(title: HTMLElement): void {
 		const actions = title.createDiv({ cls: 'command-center-header-actions' });
-		const exportWorkflowBtn = actions.createEl('button', { text: 'Export workflow to Canvas' });
+		const exportWorkflowBtn = actions.createEl('button', { text: 'Export workflow to canvas' });
 		this.registerDomEvent(exportWorkflowBtn, 'click', () => void this.plugin.exportActiveWorkflowToCanvas());
 		const customize = actions.createEl('button', { text: 'Customize dashboard' });
 		this.registerDomEvent(customize, 'click', () => this.toggleLayoutEditor(customize));
@@ -595,7 +593,7 @@ export class CommandCenterView extends ItemView {
 		const section = container.createEl('section', { cls: 'command-center-section cc-dashboard-approvals' });
 		this.markWidget(section, 'approvals');
 		const heading = section.createDiv({ cls: 'command-center-section-header' });
-		heading.createEl('h3', { text: 'Mutation Approvals' });
+		heading.createEl('h3', { text: 'Mutation approvals' });
 		heading.createEl('span', { text: 'Destructive and bulk operations stop here before any file is touched.', cls: 'cc-widget-caption' });
 		this.approvalQueueEl = section.createDiv({ cls: 'cc-dashboard-approval-queue' });
 		this.approvalQueueEl.createEl('p', { text: 'No operations awaiting approval.', cls: 'command-center-empty' });
@@ -618,7 +616,7 @@ export class CommandCenterView extends ItemView {
 		const section = container.createEl('section', { cls: 'command-center-section cc-bases-controller' });
 		this.markWidget(section, 'bases');
 		const heading = section.createDiv({ cls: 'command-center-section-header' });
-		heading.createEl('h3', { text: 'Bases Queue Controller' });
+		heading.createEl('h3', { text: 'Bases queue controller' });
 		heading.createEl('span', { text: 'Native .base views remain the queue definition and execution surface.', cls: 'cc-widget-caption' });
 		this.basesTelemetryEl = section.createDiv({ cls: 'cc-bases-telemetry' });
 		this.refreshBasesTelemetry();
@@ -643,7 +641,7 @@ export class CommandCenterView extends ItemView {
 			cls: 'command-center-section cc-daily-controls',
 		});
 		this.markWidget(section, 'daily');
-		section.createEl('h3', { text: 'Daily Cycle' });
+		section.createEl('h3', { text: 'Daily cycle' });
 		const controls = section.createDiv({
 			cls: 'command-center-daemon-controls',
 		});
@@ -676,7 +674,7 @@ export class CommandCenterView extends ItemView {
 			cls: 'command-center-section cc-system-monitor',
 		});
 		this.markWidget(section, 'system');
-		section.createEl('h3', { text: 'System & Workflow State' });
+		section.createEl('h3', { text: 'System & workflow state' });
 		this.configStateEl = section.createDiv({ cls: 'cc-config-state' });
 		this.workflowStateEl = section.createDiv({ cls: 'cc-workflow-state' });
 	}
@@ -1775,7 +1773,7 @@ class SessionReplayModal extends Modal {
 		const header = this.contentEl.createDiv({
 			cls: 'cc-trace-detail-header',
 		});
-		header.createEl('h2', { text: 'Session Replay / Log Detail' });
+		header.createEl('h2', { text: 'Session replay / log detail' });
 		header.createEl('p', {
 			text: `Step ${index + 1} of ${events.length} · ${this.selected.agent} · ${this.selected.type}`,
 		});

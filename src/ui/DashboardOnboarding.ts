@@ -42,7 +42,7 @@ export class DashboardOnboarding {
 		this.host.addClass('cc-dashboard-onboarding');
 		const heading = this.host.createDiv({ cls: 'cc-dashboard-workspace-heading' });
 		heading.createEl('div', { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
-		heading.createEl('h2', { text: 'Start Here' });
+		heading.createEl('h2', { text: 'Start here' });
 		heading.createEl('p', {
 			text: 'Establish context and goals first. Vault structure and optional capabilities are negotiated only after the system understands what you need it to serve.',
 		});

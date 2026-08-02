@@ -45,7 +45,7 @@ export class VoicePromptModal extends Modal {
 		modeSelect.addEventListener('change', () => { this.mode = modeSelect.value as VoicePromptMode; });
 
 		const actions = this.contentEl.createDiv({ cls: 'cc-voice-prompt-actions' });
-		this.doneEl = actions.createEl('button', { cls: 'mod-cta', text: 'Done & Send', attr: { type: 'button' } });
+		this.doneEl = actions.createEl('button', { cls: 'mod-cta', text: 'Done & send', attr: { type: 'button' } });
 		this.cancelEl = actions.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
 		this.doneEl.disabled = true;
 		this.doneEl.addEventListener('click', () => { void this.finishAndDispatch(); });
