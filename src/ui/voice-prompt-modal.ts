@@ -29,7 +29,7 @@ export class VoicePromptModal extends Modal {
 		this.closed = false;
 		this.finishing = false;
 		this.modalEl.addClass('cc-voice-prompt-modal');
-		this.titleEl.setText('Quick Voice Prompt');
+		this.titleEl.setText('Quick voice prompt');
 		this.contentEl.empty();
 
 		const hero = this.contentEl.createDiv({ cls: 'cc-voice-prompt-hero' });

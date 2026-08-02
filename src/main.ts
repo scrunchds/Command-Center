@@ -493,15 +493,15 @@ export default class CommandCenterPlugin extends Plugin {
 			console.warn(
 				'[CC] Bases is unavailable; file-based Base queue parsing remains available.',
 			);
-		this.addRibbonIcon('command', 'Command Center', () =>
+		this.addRibbonIcon('command', 'Command center', () =>
 			this.activateCommandCenterView(),
 		);
 		this.addRibbonIcon(
 			'message-square',
-			'Command Center: Open Chat Panel',
+			'Command center: Open chat panel',
 			() => this.activateCommandCenterChatView(),
 		);
-		this.addRibbonIcon('globe', 'Command Center: Open Browser', () =>
+		this.addRibbonIcon('globe', 'Command center: Open browser', () =>
 			void this.activateCommandCenterBrowserView(),
 		);
 		this.addSettingTab(new PluginSettingsTab(this.app, this));
@@ -525,7 +525,7 @@ export default class CommandCenterPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: 'open-browser-panel',
-			name: 'Open Browser',
+			name: 'Open browser',
 			callback: () => { void this.activateCommandCenterBrowserView(); },
 		});
 
@@ -597,7 +597,7 @@ export default class CommandCenterPlugin extends Plugin {
 			}
 			onOpen(): void {
 				this.contentEl.createEl('h2', {
-					text: 'Reset Command Center configuration?',
+					text: 'Reset command center configuration?',
 				});
 				this.contentEl.createEl('p', {
 					text: 'This moves config.json and style-guide.md to trash, clears runtime configuration, and starts a new interview. Vault notes and indexes are not deleted.',
@@ -608,7 +608,7 @@ export default class CommandCenterPlugin extends Plugin {
 				const cancel = actions.createEl('button', { text: 'Cancel' });
 				cancel.addEventListener('click', () => this.close());
 				const reset = actions.createEl('button', {
-					text: 'Reset and Re-Initialize',
+					text: 'Reset and re-initialize',
 					cls: 'mod-warning',
 				});
 				reset.addEventListener('click', () => { void (async () => {
@@ -1079,7 +1079,7 @@ export default class CommandCenterPlugin extends Plugin {
 	async exportActiveWorkflowToCanvas(): Promise<TFile | null> {
 		const source = this.app.workspace.getActiveFile();
 		if (!source || source.extension !== 'md') {
-			new Notice('Open a Markdown workflow note to export it to Canvas.');
+			new Notice('Open a Markdown workflow note to export it to canvas.');
 			return null;
 		}
 		const rawFrontmatter: unknown = this.app.metadataCache.getFileCache(source)?.frontmatter;

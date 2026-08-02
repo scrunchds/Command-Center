@@ -630,7 +630,7 @@ export class CommandCenterChatView extends ItemView {
 		// so streaming doesn't wipe their selection mid-copy.
 		if (this.isSelectionInside(message.content)) return;
 
-		const staging = createEl('div');
+		const staging = createDiv();
 		await MarkdownRenderer.render(this.plugin.app, message.markdown, staging, this.contextFile?.path ?? '', this);
 		if (!this.isOpen || version !== message.renderVersion) return;
 		// Check again after the async render, in case the selection started during the await.
