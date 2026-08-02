@@ -94,7 +94,7 @@ export class CommandCenterBrowserView extends ItemView {
 	}
 
 	open(url: string): void {
-		this.navigate(url, { focusAddress: true });
+		void this.navigate(url, { focusAddress: true });
 	}
 
 	private async navigateFromInput(): Promise<void> {
