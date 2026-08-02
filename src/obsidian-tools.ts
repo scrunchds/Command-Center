@@ -185,7 +185,7 @@ async function executeNoteWrite(app: App, params: Record<string, unknown>) {
 					if (existing.length + content.length > SANITIZE.MAX_WRITE_CHARS) {
 						return errRsp('Append would exceed max note size.');
 					}
-					await app.vault.modify(file, existing + '\n' + content);
+					await app.vault.process(file, current => current + '\n' + content);
 				} else {
 					await app.vault.modify(file, content);
 				}

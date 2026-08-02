@@ -121,7 +121,7 @@ export class InboxTriager {
 		const block = `\n\n## Extracted from [[${proposal.filePath}]]\n${proposal.tasks.map(task => `- [ ] ${task.text}`).join('\n')}\n`;
 		await this.locks.withLock(path, async () => {
 			const existing = this.app.vault.getAbstractFileByPath(path);
-			if (existing instanceof TFile) await this.app.vault.modify(existing, `${await this.app.vault.read(existing)}${block}`);
+			if (existing instanceof TFile) await this.app.vault.process(existing, current => current + block);
 			else if (existing) throw new Error(`Task extraction path is not a file: ${path}`);
 			else await this.app.vault.create(path, `# Extracted Inbox Tasks${block}`);
 		});

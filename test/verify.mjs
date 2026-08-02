@@ -1205,6 +1205,104 @@ async function verifyObsidianGuidelines() {
 		assert.ok(!cmd.includes('checkCallback') || cmd.includes('checkCallback:'), 'commands must use valid callback types');
 	}
 	pass('14h: plugin registers commands with valid callback types');
+
+	// Settings tab: no top-level heading, use setHeading() instead of HTML heading elements
+	const settingsTab = readFileSync(join(ROOT, 'src/settings/PluginSettingsTab.ts'), 'utf8');
+	const htmlHeadingMatches = settingsTab.match(/\.createEl\(\s*['"]h[1-6]['"]/g);
+	assert.equal(htmlHeadingMatches, null, 'settings must use setHeading() instead of HTML heading elements');
+	pass('14i: settings tab uses setHeading() instead of HTML heading elements');
+
+	// No top-level heading with plugin name
+	const topLevelHeadingPattern = /\.setName\(['"]Command Center['"]\)\s*\.setHeading\(\)/g;
+	assert.equal(settingsTab.match(topLevelHeadingPattern), null, 'settings must not have a top-level heading with plugin name');
+	pass('14j: no top-level heading in settings tab');
+
+	// No "settings" in settings section headings
+	const sectionHeadings = settingsTab.match(/\.setName\(['"][^'"]+['"]\)\s*\.setHeading\(\)/g) ?? [];
+	for (const heading of sectionHeadings) {
+		const name = heading.match(/\.setName\(['"]([^'"]+)['"]\)/)?.[1] ?? '';
+		assert.ok(!name.toLowerCase().includes('settings'), 'settings section heading must not contain settings: ' + name);
+	}
+	pass('14k: no settings in settings section headings');
+
+	// No default hotkeys on commands
+	for (const cmd of commands) {
+		assert.ok(!cmd.match(/hotkeys?:\s*\[/), 'commands must not set default hotkeys');
+	}
+	pass('14l: no default hotkeys on commands');
+
+	// onunload does not detach leaves
+	assert.ok(!mainSource.match(/onunload[\s\S]*?detachLeaves/), 'onunload must not detach leaves');
+	pass('14m: onunload does not detach leaves');
+
+	// onunload cleans up resources
+	assert.ok(mainSource.includes('onunload'), 'plugin must implement onunload');
+	pass('14n: plugin implements onunload for resource cleanup');
+
+	// addCommand used for auto-cleanup
+	assert.ok(mainSource.includes('addCommand'), 'plugin uses addCommand for auto-cleanup');
+	pass('14o: plugin uses addCommand for auto-cleanup of commands');
+
+	// No workspace.activeLeaf usage
+	assert.ok(!mainSource.match(/\.activeLeaf\b/), 'must not access workspace.activeLeaf directly');
+	pass('14p: no workspace.activeLeaf usage (uses getActiveViewOfType/activeEditor)');
+
+	// registerView does not store instance references
+	const viewRegs = mainSource.match(/registerView\([^,]+,\s*\([^)]+\)\s*=>/g) ?? [];
+	for (const reg of viewRegs) {
+		assert.ok(!reg.includes('this.'), 'registerView must not store view references: ' + reg);
+	}
+	pass('14q: registerView does not store view references (uses getActiveLeavesOfType)');
+
+	// FileManager.processFrontMatter used for frontmatter mutations
+	let fmCount = 0;
+	(function scanFm(dir) {
+		for (const entry of readdirSync(dir)) {
+			const full = join(dir, entry);
+			const s = statSync(full);
+			if (s.isDirectory()) scanFm(full);
+			else if (entry.endsWith('.ts')) {
+				const text = readFileSync(full, 'utf8');
+				fmCount += (text.match(/processFrontMatter\(/g) ?? []).length;
+			}
+		}
+	})(join(ROOT, 'src'));
+	assert.ok(fmCount > 0, 'processFrontMatter must be used for frontmatter operations');
+	pass('14r: FileManager.processFrontMatter used for frontmatter mutations');
+
+	// No vault.adapter.read/write for vault files (use Vault API)
+	let adapterCount = 0;
+	(function scanAdp(dir) {
+		for (const entry of readdirSync(dir)) {
+			const full = join(dir, entry);
+			const s = statSync(full);
+			if (s.isDirectory()) scanAdp(full);
+			else if (entry.endsWith('.ts')) {
+				const text = readFileSync(full, 'utf8');
+				if (!text.includes('vault.adapter.write') || !text.includes('configDir')) {
+					adapterCount += (text.match(/vault\.adapter\.(read|write|exists|list|mkdir)\(/g) ?? []).length;
+				}
+			}
+		}
+	})(join(ROOT, 'src'));
+	assert.equal(adapterCount, 0, 'must use Vault API instead of vault.adapter for vault files');
+	pass('14s: no vault.adapter usage for vault file operations');
+
+	// No getFiles().find() for path lookup
+	let findCount = 0;
+	(function scanFind(dir) {
+		for (const entry of readdirSync(dir)) {
+			const full = join(dir, entry);
+			const s = statSync(full);
+			if (s.isDirectory()) scanFind(full);
+			else if (entry.endsWith('.ts')) {
+				const text = readFileSync(full, 'utf8');
+				if (/getFiles\(\)\s*\.\s*find\s*\(/.test(text)) findCount++;
+			}
+		}
+	})(join(ROOT, 'src'));
+	assert.equal(findCount, 0, 'must not use getFiles().find() for path lookup');
+	pass('14t: no getFiles().find() for path lookup (uses getFileByPath/getAbstractFileByPath)');
 }
 
 /* ═══════════════════════════════════════════════════════════

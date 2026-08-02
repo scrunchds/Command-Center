@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Buy Me a Coffee branded support button in settings footer with yellow pill styling matching the official widget
-- Comprehensive test suite expanded from 44 to 91 tests: DataNormalizer sanitization (8 tests), JSON repair (7 tests), CacheManager (10 tests), ShadowTreeArchive (6 tests), release version sync (2 tests), release tag/manifest validation (6 tests), and Obsidian guideline compliance (8 tests)
+- Comprehensive test suite expanded from 44 to 103 tests: DataNormalizer sanitization (8 tests), JSON repair (7 tests), CacheManager (10 tests), ShadowTreeArchive (6 tests), release version sync (2 tests), release tag/manifest validation (6 tests), and Obsidian guideline compliance (20 tests)
 
 ### Changed
 
