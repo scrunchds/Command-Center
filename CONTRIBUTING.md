@@ -48,6 +48,26 @@ npm run package
 npm audit
 ```
 
+## Release process
+
+When cutting a new release, follow these exact steps:
+
+1. Update the version in `manifest.json`, `package.json`, and `versions.json`.
+2. Run `npm run package` to build and sanitize release assets.
+3. Commit the version bump and release assets.
+4. Create a **git tag matching the version number exactly** (no prefix):
+   ```bash
+   git tag 1.1.12
+   git push origin 1.1.12
+   ```
+5. Create a GitHub Release from the tag, attaching the three files from `release/command-center/`:
+   - `main.js`
+   - `manifest.json`
+   - `styles.css`
+
+> [!IMPORTANT]
+> Obsidian's community plugin updater requires git tags to match the version string **exactly** — no `v` prefix, no leading or trailing characters. A tag like `v1.1.12` will be rejected and users will not receive the update.
+
 ## Pull requests
 
 A pull request should:
