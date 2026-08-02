@@ -13,7 +13,6 @@
 import * as crypto from 'crypto';
 import type {
 	CacheConfig, CacheStats,
-	ProviderRequestConfig,
 } from './provider-types';
 import { DEFAULT_CACHE_CONFIG } from './provider-types';
 import type { ToolDefinition } from '../types';
@@ -176,7 +175,7 @@ export class CacheStatsTracker {
 export function applyAnthropicToolCache(
 	tools: Record<string, unknown>[],
 	cacheConfig: CacheConfig,
-	cacheKey?: string,
+	_cacheKey?: string,
 ): Record<string, unknown>[] {
 	if (!cacheConfig.enabled || !cacheConfig.cacheTools || tools.length === 0) {
 		return tools;

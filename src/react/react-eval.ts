@@ -11,10 +11,8 @@
  * cross-session reinforcement learning.
  */
 
-import type { ReActObservation, ReActContext } from './react-types';
 import type { WorkerReActResult } from './react-types';
-import type { AgentRole } from './react-roles';
-import { getRole } from './react-roles';
+
 
 /* ─── Scoring Types ────────────────────────────────────── */
 

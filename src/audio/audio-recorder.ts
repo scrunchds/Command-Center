@@ -14,6 +14,8 @@ export interface AudioRecorderOptions {
 	onStateChange?: AudioRecorderStateCallback;
 	onDurationChange?: AudioRecorderDurationCallback;
 	onAudioLevel?: AudioRecorderLevelCallback;
+	/** Called with each audio chunk as it becomes available (e.g., every timesliceMs). */
+	onChunk?: (chunk: Blob, isLast: boolean) => void;
 }
 
 export class AudioRecorder {
@@ -157,6 +159,7 @@ export class AudioRecorder {
 			const type = recorder.mimeType || this.options.mimeType || this.chunks[0]?.type || 'audio/webm';
 			const blob = new Blob(this.chunks, { type });
 			this.chunks = [];
+			this.options.onChunk?.(blob, true);
 			cleanup();
 			resolveStop(blob);
 		};
@@ -193,7 +196,10 @@ export class AudioRecorder {
 	}
 
 	private readonly handleData = (event: BlobEvent): void => {
-		if (event.data.size > 0) this.chunks.push(event.data);
+		if (event.data.size > 0) {
+			this.chunks.push(event.data);
+			this.options.onChunk?.(event.data, false);
+		}
 	};
 
 	private readonly handleRecorderError = (event: Event): void => {

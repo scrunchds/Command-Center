@@ -6,7 +6,7 @@
  */
 
 import type {
-	TaskType, ProviderId, RoutingTable, TaskRoute,
+	TaskType, ProviderId, RoutingTable,
 	MultiProviderSettings, ProviderRequestConfig,
 } from './providers/provider-types';
 import { DEFAULT_PROVIDER_CONFIG } from './providers/provider-types';

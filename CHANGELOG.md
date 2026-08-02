@@ -4,6 +4,35 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.10] - 2026-08-02
+
+### Added
+
+- Live transcription from microphone (Shift+click mic button in chat view)
+- Voice output target selector (Chat, Note, Canvas, Note+Audio, Canvas+Audio, All)
+- Save audio recordings to vault with timestamped filenames
+- Create transcription Canvas with text + audio file nodes
+- `LiveTranscriber` — chunked sequential transcription for near-real-time STT
+
+### Changed
+
+- Mic button now supports Shift+click for live transcription mode
+- Sentence case applied throughout settings, commands, and UI labels
+- Conditional commands (`checkCallback`) hide when prerequisites aren't met
+- `Vault.process` used instead of `Vault.modify` for atomic file writes
+- `VaultWatcher` uses native vault events instead of polling `getFiles()`
+- View references resolved via `getLeavesOfType()` instead of stored references
+- Transcription response parsing handles multiple JSON formats and includes debug info
+
+### Fixed
+
+- `TranscriberAdapter` now extracts text from `transcript`, `results`, `content`, and nested fields
+- Error messages include the actual response shape for debugging
+- Text selection in chat bubbles preserved during streaming re-renders
+- All lint warnings resolved (unused imports, unused variables, etc.)
+
+[1.1.10]: https://github.com/scrunchds/Command-Center/compare/1.1.9...1.1.10
+
 ## [1.1.8] - 2026-08-02
 
 ### Changed

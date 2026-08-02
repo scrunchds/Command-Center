@@ -202,7 +202,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Worker profile
 		new Setting(body)
-			.setName('Active Worker Profile')
+			.setName('Active worker profile')
 			.setDesc(
 				'Default agent profile used when no explicit profile is specified.',
 			)
@@ -227,7 +227,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Max tokens
 		new Setting(body)
-			.setName('Max Tokens')
+			.setName('Max tokens')
 			.setDesc(
 				'Token budget ceiling for agent responses (legacy; per-provider settings override this).',
 			)
@@ -239,7 +239,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(body)
-			.setName('Passive Prompt Context Budget')
+			.setName('Passive prompt context budget')
 			.setDesc('Controls how much memory and vault retrieval can be injected into chat, ReAct, and voice prompts. Higher values help long-context work; the interview flow is unaffected.')
 			.addSlider((slider) =>
 				slider
@@ -253,7 +253,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		let piTextInput: TextComponent | null = null;
 
 		const piSetting = new Setting(body)
-			.setName('Pi Harness Path')
+			.setName('Pi harness path')
 			.setDesc(
 				'Path to the pi CLI binary. Use "Detect" to auto-find it, or type a custom path.',
 			);
@@ -365,7 +365,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Enable daemon
 		new Setting(body)
-			.setName('Auto-start Daemon')
+			.setName('Auto-start daemon')
 			.setDesc(
 				'Launch the pi agent daemon automatically when the plugin loads.',
 			)
@@ -386,7 +386,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(body)
-			.setName('Silent Daily Startup')
+			.setName('Silent daily startup')
 			.setDesc(
 				'Morning Start evaluates capacity and assembles today’s note without intermediate approval prompts. Inbox proposals remain unapproved and are summarized for later review.',
 			)
@@ -398,7 +398,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Memory bank limit
 		new Setting(body)
-			.setName('Memory Bank Limit')
+			.setName('Memory bank limit')
 			.setDesc('Maximum memory notes to retain before auto-pruning.')
 			.addSlider((slider) =>
 				slider
@@ -1236,7 +1236,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Fallback chain visual
 		new Setting(body)
-			.setName('Fallback Chain Order')
+			.setName('Fallback chain order')
 			.setHeading()
 			.setClass('cc-subsection-title');
 

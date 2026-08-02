@@ -81,7 +81,7 @@ export async function withFallback<T>(
 ): Promise<T> {
 	try {
 		return await primary();
-	} catch (err) {
+	} catch (_err) {
 		return await fallback();
 	}
 }
