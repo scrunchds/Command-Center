@@ -1780,7 +1780,7 @@ assert.match(modalSource, /onDurationChange:[\s\S]*onAudioLevel:/);
 assert.match(modalSource, /transcriptionAbort\?\.abort\(\)/);
 assert.match(modalSource, /recorder\?\.isRecording\(\).*recorder\.stop\(\)/s);
 pass('27h: voice modal auto-starts recording, aborts transcription, and tears down capture on cancellation');
-assert.match(modalSource, /Done & Send/);
+assert.match(modalSource, /Done & send/);
 assert.match(modalSource, /Transcribing audio\.\.\./);
 assert.match(modalSource, /resolveChatContext\(this\.plugin\.app, spokenText\)/);
 assert.match(modalSource, /dispatchVoicePrompt\(this\.mode, spokenText, resolved\)/);
