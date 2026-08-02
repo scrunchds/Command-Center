@@ -950,6 +950,7 @@ Command Center — Agentic OS for Obsidian
 	border-radius: 12px; background: var(--background-secondary); overflow-wrap: anywhere;
 	user-select: text; -webkit-user-select: text;
 }
+.cc-chat-bubble * { user-select: text; -webkit-user-select: text; }
 .cc-chat-message-user .cc-chat-bubble { border-color: hsla(var(--interactive-accent-hsl), 0.35); background: hsla(var(--interactive-accent-hsl), 0.14); }
 .cc-chat-bubble.is-pending:empty::after, .cc-chat-message-content:empty::after { content: "…"; color: var(--text-faint); }
 .cc-chat-message-content { user-select: text; -webkit-user-select: text; }
@@ -971,6 +972,7 @@ Command Center — Agentic OS for Obsidian
 .cc-chat-stt-status { margin: 0 0 6px; overflow: hidden; color: var(--text-faint); font-size: 10px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .cc-chat-stt-status::before { content: "◉"; margin-right: 5px; color: var(--color-green); }
 .cc-chat-stt-status.is-unavailable::before { color: var(--color-red); }
+.cc-voice-target { font-size: 10px; height: 22px; margin: 0 0 6px; padding: 0 5px; border: 1px solid var(--background-modifier-border); border-radius: 4px; background: var(--background-primary); color: var(--text-muted); cursor: pointer; }
 .cc-chat-recording-timer, .cc-chat-composer-notice { display: none; margin: 0 0 7px; padding: 4px 7px; border-radius: 5px; font-size: var(--font-smallest); }
 .cc-chat-recording-timer.is-visible { display: block; color: var(--color-red); background: hsla(var(--color-red-hsl), 0.09); font-variant-numeric: tabular-nums; font-weight: var(--font-semibold); }
 .cc-chat-composer-notice.is-visible { display: block; color: var(--text-muted); background: var(--background-primary); }
@@ -981,6 +983,8 @@ Command Center — Agentic OS for Obsidian
 .cc-chat-microphone { font-size: 17px; }
 .cc-chat-microphone.cc-mic-recording { color: var(--color-red); border-color: var(--color-red); background: hsla(var(--color-red-hsl), 0.12); animation: cc-mic-pulse 1s ease-in-out infinite; }
 .cc-chat-microphone.is-transcribing { opacity: 0.65; }
+.cc-chat-microphone.cc-mic-live { color: var(--color-green); border-color: var(--color-green); background: hsla(var(--color-green-hsl), 0.12); }
+.cc-chat-composer-notice.cc-notice-live { border-color: hsla(var(--color-green-hsl), 0.3); }
 .cc-chat-submit svg { width: 17px; height: 17px; }
 @keyframes cc-mic-pulse {
 	0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 hsla(var(--color-red-hsl), 0.45); }

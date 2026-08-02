@@ -11,9 +11,13 @@ export interface AudioRecorderOptions {
 	mimeType?: string;
 	audioBitsPerSecond?: number;
 	timesliceMs?: number;
+	/** Specific audio input device ID (from enumerateDevices); uses system default if empty. */
+	deviceId?: string;
 	onStateChange?: AudioRecorderStateCallback;
 	onDurationChange?: AudioRecorderDurationCallback;
 	onAudioLevel?: AudioRecorderLevelCallback;
+	/** Called with each audio chunk as it becomes available (e.g., every timesliceMs). */
+	onChunk?: (chunk: Blob, isLast: boolean) => void;
 }
 
 export class AudioRecorder {
@@ -81,7 +85,11 @@ export class AudioRecorder {
 		const generation = ++this.startGeneration;
 		this.setState('requesting-permission');
 		try {
-			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			// Select a specific input device when configured; otherwise use the system default.
+			const constraints: MediaStreamConstraints = this.options.deviceId
+				? { audio: { deviceId: { exact: this.options.deviceId } } }
+				: { audio: true };
+			const stream = await navigator.mediaDevices.getUserMedia(constraints);
 			if (generation !== this.startGeneration) {
 				for (const track of stream.getTracks()) {
 					try { track.stop(); } catch { /* Continue releasing all microphone tracks. */ }
@@ -157,6 +165,7 @@ export class AudioRecorder {
 			const type = recorder.mimeType || this.options.mimeType || this.chunks[0]?.type || 'audio/webm';
 			const blob = new Blob(this.chunks, { type });
 			this.chunks = [];
+			this.options.onChunk?.(blob, true);
 			cleanup();
 			resolveStop(blob);
 		};
@@ -193,7 +202,10 @@ export class AudioRecorder {
 	}
 
 	private readonly handleData = (event: BlobEvent): void => {
-		if (event.data.size > 0) this.chunks.push(event.data);
+		if (event.data.size > 0) {
+			this.chunks.push(event.data);
+			this.options.onChunk?.(event.data, false);
+		}
 	};
 
 	private readonly handleRecorderError = (event: Event): void => {
@@ -273,5 +285,19 @@ export class AudioRecorder {
 			try { track.stop(); } catch { /* Continue releasing remaining tracks. */ }
 		}
 		this.stream = null;
+	}
+}
+
+/**
+ * Enumerate available audio input devices (microphones).
+ * Returns an empty array when enumeration is not supported or permission is denied.
+ */
+export async function getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
+	if (!navigator.mediaDevices?.enumerateDevices) return [];
+	try {
+		const all = await navigator.mediaDevices.enumerateDevices();
+		return all.filter(d => d.kind === 'audioinput');
+	} catch {
+		return [];
 	}
 }

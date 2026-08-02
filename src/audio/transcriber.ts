@@ -151,7 +151,12 @@ export class TranscriberAdapter {
 	buildFormData(audio: Blob, options: TranscriptionOptions = {}): FormData {
 		if (!(audio instanceof Blob) || audio.size === 0) throw new Error('Cannot transcribe an empty audio blob.');
 		const form = new FormData();
-		const filename = options.filename ?? 'recording.webm';
+		// Derive the filename extension from the actual blob MIME type so the
+		// provider can decode the audio correctly.  A hardcoded .webm extension
+		// can cause hallucinated filler text (e.g. "Thank you.") when the browser
+		// falls back to a different codec.
+		const ext = mimeExtension(audio.type) || 'webm';
+		const filename = options.filename ?? `recording.${ext}`;
 		form.append('file', audio, filename);
 		const model = this.resolveRequestModel(options.model);
 		if (model) form.append('model', model);
@@ -229,12 +234,16 @@ export class TranscriberAdapter {
 
 		const contentType = response.headers.get('content-type') ?? '';
 		if (contentType.includes('application/json')) {
-			const payload = await response.json() as { text?: unknown; error?: { message?: unknown } | string };
-			if (typeof payload.text === 'string') {
-				const text = payload.text.trim();
-				if (text) return text;
-			}
-			throw new TranscriptionError('Transcription response did not contain text.', response.status, false);
+			const payload = await response.json() as Record<string, unknown>;
+			const extracted = extractTranscriptionText(payload);
+			if (extracted) return extracted;
+			// Include the actual response shape so provider mismatches are debuggable
+			// instead of surfacing as a generic "did not contain text" failure.
+			throw new TranscriptionError(
+				`Transcription response did not contain text (received ${describeResponse(payload)}).`,
+				response.status,
+				false,
+			);
 		}
 		const text = (await response.text()).trim();
 		if (!text) throw new TranscriptionError('Transcription response did not contain text.', response.status, false);
@@ -343,4 +352,108 @@ export class TranscriberAdapter {
 			else signal?.addEventListener('abort', onAbort, { once: true });
 		});
 	}
+}
+
+/* ─── Helpers ──────────────────────────────────────────── */
+
+/**
+ * Extract transcription text from a JSON response, trying multiple common formats.
+ *
+ * Providers (OpenRouter, Groq, etc.) may return the transcription in one of
+ * several field names.  This function tries them in priority order and returns
+ * the first non-empty string found.
+ */
+function extractTranscriptionText(payload: Record<string, unknown>): string | undefined {
+	// Priority-ordered list of field names that may hold transcription text.
+	const candidates = ['text', 'transcript', 'results', 'transcription', 'content', 'output'];
+	for (const key of candidates) {
+		const value = payload[key];
+		if (typeof value === 'string') {
+			const trimmed = value.trim();
+			if (trimmed) return trimmed;
+		}
+		// Some providers wrap the text in an array or object.
+		if (Array.isArray(value) && value.length > 0) {
+			for (const item of value) {
+				if (typeof item === 'string') {
+					const trimmed = item.trim();
+					if (trimmed) return trimmed;
+				}
+				if (item && typeof item === 'object') {
+					const nested = extractTranscriptionText(item as Record<string, unknown>);
+					if (nested) return nested;
+				}
+			}
+		}
+	}
+	// Last resort: check for a nested structure like { data: { text: "..." } }
+	if (payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
+		const nested = extractTranscriptionText(payload.data as Record<string, unknown>);
+		if (nested) return nested;
+	}
+	return undefined;
+}
+
+/**
+ * Build a compact human-readable description of a JSON response shape.
+ * This is included in the error message so users (and developers) can see
+ * what the provider actually returned without needing to open DevTools.
+ */
+function describeResponse(payload: Record<string, unknown>, maxDepth = 2): string {
+	const seen = new Set<unknown>();
+	function describe(value: unknown, depth: number): string {
+		if (depth > maxDepth) return '…';
+		if (value === null) return 'null';
+		if (value === undefined) return 'undefined';
+		if (typeof value === 'string') {
+			const truncated = value.length > 60 ? value.slice(0, 57) + '…' : value;
+			return JSON.stringify(truncated);
+		}
+		if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+		if (Array.isArray(value)) {
+			if (value.length === 0) return '[]';
+			if (seen.has(value)) return '[Circular]';
+			seen.add(value);
+			// Show first element type as a hint.
+			const first = describe(value[0], depth + 1);
+			seen.delete(value);
+			return `[${value.length} items, first: ${first}]`;
+		}
+		if (typeof value === 'object') {
+			if (seen.has(value)) return '{Circular}';
+			seen.add(value);
+			const keys = Object.keys(value);
+			const parts = keys.slice(0, 5).map(k => `${k}: ${describe((value as Record<string, unknown>)[k], depth + 1)}`);
+			if (keys.length > 5) parts.push(`…+${keys.length - 5} keys`);
+			seen.delete(value);
+			return `{${parts.join(', ')}}`;
+		}
+		// Fallback for functions, symbols, and other primitives.
+		const str = typeof value === 'function' ? value.name || 'ƒ' : typeof value === 'symbol' ? value.description || 'Symbol' : JSON.stringify(value);
+		return str ?? '?';
+	}
+	return describe(payload, 0);
+}
+
+/**
+ * Map a MIME type to a file extension suitable for multipart transcription requests.
+ * Falls back to 'webm' when the type is unknown or missing.
+ */
+function mimeExtension(mime: string): string | undefined {
+	const map: Record<string, string> = {
+		'audio/webm': 'webm',
+		'audio/webm;codecs=opus': 'webm',
+		'audio/ogg': 'ogg',
+		'audio/ogg;codecs=opus': 'ogg',
+		'audio/mp4': 'm4a',
+		'audio/mpeg': 'mp3',
+		'audio/mp3': 'mp3',
+		'audio/wav': 'wav',
+		'audio/x-wav': 'wav',
+		'audio/flac': 'flac',
+		'audio/aac': 'aac',
+	};
+	// Normalise: strip parameters like codecs for a safe lookup.
+	const normalised = mime.split(';')[0]?.trim().toLowerCase() ?? '';
+	return map[normalised] ?? map[mime];
 }

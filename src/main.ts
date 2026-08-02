@@ -110,9 +110,19 @@ export default class CommandCenterPlugin extends Plugin {
 	capacityEngine!: CapacityEngine;
 	dailyEngine!: DailyEngine;
 	configManager!: ConfigManager;
-	commandCenterView: CommandCenterView | null = null;
-	commandCenterChatView: CommandCenterChatView | null = null;
 	commandCenterBrowserView: CommandCenterBrowserView | null = null;
+
+	/** Resolve the active Command Center dashboard view (guideline: no stored view refs). */
+	getCommandCenterView(): CommandCenterView | null {
+		const leaves = this.app.workspace.getLeavesOfType(COMMAND_CENTER_VIEW_TYPE);
+		return leaves.length > 0 ? leaves[0]!.view as CommandCenterView : null;
+	}
+
+	/** Resolve the active Command Center chat view (guideline: no stored view refs). */
+	getCommandCenterChatView(): CommandCenterChatView | null {
+		const leaves = this.app.workspace.getLeavesOfType(COMMAND_CENTER_CHAT_VIEW_TYPE);
+		return leaves.length > 0 ? leaves[0]!.view as CommandCenterChatView : null;
+	}
 
 	/** Multi-provider subsystem (v2.0). */
 	providerFactory!: ProviderFactory;
@@ -401,24 +411,27 @@ export default class CommandCenterPlugin extends Plugin {
 						: 'stopped',
 			);
 
-			if (_event === 'started' && this.commandCenterView) {
+			if (_event === 'started' && this.getCommandCenterView()) {
 				// Resolve the current view at delivery time; never retain a closed tab.
-				this.commandCenterView.startTaskStream(
-					task.id,
-					task.workerProfile,
-					task.targetPath,
-				);
-				task.onStream = (delta: string) => {
-					const view = this.commandCenterView;
-					if (!view) return;
-					if (!view.hasTaskStream(task.id))
-						view.startTaskStream(
-							task.id,
-							task.workerProfile,
-							task.targetPath,
-						);
-					view.appendStreamOutput(delta, task.id);
-				};
+				const view = this.getCommandCenterView();
+				if (view) {
+					view.startTaskStream(
+						task.id,
+						task.workerProfile,
+						task.targetPath,
+					);
+					task.onStream = (delta: string) => {
+						const current = this.getCommandCenterView();
+						if (!current) return;
+						if (!current.hasTaskStream(task.id))
+							current.startTaskStream(
+								task.id,
+								task.workerProfile,
+								task.targetPath,
+							);
+						current.appendStreamOutput(delta, task.id);
+					};
+				}
 			}
 
 			if (task.status === 'completed' || task.status === 'failed') {
@@ -442,7 +455,7 @@ export default class CommandCenterPlugin extends Plugin {
 					});
 				}
 				this.addTaskToHistory(task);
-				this.commandCenterView?.finalizeStreamOutput(task.id);
+				this.getCommandCenterView()?.finalizeStreamOutput(task.id);
 				task.onStream = undefined;
 			}
 
@@ -462,14 +475,10 @@ export default class CommandCenterPlugin extends Plugin {
 
 		// ── View, ribbon, settings, commands ───────────
 		this.registerView(COMMAND_CENTER_VIEW_TYPE, (leaf) => {
-			const view = new CommandCenterView(leaf, this);
-			this.commandCenterView = view;
-			return view;
+			return new CommandCenterView(leaf, this);
 		});
 		this.registerView(COMMAND_CENTER_CHAT_VIEW_TYPE, (leaf) => {
-			const view = new CommandCenterChatView(leaf, this);
-			this.commandCenterChatView = view;
-			return view;
+			return new CommandCenterChatView(leaf, this);
 		});
 		this.registerView(COMMAND_CENTER_BROWSER_VIEW_TYPE, (leaf) => {
 			const view = new CommandCenterBrowserView(leaf, this);
@@ -484,15 +493,15 @@ export default class CommandCenterPlugin extends Plugin {
 			console.warn(
 				'[CC] Bases is unavailable; file-based Base queue parsing remains available.',
 			);
-		this.addRibbonIcon('command', 'Command Center', () =>
+		this.addRibbonIcon('command', 'Command center', () =>
 			this.activateCommandCenterView(),
 		);
 		this.addRibbonIcon(
 			'message-square',
-			'Command Center: Open Chat Panel',
+			'Command center: Open chat panel',
 			() => this.activateCommandCenterChatView(),
 		);
-		this.addRibbonIcon('globe', 'Command Center: Open Browser', () =>
+		this.addRibbonIcon('globe', 'Command center: Open browser', () =>
 			void this.activateCommandCenterBrowserView(),
 		);
 		this.addSettingTab(new PluginSettingsTab(this.app, this));
@@ -501,22 +510,22 @@ export default class CommandCenterPlugin extends Plugin {
 		this.commandBridge.register();
 		this.addCommand({
 			id: 'start-setup-onboarding-interview',
-			name: 'Start Setup / Onboarding Interview',
+			name: 'Start setup / onboarding interview',
 			callback: () => this.openOnboarding(),
 		});
 		this.addCommand({
 			id: 'reset-reinitialize-vault-config',
-			name: 'Reset and Re-Initialize Vault Config',
+			name: 'Reset and re-initialize vault config',
 			callback: () => this.confirmResetConfiguration(),
 		});
 		this.addCommand({
 			id: 'run-shadow-clone-diagnostics',
-			name: 'Run Shadow-Clone Diagnostics',
+			name: 'Run shadow-clone diagnostics',
 			callback: () => { void this.runShadowCloneDiagnostics(); },
 		});
 		this.addCommand({
 			id: 'open-browser-panel',
-			name: 'Open Browser',
+			name: 'Open browser',
 			callback: () => { void this.activateCommandCenterBrowserView(); },
 		});
 
@@ -553,7 +562,7 @@ export default class CommandCenterPlugin extends Plugin {
 	/** Route every destructive mutation decision through the full-page dashboard. */
 	async requestDashboardApproval(request: ToolConfirmationRequest): Promise<ToolConfirmationDecision> {
 		await this.activateCommandCenterView();
-		const view = this.commandCenterView;
+		const view = this.getCommandCenterView();
 		if (!view) return 'rejected';
 		return view.requestMutationApproval(request);
 	}
@@ -567,7 +576,7 @@ export default class CommandCenterPlugin extends Plugin {
 	openOnboarding(): void {
 		void (async () => {
 			await this.activateCommandCenterView();
-			const view = this.commandCenterView;
+			const view = this.getCommandCenterView();
 			if (!view) throw new Error('Command Center dashboard failed to initialize.');
 			const engine = new InterviewEngine(this.app, this.dispatcher, this.configManager);
 			await view.openOnboarding(engine, async (config) => {
@@ -588,7 +597,7 @@ export default class CommandCenterPlugin extends Plugin {
 			}
 			onOpen(): void {
 				this.contentEl.createEl('h2', {
-					text: 'Reset Command Center configuration?',
+					text: 'Reset command center configuration?',
 				});
 				this.contentEl.createEl('p', {
 					text: 'This moves config.json and style-guide.md to trash, clears runtime configuration, and starts a new interview. Vault notes and indexes are not deleted.',
@@ -599,7 +608,7 @@ export default class CommandCenterPlugin extends Plugin {
 				const cancel = actions.createEl('button', { text: 'Cancel' });
 				cancel.addEventListener('click', () => this.close());
 				const reset = actions.createEl('button', {
-					text: 'Reset and Re-Initialize',
+					text: 'Reset and re-initialize',
 					cls: 'mod-warning',
 				});
 				reset.addEventListener('click', () => { void (async () => {
@@ -707,8 +716,6 @@ export default class CommandCenterPlugin extends Plugin {
 		this.vaultWatcher.stop();
 		this.folderIndexer.stop();
 		this.daemon.trace.clearCallback();
-		this.commandCenterView = null;
-		this.commandCenterChatView = null;
 		this.commandCenterBrowserView = null;
 		this.pythonWorker?.dispose();
 		await this.semanticDatabase?.close();
@@ -786,7 +793,7 @@ export default class CommandCenterPlugin extends Plugin {
 		await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
 		const running = this.daemon.isRunning() && !this.daemon.startError;
 		this.statusBar.setState(running ? 'running' : 'error');
-		this.commandCenterView?.updateDaemonStatus();
+		this.getCommandCenterView()?.updateDaemonStatus();
 		return running;
 	}
 
@@ -873,7 +880,7 @@ export default class CommandCenterPlugin extends Plugin {
 			this.taskHistory = this.taskHistory.slice(0, this.maxHistory);
 		}
 		this.persist.setHistory(this.taskHistory);
-		this.commandCenterView?.addTaskToHistory(compacted);
+		this.getCommandCenterView()?.addTaskToHistory(compacted);
 	}
 
 	getTaskHistory(): StoredTask[] {
@@ -1072,7 +1079,7 @@ export default class CommandCenterPlugin extends Plugin {
 	async exportActiveWorkflowToCanvas(): Promise<TFile | null> {
 		const source = this.app.workspace.getActiveFile();
 		if (!source || source.extension !== 'md') {
-			new Notice('Open a Markdown workflow note to export it to Canvas.');
+			new Notice('Open a Markdown workflow note to export it to canvas.');
 			return null;
 		}
 		const rawFrontmatter: unknown = this.app.metadataCache.getFileCache(source)?.frontmatter;
@@ -1121,7 +1128,7 @@ export default class CommandCenterPlugin extends Plugin {
 		this.requireInitialized();
 		await this.activateCommandCenterView();
 		const streamId = `workflow:${definition.id}:${Date.now()}`;
-		const view = this.commandCenterView;
+		const view = this.getCommandCenterView();
 		view?.startTaskStream(streamId, `workflow: ${definition.name}`);
 		view?.appendStreamOutput(
 			`Starting ${definition.name} (${definition.steps.length} steps)…\n`,
@@ -1133,7 +1140,7 @@ export default class CommandCenterPlugin extends Plugin {
 				inputs,
 				{
 					onStream: (delta) => {
-					const currentView = this.commandCenterView;
+					const currentView = this.getCommandCenterView();
 					if (!currentView) return;
 						if (!currentView.hasTaskStream(streamId))
 							currentView.startTaskStream(
@@ -1144,11 +1151,11 @@ export default class CommandCenterPlugin extends Plugin {
 				},
 				},
 			);
-			this.commandCenterView?.appendStreamOutput(
+			this.getCommandCenterView()?.appendStreamOutput(
 				`\nWorkflow complete — ${context.totalTokens} tokens, ${context.totalLatencyMs} ms.`,
 				streamId,
 			);
-			this.commandCenterView?.finalizeStreamOutput(streamId);
+			this.getCommandCenterView()?.finalizeStreamOutput(streamId);
 			if (targetFile?.extension === 'md') {
 				this.frontmatterSync.queue(targetFile, {
 					status: 'completed',
@@ -1157,11 +1164,11 @@ export default class CommandCenterPlugin extends Plugin {
 			}
 			return context;
 		} catch (error) {
-			this.commandCenterView?.appendStreamOutput(
+			this.getCommandCenterView()?.appendStreamOutput(
 				`\nWorkflow failed: ${(error as Error).message}`,
 				streamId,
 			);
-			this.commandCenterView?.finalizeStreamOutput(streamId);
+			this.getCommandCenterView()?.finalizeStreamOutput(streamId);
 			if (targetFile?.extension === 'md') {
 				this.frontmatterSync.queue(targetFile, {
 					status: 'failed',
@@ -1181,7 +1188,7 @@ export default class CommandCenterPlugin extends Plugin {
 	): Promise<WorkflowTargetExecution[]> {
 		await this.activateCommandCenterView();
 		const streamId = `workflow-batch:${definition.id}:${Date.now()}`;
-		this.commandCenterView?.startTaskStream(
+		this.getCommandCenterView()?.startTaskStream(
 			streamId,
 			`workflow queue: ${definition.name}`,
 		);
@@ -1194,7 +1201,7 @@ export default class CommandCenterPlugin extends Plugin {
 				{
 				...options,
 				onStream: (delta, step, target) => {
-					const view = this.commandCenterView;
+					const view = this.getCommandCenterView();
 					if (!view) return;
 						if (!view.hasTaskStream(streamId))
 							view.startTaskStream(
@@ -1209,18 +1216,18 @@ export default class CommandCenterPlugin extends Plugin {
 				},
 				},
 			);
-			this.commandCenterView?.appendStreamOutput(
+			this.getCommandCenterView()?.appendStreamOutput(
 				`\nQueue complete — ${results.length} target notes.`,
 				streamId,
 			);
-			this.commandCenterView?.finalizeStreamOutput(streamId);
+			this.getCommandCenterView()?.finalizeStreamOutput(streamId);
 			return results;
 		} catch (error) {
-			this.commandCenterView?.appendStreamOutput(
+			this.getCommandCenterView()?.appendStreamOutput(
 				`\nQueue failed: ${(error as Error).message}`,
 				streamId,
 			);
-			this.commandCenterView?.finalizeStreamOutput(streamId);
+			this.getCommandCenterView()?.finalizeStreamOutput(streamId);
 			throw error;
 		}
 	}
@@ -1233,8 +1240,9 @@ export default class CommandCenterPlugin extends Plugin {
 	): Promise<void> {
 		// Preserve the original speech when handing off to chat: the chat view owns
 		// mention/selection resolution and will refresh its context pills before send.
-		if (this.commandCenterChatView) {
-			await this.commandCenterChatView.submitExternalPrompt(
+		const chatView = this.getCommandCenterChatView();
+		if (chatView) {
+			await chatView.submitExternalPrompt(
 				spokenText,
 				mode,
 			);
@@ -1271,7 +1279,7 @@ export default class CommandCenterPlugin extends Plugin {
 		await this.activateCommandCenterView();
 		const voiceTools = createObsidianTools(this.app);
 		const streamId = `voice-${mode}-${Date.now().toString(36)}`;
-		this.commandCenterView?.startTaskStream(
+		this.getCommandCenterView()?.startTaskStream(
 			streamId,
 			`${mode}-voice`,
 			activeFile?.path,
@@ -1297,7 +1305,7 @@ export default class CommandCenterPlugin extends Plugin {
 									event.type === 'action_complete' ||
 									event.type === 'final_answer'
 								) {
-									this.commandCenterView?.appendStreamOutput(
+									this.getCommandCenterView()?.appendStreamOutput(
 										event.data,
 										streamId,
 									);
@@ -1306,7 +1314,7 @@ export default class CommandCenterPlugin extends Plugin {
 					),
 				);
 				if (response.error) throw new Error(response.error);
-				this.commandCenterView?.appendStreamOutput(
+				this.getCommandCenterView()?.appendStreamOutput(
 					response.result?.output ?? response.result?.summary ?? '',
 					streamId,
 				);
@@ -1321,25 +1329,25 @@ export default class CommandCenterPlugin extends Plugin {
 					'fast',
 					(delta) => {
 					streamed += delta;
-						this.commandCenterView?.appendStreamOutput(
+						this.getCommandCenterView()?.appendStreamOutput(
 							delta,
 							streamId,
 						);
 					},
 				);
 				if (!streamed)
-					this.commandCenterView?.appendStreamOutput(
+					this.getCommandCenterView()?.appendStreamOutput(
 						result.output ?? result.summary ?? '',
 						streamId,
 					);
 			}
-			this.commandCenterView?.finalizeStreamOutput(streamId);
+			this.getCommandCenterView()?.finalizeStreamOutput(streamId);
 		} catch (error) {
-			this.commandCenterView?.appendStreamOutput(
+			this.getCommandCenterView()?.appendStreamOutput(
 				`\nVoice prompt failed: ${(error as Error).message}`,
 				streamId,
 			);
-			this.commandCenterView?.finalizeStreamOutput(streamId);
+			this.getCommandCenterView()?.finalizeStreamOutput(streamId);
 			throw error;
 		}
 	}

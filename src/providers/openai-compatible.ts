@@ -5,7 +5,7 @@
 
 import type {
 	ProviderMessage, ProviderResponse, ProviderRequestConfig,
-	ProviderToolCall, ProviderToolResult, ImageContent,
+	ProviderToolCall, ImageContent,
 } from './provider-types';
 import { detectLocalRuntime, isLocalBaseUrl } from './provider-types';
 import { parseModelJson } from './json-repair';

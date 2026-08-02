@@ -52,7 +52,7 @@ export class ChatActionCard {
 			});
 		}
 		const actions = this.element.createDiv({ cls: 'cc-chat-action-buttons' });
-		this.approveButton = actions.createEl('button', { cls: 'mod-cta', text: 'Approve & Apply' });
+		this.approveButton = actions.createEl('button', { cls: 'mod-cta', text: 'Approve & apply' });
 		this.rejectButton = actions.createEl('button', { text: 'Reject' });
 		this.approveButton.addEventListener('click', this.onApprove);
 		this.rejectButton.addEventListener('click', this.onReject);

@@ -1,6 +1,6 @@
 import { ItemView, MarkdownRenderer, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
 import type CommandCenterPlugin from '../main';
-import type { ProviderId, TaskType } from '../providers/provider-types';
+import type { TaskType } from '../providers/provider-types';
 import { PROVIDER_REGISTRY } from '../providers/provider-registry';
 import { loadWorkflowFromCanvas, loadWorkflowFromNote } from '../workflows/native-workflow-parser';
 import { workflowForBase } from '../commands';
@@ -10,7 +10,9 @@ import { createObsidianTools } from '../obsidian-tools';
 import { DEFAULT_REACT_CONFIG } from '../react';
 import type { ReActTraceEvent } from '../react/react-trace';
 import { AudioRecorder } from '../audio/audio-recorder';
-import { buildTranscriptionCandidates, TranscriberAdapter } from '../audio/transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, type TranscriptionCandidate } from '../audio/transcriber';
+import { LiveTranscriber } from '../audio/live-transcriber';
+import { processTranscriptionOutput, insertIntoActiveEditor } from '../audio/transcription-integrations';
 import { createVaultSearchTool } from '../rag/rag-tool';
 
 export const COMMAND_CENTER_CHAT_VIEW_TYPE = 'command-center-chat';
@@ -40,6 +42,8 @@ export class CommandCenterChatView extends ItemView {
 	private recordingTimerEl!: HTMLElement;
 	private composerNoticeEl!: HTMLElement;
 	private sttStatusEl!: HTMLElement;
+	private voiceTargetEl!: HTMLSelectElement;
+	private voiceOutputTarget: 'chat' | 'note' | 'canvas' | 'note+audio' | 'canvas+audio' | 'all' = 'chat';
 	private statusDotEl!: HTMLElement;
 	private statusTextEl!: HTMLElement;
 	private routeLabelEl!: HTMLElement;
@@ -58,6 +62,8 @@ export class CommandCenterChatView extends ItemView {
 	private audioRecorder: AudioRecorder | null = null;
 	private transcriptionAbort: AbortController | null = null;
 	private isTranscribing = false;
+	private isLiveMode = false;
+	private liveTranscriber: LiveTranscriber | null = null;
 	private readonly animationFrames = new Set<number>();
 
 	constructor(leaf: WorkspaceLeaf, plugin: CommandCenterPlugin) {
@@ -101,6 +107,23 @@ export class CommandCenterChatView extends ItemView {
 		this.sttStatusEl = composer.createDiv({
 			cls: 'cc-chat-stt-status',
 			attr: { 'aria-label': 'Active speech-to-text provider and model' },
+		});
+		this.voiceTargetEl = composer.createEl('select', {
+			cls: 'cc-voice-target',
+			attr: { 'aria-label': 'Voice output target', title: 'Where voice transcription goes' },
+		});
+		for (const [value, label] of [
+			['chat', 'Chat'],
+			['note', 'Note'],
+			['canvas', 'Canvas'],
+			['note+audio', 'Note + Audio'],
+			['canvas+audio', 'Canvas + Audio'],
+			['all', 'All'],
+		] as const) {
+			this.voiceTargetEl.createEl('option', { value, text: label });
+		}
+		this.registerDomEvent(this.voiceTargetEl, 'change', () => {
+			this.voiceOutputTarget = this.voiceTargetEl.value as typeof this.voiceOutputTarget;
 		});
 		this.recordingTimerEl = composer.createDiv({
 			cls: 'cc-chat-recording-timer',
@@ -150,7 +173,7 @@ export class CommandCenterChatView extends ItemView {
 				else void this.sendCurrentMessage();
 			}
 		});
-		this.registerDomEvent(this.microphoneEl, 'click', () => { void this.toggleRecording(); });
+		this.registerDomEvent(this.microphoneEl, 'click', (event) => { void this.toggleRecording(event); });
 		this.registerDomEvent(this.submitEl, 'click', () => { void this.sendCurrentMessage(); });
 
 		this.contextFile = this.plugin.app.workspace.getActiveFile();
@@ -170,9 +193,14 @@ export class CommandCenterChatView extends ItemView {
 		this.stopRecordingTimer();
 		this.transcriptionAbort?.abort();
 		this.transcriptionAbort = null;
+		if (this.liveTranscriber) {
+			void this.liveTranscriber.cancel();
+			this.liveTranscriber = null;
+		}
 		if (this.audioRecorder) void this.audioRecorder.cancel();
 		this.audioRecorder = null;
 		this.isTranscribing = false;
+		this.isLiveMode = false;
 		if (this.statusRefreshTimer !== null) {
 			window.clearInterval(this.statusRefreshTimer);
 			this.statusRefreshTimer = null;
@@ -185,7 +213,6 @@ export class CommandCenterChatView extends ItemView {
 		this.contextResolveGeneration++;
 		this.detectedContext = { cleanedPrompt: '', contextString: '', attachments: [] };
 		this.dismissedAttachments.clear();
-		if (this.plugin.commandCenterChatView === this) this.plugin.commandCenterChatView = null;
 		// DOM listeners were registered through ItemView.registerDomEvent and are
 		// released with the view component; clearing the subtree drops references.
 		this.containerEl.children[1]?.empty();
@@ -279,14 +306,19 @@ export class CommandCenterChatView extends ItemView {
 		this.textareaEl.setCssStyles({ height: `${Math.min(this.textareaEl.scrollHeight, 160)}px`, overflowY: this.textareaEl.scrollHeight > 160 ? 'auto' : 'hidden' });
 	}
 
-	private async toggleRecording(): Promise<void> {
+	private async toggleRecording(event?: MouseEvent): Promise<void> {
 		if (this.isSending || this.isTranscribing || !this.plugin.settings.speechToTextEnabled) return;
+		// Shift+click starts live (chunked) transcription; regular click is push-to-talk.
+		if (event?.shiftKey || this.liveTranscriber) {
+			await this.toggleLiveRecording();
+			return;
+		}
 		if (this.audioRecorder?.isRecording()) {
 			await this.stopRecordingAndTranscribe();
 			return;
 		}
 		this.hideComposerNotice();
-		const recorder = new AudioRecorder({ mimeType: 'audio/webm' });
+		const recorder = new AudioRecorder({ mimeType: 'audio/webm', deviceId: this.plugin.settings.audioInputDeviceId || undefined });
 		this.audioRecorder = recorder;
 		try {
 			await recorder.start();
@@ -346,7 +378,116 @@ export class CommandCenterChatView extends ItemView {
 		}
 	}
 
-	private getTranscriptionCandidates(): Array<{ providerId: ProviderId; model?: string; label: string; local: boolean }> {
+	/* ─── Live (chunked) transcription ───────────────────── */
+
+	private async toggleLiveRecording(): Promise<void> {
+		if (this.liveTranscriber) {
+			await this.stopLiveTranscription();
+			return;
+		}
+		const candidates = this.getTranscriptionCandidates();
+		if (!candidates.length) {
+			this.showComposerNotice('Enable an OpenAI-compatible transcription provider first.', true);
+			return;
+		}
+		this.hideComposerNotice();
+		this.isLiveMode = true;
+		this.showComposerNotice('Live transcription... (Shift+click to stop)');
+		const controller = new AbortController();
+		this.transcriptionAbort = controller;
+		this.liveTranscriber = new LiveTranscriber({
+			plugin: this.plugin,
+			candidates,
+			chunkDurationMs: 3000,
+			signal: controller.signal,
+			callbacks: {
+				onInterim: text => {
+					if (!this.isOpen) return;
+					this.textareaEl.value = text;
+					this.resizeTextarea();
+				},
+				onStateChange: state => {
+					if (!this.isOpen) return;
+					if (state === 'recording') {
+						this.microphoneEl.addClass('cc-mic-recording', 'cc-mic-live');
+						this.microphoneEl.setAttribute('aria-label', 'Stop live transcription');
+						this.microphoneEl.setAttribute('title', 'Stop live transcription (Shift+click)');
+						this.recordingTimerEl.addClass('is-visible');
+						this.showComposerNotice('Live transcription... (Shift+click to stop)');
+					} else if (state === 'transcribing') {
+						this.microphoneEl.addClass('is-transcribing');
+					} else if (state === 'error') {
+						this.showComposerNotice('Live transcription error — click to retry.', true);
+					}
+				},
+				onError: error => {
+					if (this.isOpen) this.showComposerNotice(`Live STT: ${error.message}`, true);
+				},
+			},
+		});
+		try {
+			await this.liveTranscriber.start();
+		} catch (error) {
+			this.liveTranscriber = null;
+			this.isLiveMode = false;
+			if (this.transcriptionAbort === controller) this.transcriptionAbort = null;
+			if (!this.isOpen) return;
+			this.showComposerNotice(`Live transcription unavailable: ${(error as Error).message}`, true);
+			this.resetMicrophoneUi();
+		}
+	}
+
+	private async stopLiveTranscription(): Promise<void> {
+		const transcriber = this.liveTranscriber;
+		if (!transcriber) return;
+		this.liveTranscriber = null;
+		this.isLiveMode = false;
+		try {
+			const text = await transcriber.stop();
+			if (!this.isOpen) return;
+
+			if (text) {
+				const existing = this.textareaEl.value;
+				const target = this.voiceOutputTarget;
+
+				if (target === 'chat' || target === 'all') {
+					this.textareaEl.value = existing && !/\s$/.test(existing) ? `${existing} ${text}` : `${existing}${text}`;
+					this.resizeTextarea();
+					this.textareaEl.focus();
+					this.textareaEl.setSelectionRange(this.textareaEl.value.length, this.textareaEl.value.length);
+					await this.refreshDetectedContext();
+				}
+
+				if (target === 'note' || target === 'note+audio' || target === 'all') {
+					const inserted = insertIntoActiveEditor(this.plugin.app, text);
+					if (!inserted) {
+						await processTranscriptionOutput(this.plugin, text, undefined, {
+							insertIntoNote: true,
+							saveAudio: target === 'note+audio' || target === 'all',
+						});
+					}
+				}
+
+				if (target === 'canvas' || target === 'canvas+audio' || target === 'all') {
+					await processTranscriptionOutput(this.plugin, text, undefined, {
+						createCanvas: true,
+						saveAudio: target === 'canvas+audio' || target === 'all',
+					});
+				}
+			}
+		} catch (error) {
+			if (this.isOpen) this.showComposerNotice(`Live transcription: ${(error as Error).message}`, true);
+		} finally {
+			this.transcriptionAbort?.abort();
+			this.transcriptionAbort = null;
+			if (this.isOpen) {
+				this.hideComposerNotice();
+				this.resetMicrophoneUi();
+			}
+		}
+	}
+
+	private getTranscriptionCandidates(): TranscriptionCandidate[] {
 		return buildTranscriptionCandidates(this.plugin.settings, {
 			hasApiKey: providerId => this.plugin.credentialVault.has(providerId),
 		});
@@ -442,11 +583,11 @@ export class CommandCenterChatView extends ItemView {
 	}
 
 	private resetMicrophoneUi(): void {
-		this.microphoneEl.removeClass('cc-mic-recording', 'is-transcribing');
+		this.microphoneEl.removeClass('cc-mic-recording', 'is-transcribing', 'cc-mic-live');
 		this.microphoneEl.disabled = this.isSending || !this.plugin.settings.speechToTextEnabled;
 		this.microphoneEl.setAttribute('aria-label', 'Start voice recording');
 		this.microphoneEl.setAttribute('aria-pressed', 'false');
-		this.microphoneEl.setAttribute('title', 'Record voice message');
+		this.microphoneEl.setAttribute('title', 'Record voice message (Shift+click for live)');
 		this.recordingTimerEl.removeClass('is-visible');
 		this.recordingTimerEl.setText('00:00');
 	}
@@ -484,11 +625,27 @@ export class CommandCenterChatView extends ItemView {
 
 	private async renderMessage(message: ChatMessageElements): Promise<void> {
 		const version = ++message.renderVersion;
-		const staging = createEl('div');
+
+		// Skip re-render if the user is currently selecting text inside this message
+		// so streaming doesn't wipe their selection mid-copy.
+		if (this.isSelectionInside(message.content)) return;
+
+		const staging = createDiv();
 		await MarkdownRenderer.render(this.plugin.app, message.markdown, staging, this.contextFile?.path ?? '', this);
 		if (!this.isOpen || version !== message.renderVersion) return;
+		// Check again after the async render, in case the selection started during the await.
+		if (this.isSelectionInside(message.content)) return;
 		message.content.replaceChildren(...Array.from(staging.childNodes));
 		this.scrollToBottom();
+	}
+
+	/** True when the active DOM selection is anchored inside the given element. */
+	private isSelectionInside(el: HTMLElement): boolean {
+		const selection = document.getSelection();
+		if (!selection || selection.isCollapsed) return false;
+		if (selection.anchorNode && el.contains(selection.anchorNode)) return true;
+		if (selection.focusNode && el.contains(selection.focusNode)) return true;
+		return false;
 	}
 
 	private setMessage(message: ChatMessageElements, markdown: string): void {

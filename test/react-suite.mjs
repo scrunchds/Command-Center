@@ -1729,7 +1729,7 @@ const adapter = new TranscriberAdapter({ providerId: 'custom', getSettings: () =
 assert.equal(await adapter.transcribe(new Blob(['wav'], { type: 'audio/wav' })), 'recovered transcript');
 assert.equal(calls, 2);
 const wavForm = adapter.buildFormData(new Blob(['wav'], { type: 'audio/wav' }));
-assert.equal(wavForm.get('file').name, 'recording.webm');
+assert.equal(wavForm.get('file').name, 'recording.wav');
 let permanentCalls = 0;
 const permanent = new TranscriberAdapter({ providerId: 'custom', getSettings: () => settings, maxAttempts: 3, backoffMs: 0, fetch: async (url) => {
   if (!String(url).includes('/audio/transcriptions')) return new Response('{}', { status: 404 });
@@ -1780,7 +1780,7 @@ assert.match(modalSource, /onDurationChange:[\s\S]*onAudioLevel:/);
 assert.match(modalSource, /transcriptionAbort\?\.abort\(\)/);
 assert.match(modalSource, /recorder\?\.isRecording\(\).*recorder\.stop\(\)/s);
 pass('27h: voice modal auto-starts recording, aborts transcription, and tears down capture on cancellation');
-assert.match(modalSource, /Done & Send/);
+assert.match(modalSource, /Done & send/);
 assert.match(modalSource, /Transcribing audio\.\.\./);
 assert.match(modalSource, /resolveChatContext\(this\.plugin\.app, spokenText\)/);
 assert.match(modalSource, /dispatchVoicePrompt\(this\.mode, spokenText, resolved\)/);

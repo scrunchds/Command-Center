@@ -163,7 +163,7 @@ export class CommandCenterView extends ItemView {
 		const title = container.createDiv({ cls: 'command-center-title-row' });
 		const identity = title.createDiv({ cls: 'command-center-identity' });
 		identity.createEl('h2', { text: 'Command Center' });
-		identity.createEl('span', { text: 'Agentic operating system', cls: 'command-center-subtitle' });
+		identity.createSpan( { text: 'Agentic operating system', cls: 'command-center-subtitle' });
 		this.renderHeader(title);
 		this.telemetryEl = container.createDiv({ cls: 'cc-dashboard-telemetry' });
 		this.renderTelemetry();
@@ -236,7 +236,7 @@ export class CommandCenterView extends ItemView {
 		const statsSection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
-		statsSection.createEl('h3', { text: 'Task Queue' });
+		statsSection.createEl('h3', { text: 'Task queue' });
 		const grid = statsSection.createDiv({
 			cls: 'command-center-stats-grid',
 		});
@@ -254,7 +254,7 @@ export class CommandCenterView extends ItemView {
 		const histHeader = historySection.createDiv({
 			cls: 'command-center-section-header',
 		});
-		histHeader.createEl('h3', { text: 'Task History' });
+		histHeader.createEl('h3', { text: 'Task history' });
 		const clearBtn = histHeader.createEl('button', { text: 'Clear' });
 		this.registerDomEvent(clearBtn, 'click', () => {
 			this.taskListEl.empty();
@@ -279,9 +279,9 @@ export class CommandCenterView extends ItemView {
 		const streamHeader = streamSection.createDiv({
 			cls: 'command-center-section-header',
 		});
-		streamHeader.createEl('h3', { text: 'Live Output' });
+		streamHeader.createEl('h3', { text: 'Live output' });
 		const clearStreamBtn = streamHeader.createEl('button', {
-			text: 'Clear All',
+			text: 'Clear all',
 		});
 		this.registerDomEvent(clearStreamBtn, 'click', () => this.clearAllStreams());
 
@@ -300,10 +300,10 @@ export class CommandCenterView extends ItemView {
 		const reactHeader = reactSection.createDiv({
 			cls: 'command-center-section-header',
 		});
-		reactHeader.createEl('h3', { text: 'ReAct Monitor' });
+		reactHeader.createEl('h3', { text: 'ReAct monitor' });
 		const reactActions = reactHeader.createDiv({ cls: 'cc-react-actions' });
 		this.debugToggleBtn = reactActions.createEl('button', {
-			text: 'Debug / Step Mode',
+			text: 'Debug / step mode',
 		});
 		this.registerDomEvent(this.debugToggleBtn, 'click', () => {
 			this.plugin.daemon.setDebugStepMode(
@@ -312,21 +312,21 @@ export class CommandCenterView extends ItemView {
 			this.updateDebugControls();
 		});
 		this.nextStepBtn = reactActions.createEl('button', {
-			text: 'Next Step',
+			text: 'Next step',
 		});
 		this.registerDomEvent(this.nextStepBtn, 'click', () => {
 			this.plugin.daemon.nextDebugStep();
 			this.updateDebugControls();
 		});
 		this.resumeSessionBtn = reactActions.createEl('button', {
-			text: 'Resume Session',
+			text: 'Resume session',
 		});
 		this.registerDomEvent(this.resumeSessionBtn, 'click', () => {
 			this.plugin.daemon.resumeDebugSession();
 			this.updateDebugControls();
 		});
 		const exportReactBtn = reactActions.createEl('button', {
-			text: 'Export Session Trace',
+			text: 'Export session trace',
 		});
 		this.registerDomEvent(exportReactBtn, 'click', () => {
 			void this.exportSessionTrace();
@@ -413,7 +413,7 @@ export class CommandCenterView extends ItemView {
 		this.dashboardWorkspaceEl.empty();
 		this.dashboardWorkspaceEl.removeClass('cc-dashboard-onboarding');
 		const heading = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-heading' });
-		heading.createEl('div', { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
+		heading.createDiv( { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
 		heading.createEl('h2', { text: 'Operational overview' });
 		heading.createEl('p', { text: 'Observe, understand, propose, approve, execute, evaluate, and remember.' });
 		const cards = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-cards' });
@@ -472,19 +472,17 @@ export class CommandCenterView extends ItemView {
 		this.traceFilterButtons = [];
 		this.reactEmptyEl = null;
 		this.taskStreams.clear();
-		if (this.plugin.commandCenterView === this)
-			this.plugin.commandCenterView = null;
 	}
 
 	/* ─── Operational Sidebar ───────────────────────── */
 
 	private renderHeader(title: HTMLElement): void {
 		const actions = title.createDiv({ cls: 'command-center-header-actions' });
-		const exportWorkflowBtn = actions.createEl('button', { text: 'Export workflow to Canvas' });
+		const exportWorkflowBtn = actions.createEl('button', { text: 'Export workflow to canvas' });
 		this.registerDomEvent(exportWorkflowBtn, 'click', () => void this.plugin.exportActiveWorkflowToCanvas());
 		const customize = actions.createEl('button', { text: 'Customize dashboard' });
 		this.registerDomEvent(customize, 'click', () => this.toggleLayoutEditor(customize));
-		const vault = actions.createEl('button', { text: 'Open Secrets' });
+		const vault = actions.createEl('button', { text: 'Open secrets' });
 		this.registerDomEvent(vault, 'click', () => new CredentialVaultModal(this.app, this.plugin, () => this.renderTelemetry()).open());
 	}
 
@@ -595,8 +593,8 @@ export class CommandCenterView extends ItemView {
 		const section = container.createEl('section', { cls: 'command-center-section cc-dashboard-approvals' });
 		this.markWidget(section, 'approvals');
 		const heading = section.createDiv({ cls: 'command-center-section-header' });
-		heading.createEl('h3', { text: 'Mutation Approvals' });
-		heading.createEl('span', { text: 'Destructive and bulk operations stop here before any file is touched.', cls: 'cc-widget-caption' });
+		heading.createEl('h3', { text: 'Mutation approvals' });
+		heading.createSpan( { text: 'Destructive and bulk operations stop here before any file is touched.', cls: 'cc-widget-caption' });
 		this.approvalQueueEl = section.createDiv({ cls: 'cc-dashboard-approval-queue' });
 		this.approvalQueueEl.createEl('p', { text: 'No operations awaiting approval.', cls: 'command-center-empty' });
 	}
@@ -618,8 +616,8 @@ export class CommandCenterView extends ItemView {
 		const section = container.createEl('section', { cls: 'command-center-section cc-bases-controller' });
 		this.markWidget(section, 'bases');
 		const heading = section.createDiv({ cls: 'command-center-section-header' });
-		heading.createEl('h3', { text: 'Bases Queue Controller' });
-		heading.createEl('span', { text: 'Native .base views remain the queue definition and execution surface.', cls: 'cc-widget-caption' });
+		heading.createEl('h3', { text: 'Bases queue controller' });
+		heading.createSpan( { text: 'Native .base views remain the queue definition and execution surface.', cls: 'cc-widget-caption' });
 		this.basesTelemetryEl = section.createDiv({ cls: 'cc-bases-telemetry' });
 		this.refreshBasesTelemetry();
 	}
@@ -643,7 +641,7 @@ export class CommandCenterView extends ItemView {
 			cls: 'command-center-section cc-daily-controls',
 		});
 		this.markWidget(section, 'daily');
-		section.createEl('h3', { text: 'Daily Cycle' });
+		section.createEl('h3', { text: 'Daily cycle' });
 		const controls = section.createDiv({
 			cls: 'command-center-daemon-controls',
 		});
@@ -676,7 +674,7 @@ export class CommandCenterView extends ItemView {
 			cls: 'command-center-section cc-system-monitor',
 		});
 		this.markWidget(section, 'system');
-		section.createEl('h3', { text: 'System & Workflow State' });
+		section.createEl('h3', { text: 'System & workflow state' });
 		this.configStateEl = section.createDiv({ cls: 'cc-config-state' });
 		this.workflowStateEl = section.createDiv({ cls: 'cc-workflow-state' });
 	}
@@ -688,7 +686,7 @@ export class CommandCenterView extends ItemView {
 		this.markWidget(section, 'orchestrator');
 		const header = section.createDiv({ cls: 'command-center-section-header' });
 		header.createEl('h3', { text: 'Orchestrator' });
-		header.createEl('span', { text: 'Dashboard agent workspace', cls: 'cc-widget-caption' });
+		header.createSpan( { text: 'Dashboard agent workspace', cls: 'cc-widget-caption' });
 		this.chatMessagesEl = section.createDiv({
 			cls: 'cc-dashboard-orchestrator-messages',
 			attr: { role: 'log', 'aria-live': 'polite' },
@@ -1410,7 +1408,7 @@ export class CommandCenterView extends ItemView {
 	private initializeTraceRowPool(): void {
 		const pool = createDiv({ cls: 'cc-react-entry-pool' });
 		for (let index = 0; index < MAX_TRACE_ENTRIES; index++) {
-			const entry = pool.createEl('div', { cls: 'cc-react-entry' });
+			const entry = pool.createDiv( { cls: 'cc-react-entry' });
 			entry.hidden = true;
 			entry.tabIndex = 0;
 			entry.setAttribute('role', 'button');
@@ -1461,7 +1459,7 @@ export class CommandCenterView extends ItemView {
 		entry: HTMLDivElement,
 		className: string,
 	): HTMLSpanElement {
-		return entry.createEl('span', { cls: className });
+		return entry.createSpan( { cls: className });
 	}
 
 	private updateTraceRow(row: TraceRowSlot, event: ReActTraceEvent): void {
@@ -1775,7 +1773,7 @@ class SessionReplayModal extends Modal {
 		const header = this.contentEl.createDiv({
 			cls: 'cc-trace-detail-header',
 		});
-		header.createEl('h2', { text: 'Session Replay / Log Detail' });
+		header.createEl('h2', { text: 'Session replay / log detail' });
 		header.createEl('p', {
 			text: `Step ${index + 1} of ${events.length} · ${this.selected.agent} · ${this.selected.type}`,
 		});

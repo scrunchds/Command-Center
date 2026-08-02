@@ -29,7 +29,7 @@ export class VoicePromptModal extends Modal {
 		this.closed = false;
 		this.finishing = false;
 		this.modalEl.addClass('cc-voice-prompt-modal');
-		this.titleEl.setText('Quick Voice Prompt');
+		this.titleEl.setText('Quick voice prompt');
 		this.contentEl.empty();
 
 		const hero = this.contentEl.createDiv({ cls: 'cc-voice-prompt-hero' });
@@ -45,7 +45,7 @@ export class VoicePromptModal extends Modal {
 		modeSelect.addEventListener('change', () => { this.mode = modeSelect.value as VoicePromptMode; });
 
 		const actions = this.contentEl.createDiv({ cls: 'cc-voice-prompt-actions' });
-		this.doneEl = actions.createEl('button', { cls: 'mod-cta', text: 'Done & Send', attr: { type: 'button' } });
+		this.doneEl = actions.createEl('button', { cls: 'mod-cta', text: 'Done & send', attr: { type: 'button' } });
 		this.cancelEl = actions.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
 		this.doneEl.disabled = true;
 		this.doneEl.addEventListener('click', () => { void this.finishAndDispatch(); });
@@ -93,6 +93,7 @@ export class VoicePromptModal extends Modal {
 	private async beginRecording(): Promise<void> {
 		const recorder = new AudioRecorder({
 			mimeType: 'audio/webm',
+			deviceId: this.plugin.settings.audioInputDeviceId || undefined,
 			onDurationChange: duration => { if (!this.closed) this.durationEl.setText(this.formatDuration(duration)); },
 			onAudioLevel: level => {
 				if (this.closed) return;

@@ -41,8 +41,8 @@ export class DashboardOnboarding {
 		this.host.empty();
 		this.host.addClass('cc-dashboard-onboarding');
 		const heading = this.host.createDiv({ cls: 'cc-dashboard-workspace-heading' });
-		heading.createEl('div', { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
-		heading.createEl('h2', { text: 'Start Here' });
+		heading.createDiv( { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
+		heading.createEl('h2', { text: 'Start here' });
 		heading.createEl('p', {
 			text: 'Establish context and goals first. Vault structure and optional capabilities are negotiated only after the system understands what you need it to serve.',
 		});
@@ -162,7 +162,7 @@ export class DashboardOnboarding {
 				const result = await this.engine.completeSynthesis(selected(templates), selected(workflows));
 				await this.options.onComplete?.(result.config);
 				this.approval?.empty();
-				this.approval?.createEl('h3', { text: 'Command Center initialized' });
+				this.approval?.createEl('h3', { text: 'Command center initialized' });
 				this.approval?.createEl('p', { text: `Created ${result.templatePaths.length} template(s) and ${result.workflowPaths.length} workflow(s).` });
 				this.setStatus('Approved configuration and assets initialized.');
 				new Notice('Command Center initialized.');

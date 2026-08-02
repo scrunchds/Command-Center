@@ -8,7 +8,7 @@
 
 import type {
 	IProviderAdapter, ProviderId, MultiProviderSettings,
-	TaskType, ProviderModel,
+	TaskType,
 } from './provider-types';
 import { sanitizeBaseUrl } from './provider-types';
 import { PROVIDER_REGISTRY } from './provider-registry';
@@ -19,7 +19,7 @@ import { GeminiProvider } from './google-gemini';
 import { CohereProvider } from './cohere';
 import { PiDaemonAdapter } from './pi-daemon-provider';
 import type { PiAgentDaemon } from '../daemon';
-import { BaseHttpProvider, type BaseHttpProviderOptions } from './base-http-provider';
+import { type BaseHttpProviderOptions } from './base-http-provider';
 import { JitModelManager } from './jit-manager';
 import type { MemoryCredentialVault } from '../security/VaultCrypto';
 

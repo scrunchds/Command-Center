@@ -21,6 +21,7 @@ import {
 	type TextComponent,
 } from 'obsidian';
 import CommandCenterPlugin from '../main';
+import { getAudioInputDevices } from '../audio/audio-recorder';
 import type {
 	ProviderId,
 	TaskType,
@@ -133,14 +134,6 @@ export class PluginSettingsTab extends PluginSettingTab {
 		return [];
 	}
 
-	/* ═══════════════════════════════════════════════════════
-	   Display
-	   ═══════════════════════════════════════════════════════ */
-
-	display(): void {
-		this.renderImperativeSettings();
-	}
-
 	/** Refresh the imperative settings UI after an interaction. */
 	override update(): void {
 		this.renderImperativeSettings();
@@ -186,7 +179,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Worker profile
 		new Setting(body)
-			.setName('Active Worker Profile')
+			.setName('Active worker profile')
 			.setDesc(
 				'Default agent profile used when no explicit profile is specified.',
 			)
@@ -211,7 +204,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Max tokens
 		new Setting(body)
-			.setName('Max Tokens')
+			.setName('Max tokens')
 			.setDesc(
 				'Token budget ceiling for agent responses (legacy; per-provider settings override this).',
 			)
@@ -223,7 +216,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(body)
-			.setName('Passive Prompt Context Budget')
+			.setName('Passive prompt context budget')
 			.setDesc('Controls how much memory and vault retrieval can be injected into chat, ReAct, and voice prompts. Higher values help long-context work; the interview flow is unaffected.')
 			.addSlider((slider) =>
 				slider
@@ -237,7 +230,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		let piTextInput: TextComponent | null = null;
 
 		const piSetting = new Setting(body)
-			.setName('Pi Harness Path')
+			.setName('Pi harness path')
 			.setDesc(
 				'Path to the pi CLI binary. Use "Detect" to auto-find it, or type a custom path.',
 			);
@@ -349,7 +342,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Enable daemon
 		new Setting(body)
-			.setName('Auto-start Daemon')
+			.setName('Auto-start daemon')
 			.setDesc(
 				'Launch the pi agent daemon automatically when the plugin loads.',
 			)
@@ -370,7 +363,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(body)
-			.setName('Silent Daily Startup')
+			.setName('Silent daily startup')
 			.setDesc(
 				'Morning Start evaluates capacity and assembles today’s note without intermediate approval prompts. Inbox proposals remain unapproved and are summarized for later review.',
 			)
@@ -382,7 +375,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Memory bank limit
 		new Setting(body)
-			.setName('Memory Bank Limit')
+			.setName('Memory bank limit')
 			.setDesc('Maximum memory notes to retain before auto-pruning.')
 			.addSlider((slider) =>
 				slider
@@ -516,6 +509,21 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.setName('Speech-to-text model')
 			.setDesc('Leave blank to use the provider default or live model discovery.')
 			.addText(text => text.setPlaceholder('whisper-large-v3-turbo').setValue(this.plugin.settings.speechToTextModel).onChange(value => this.saveSetting('speechToTextModel', value)));
+
+		new Setting(body)
+			.setName('Microphone')
+			.setDesc('Audio input device for voice recording. Select the mic you want to use.')
+			.addDropdown(dropdown => {
+				dropdown.addOption('', 'System default');
+				// Populate devices asynchronously; the dropdown updates after enumeration.
+				void getAudioInputDevices().then(devices => {
+					for (const device of devices) {
+						dropdown.addOption(device.deviceId, device.label || `Microphone (${device.deviceId.slice(0, 8)}…)`);
+					}
+					dropdown.setValue(this.plugin.settings.audioInputDeviceId);
+				});
+				return dropdown;
+			});
 	}
 
 	/* ═══════════════════════════════════════════════════════
@@ -539,11 +547,11 @@ export class PluginSettingsTab extends PluginSettingTab {
 			cls: 'cc-provider-key-badge',
 			text: this.plugin.credentialVault.unlocked ? '🔓 Vault unlocked' : '🔒 Vault locked · local-only',
 		});
-		const testAllBtn = this.createButton(actionBar, 'Test All', async () => {
+		const testAllBtn = this.createButton(actionBar, 'Test all', async () => {
 			testAllBtn.setButtonText('Testing...');
 			testAllBtn.setDisabled(true);
 			await this.healthCheckAll();
-			testAllBtn.setButtonText('Test All');
+			testAllBtn.setButtonText('Test all');
 			testAllBtn.setDisabled(false);
 		});
 		// Sync All Models — refreshes live models for all enabled providers
@@ -700,7 +708,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 				cls: 'cc-provider-key-badge',
 				text: !this.plugin.credentialVault.unlocked ? '🔒 Vault locked' : this.plugin.credentialVault.has(pid) ? '🔐 Configured' : authentication === 'optional' ? 'Not configured · unauthenticated' : 'Not configured',
 			});
-			const manage = keyRow.createEl('button', { text: 'Open Secrets' });
+			const manage = keyRow.createEl('button', { text: 'Open secrets' });
 			manage.addEventListener('click', () => new CredentialVaultModal(this.app, this.plugin, () => this.update()).open());
 		}
 
@@ -1220,7 +1228,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Fallback chain visual
 		new Setting(body)
-			.setName('Fallback Chain Order')
+			.setName('Fallback chain order')
 			.setHeading()
 			.setClass('cc-subsection-title');
 

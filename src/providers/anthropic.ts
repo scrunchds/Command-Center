@@ -19,7 +19,7 @@
 
 import type {
 	ProviderMessage, ProviderResponse, ProviderRequestConfig,
-	ProviderToolCall, ImageContent, CacheConfig, CacheStats,
+	ProviderToolCall, ImageContent, CacheConfig,
 	ProviderModel, TaskType,
 } from './provider-types';
 import { BaseHttpProvider } from './base-http-provider';
