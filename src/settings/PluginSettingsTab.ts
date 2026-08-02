@@ -21,6 +21,7 @@ import {
 	type TextComponent,
 } from 'obsidian';
 import CommandCenterPlugin from '../main';
+import { getAudioInputDevices } from '../audio/audio-recorder';
 import type {
 	ProviderId,
 	TaskType,
@@ -532,6 +533,21 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.setName('Speech-to-text model')
 			.setDesc('Leave blank to use the provider default or live model discovery.')
 			.addText(text => text.setPlaceholder('whisper-large-v3-turbo').setValue(this.plugin.settings.speechToTextModel).onChange(value => this.saveSetting('speechToTextModel', value)));
+
+		new Setting(body)
+			.setName('Microphone')
+			.setDesc('Audio input device for voice recording. Select the mic you want to use.')
+			.addDropdown(dropdown => {
+				dropdown.addOption('', 'System default');
+				// Populate devices asynchronously; the dropdown updates after enumeration.
+				void getAudioInputDevices().then(devices => {
+					for (const device of devices) {
+						dropdown.addOption(device.deviceId, device.label || `Microphone (${device.deviceId.slice(0, 8)}…)`);
+					}
+					dropdown.setValue(this.plugin.settings.audioInputDeviceId);
+				});
+				return dropdown;
+			});
 	}
 
 	/* ═══════════════════════════════════════════════════════

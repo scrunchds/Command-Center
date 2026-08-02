@@ -64,6 +64,13 @@ export class LiveTranscriber {
 	private stopReject: ((error: Error) => void) | null = null;
 	private candidateIndex = 0;
 	private signal: AbortSignal | undefined;
+	/** Peak audio level during the current chunk window (0–1). Used to skip silent chunks. */
+	private peakLevel = 0;
+	/** True once we've received at least one audio level sample. */
+	private hasLevelData = false;
+
+	/** Minimum audio level required to consider a chunk as containing speech. */
+	private readonly SILENCE_THRESHOLD = 0.04;
 
 	constructor(options: LiveTranscriberOptions) {
 		this.options = options;
@@ -86,10 +93,16 @@ export class LiveTranscriber {
 
 		const recorder = new AudioRecorder({
 			mimeType: 'audio/webm',
+			deviceId: this.options.plugin.settings.audioInputDeviceId || undefined,
 			timesliceMs: this.chunkDurationMs,
 			onChunk: (chunk, isLast) => this.handleChunk(chunk, isLast),
 			onDurationChange: ms => this.callbacks.onDurationChange?.(ms),
-			onAudioLevel: level => this.callbacks.onAudioLevel?.(level),
+			onAudioLevel: level => {
+				// Track peak level for silence detection.
+				if (level > this.peakLevel) this.peakLevel = level;
+				if (!this.hasLevelData && level > 0.01) this.hasLevelData = true;
+				this.callbacks.onAudioLevel?.(level);
+			},
 		});
 		this.recorder = recorder;
 
@@ -162,6 +175,17 @@ export class LiveTranscriber {
 	private handleChunk(chunk: Blob, _isLast: boolean): void {
 		if (this.stopped) return;
 		if (chunk.size === 0) return;
+
+		// Skip silent chunks (no speech detected) to avoid hallucinated filler
+		// text from the provider (e.g., "Thank you." for empty audio).
+		// Only gate when we have actual level data — if the analyser failed,
+		// fall back to transcribing everything.
+		if (this.hasLevelData && this.peakLevel < this.SILENCE_THRESHOLD) {
+			this.peakLevel = 0;
+			return;
+		}
+		// Reset peak for the next chunk window.
+		this.peakLevel = 0;
 
 		this.chunkQueue.push(chunk);
 		void this.processQueue();

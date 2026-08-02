@@ -318,7 +318,7 @@ export class CommandCenterChatView extends ItemView {
 			return;
 		}
 		this.hideComposerNotice();
-		const recorder = new AudioRecorder({ mimeType: 'audio/webm' });
+		const recorder = new AudioRecorder({ mimeType: 'audio/webm', deviceId: this.plugin.settings.audioInputDeviceId || undefined });
 		this.audioRecorder = recorder;
 		try {
 			await recorder.start();
