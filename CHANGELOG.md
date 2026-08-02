@@ -6,13 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [1.1.21] - 2026-08-02
 
+### Fixed
+
+- **Whisper silence hallucinations**: Replaced regex-based `sanitizeTranscript` with exact-match `sanitizeDictation()` — intercepts every API response and strips known filler artifacts ("Thank you.", "Subtitles by Amara.org community", etc.) before any UI insertion.
+- **Dictation text insertion**: Changed from cursor-position insertion to append + DOM event dispatch (`input`/`change` with `bubbles: true`) so Obsidian's state manager recognizes the new input.
+- **Voice prompt modal**: Added silence/short-audio guard — clips under 500ms or below 0.02 RMS peak level are discarded without an API call.
+- **AudioRecorder**: Exposed `getDurationMs()` and `getPeakLevel()` methods for callers to check recording quality before transcribing.
+
 ### Changed
-- Release ${targetVersion}.
+- `sanitizeTranscript()` renamed to `sanitizeDictation()` with simplified exact-match hallucination list. Old name kept as deprecated alias, removed.
 
 ## [1.1.20] - 2026-08-02
 
 ### Changed
-- Release ${targetVersion}.
+
 
 ## [1.1.19] - 2026-08-02
 
