@@ -159,7 +159,7 @@ export class CommandCenterChatView extends ItemView {
 		void this.refreshSttStatus();
 		// The daemon can start or stop outside this view (settings, dashboard,
 		// command palette), so keep the native header indicator current.
-		this.statusRefreshTimer = window.setInterval(() => this.updateHeader(), 1_000);
+		this.statusRefreshTimer = this.registerInterval(window.setInterval(() => this.updateHeader(), 1_000));
 		this.textareaEl.focus();
 	}
 
@@ -296,7 +296,7 @@ export class CommandCenterChatView extends ItemView {
 			}
 			this.recordingStartedAt = Date.now();
 			this.updateRecordingTimer();
-			this.recordingTimer = window.setInterval(() => this.updateRecordingTimer(), 1_000);
+			this.recordingTimer = this.registerInterval(window.setInterval(() => this.updateRecordingTimer(), 1_000));
 			this.microphoneEl.addClass('cc-mic-recording');
 			this.microphoneEl.setAttribute('aria-label', 'Stop voice recording');
 			this.microphoneEl.setAttribute('aria-pressed', 'true');
@@ -458,7 +458,7 @@ export class CommandCenterChatView extends ItemView {
 		const message = { role, bubble, content, markdown: text, renderVersion: 0 };
 		if (role === 'assistant') {
 			const read = bubble.createEl('button', { text: '🔊 Read aloud', cls: 'cc-read-aloud', attr: { 'aria-label': 'Read AI response aloud' } });
-			read.addEventListener('click', () => this.plugin.accessibilityAudio.speak(message.markdown));
+			this.registerDomEvent(read, 'click', () => this.plugin.accessibilityAudio.speak(message.markdown));
 		}
 		void this.renderMessage(message);
 		this.pinnedToBottom = true;

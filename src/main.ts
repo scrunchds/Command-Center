@@ -596,14 +596,13 @@ export default class CommandCenterPlugin extends Plugin {
 				const actions = this.contentEl.createDiv({
 					cls: 'modal-button-container',
 				});
-				actions
-					.createEl('button', { text: 'Cancel' })
-					.addEventListener('click', () => this.close());
+				const cancel = actions.createEl('button', { text: 'Cancel' });
+				cancel.addEventListener('click', () => this.close());
 				const reset = actions.createEl('button', {
 					text: 'Reset and Re-Initialize',
 					cls: 'mod-warning',
 				});
-				reset.addEventListener('click',  () => { void (async () => {
+				reset.addEventListener('click', () => { void (async () => {
 					reset.disabled = true;
 					try {
 						await this.plugin.resetOnboardingRuntime();

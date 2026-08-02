@@ -226,7 +226,7 @@ export class CommandCenterView extends ItemView {
 		] as const) {
 			const btn = controls.createEl('button', { text: label });
 			if (cls) btn.addClass(cls);
-			btn.addEventListener('click', action);
+			this.registerDomEvent(btn, 'click', action);
 		}
 		this.daemonErrorEl = daemonSection.createDiv({
 			cls: 'command-center-daemon-error',
@@ -256,7 +256,7 @@ export class CommandCenterView extends ItemView {
 		});
 		histHeader.createEl('h3', { text: 'Task History' });
 		const clearBtn = histHeader.createEl('button', { text: 'Clear' });
-		clearBtn.addEventListener('click', () => {
+		this.registerDomEvent(clearBtn, 'click', () => {
 			this.taskListEl.empty();
 			this.taskListEl.createEl('p', {
 				text: 'No tasks yet.',
@@ -283,7 +283,7 @@ export class CommandCenterView extends ItemView {
 		const clearStreamBtn = streamHeader.createEl('button', {
 			text: 'Clear All',
 		});
-		clearStreamBtn.addEventListener('click', () => this.clearAllStreams());
+		this.registerDomEvent(clearStreamBtn, 'click', () => this.clearAllStreams());
 
 		this.streamContainerEl = streamSection.createDiv({
 			cls: 'command-center-stream-container',
@@ -305,7 +305,7 @@ export class CommandCenterView extends ItemView {
 		this.debugToggleBtn = reactActions.createEl('button', {
 			text: 'Debug / Step Mode',
 		});
-		this.debugToggleBtn.addEventListener('click', () => {
+		this.registerDomEvent(this.debugToggleBtn, 'click', () => {
 			this.plugin.daemon.setDebugStepMode(
 				!this.plugin.daemon.isDebugStepMode(),
 			);
@@ -314,27 +314,27 @@ export class CommandCenterView extends ItemView {
 		this.nextStepBtn = reactActions.createEl('button', {
 			text: 'Next Step',
 		});
-		this.nextStepBtn.addEventListener('click', () => {
+		this.registerDomEvent(this.nextStepBtn, 'click', () => {
 			this.plugin.daemon.nextDebugStep();
 			this.updateDebugControls();
 		});
 		this.resumeSessionBtn = reactActions.createEl('button', {
 			text: 'Resume Session',
 		});
-		this.resumeSessionBtn.addEventListener('click', () => {
+		this.registerDomEvent(this.resumeSessionBtn, 'click', () => {
 			this.plugin.daemon.resumeDebugSession();
 			this.updateDebugControls();
 		});
 		const exportReactBtn = reactActions.createEl('button', {
 			text: 'Export Session Trace',
 		});
-		exportReactBtn.addEventListener('click', () => {
+		this.registerDomEvent(exportReactBtn, 'click', () => {
 			void this.exportSessionTrace();
 		});
 		const clearReactBtn = reactActions.createEl('button', {
 			text: 'Clear',
 		});
-		clearReactBtn.addEventListener('click', () => this.clearReActMonitor());
+		this.registerDomEvent(clearReactBtn, 'click', () => this.clearReActMonitor());
 		this.updateDebugControls();
 
 		const filters = reactSection.createDiv({
@@ -429,7 +429,7 @@ export class CommandCenterView extends ItemView {
 		}
 		const actions = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-actions' });
 		const discovery = actions.createEl('button', { text: 'Start or revise discovery', cls: 'mod-cta' });
-		discovery.addEventListener('click', () => this.plugin.openOnboarding());
+		this.registerDomEvent(discovery, 'click', () => this.plugin.openOnboarding());
 	}
 
 	async onClose(): Promise<void> {
@@ -481,11 +481,11 @@ export class CommandCenterView extends ItemView {
 	private renderHeader(title: HTMLElement): void {
 		const actions = title.createDiv({ cls: 'command-center-header-actions' });
 		const exportWorkflowBtn = actions.createEl('button', { text: 'Export workflow to Canvas' });
-		exportWorkflowBtn.addEventListener('click', () => void this.plugin.exportActiveWorkflowToCanvas());
+		this.registerDomEvent(exportWorkflowBtn, 'click', () => void this.plugin.exportActiveWorkflowToCanvas());
 		const customize = actions.createEl('button', { text: 'Customize dashboard' });
-		customize.addEventListener('click', () => this.toggleLayoutEditor(customize));
+		this.registerDomEvent(customize, 'click', () => this.toggleLayoutEditor(customize));
 		const vault = actions.createEl('button', { text: 'Open Secrets' });
-		vault.addEventListener('click', () => new CredentialVaultModal(this.app, this.plugin, () => this.renderTelemetry()).open());
+		this.registerDomEvent(vault, 'click', () => new CredentialVaultModal(this.app, this.plugin, () => this.renderTelemetry()).open());
 	}
 
 	private renderTelemetry(): void {
@@ -519,7 +519,7 @@ export class CommandCenterView extends ItemView {
 		const heading = this.layoutEditorEl.createDiv({ cls: 'command-center-section-header' });
 		heading.createEl('h3', { text: 'Dashboard layout' });
 		const reset = heading.createEl('button', { text: 'Reset default layout' });
-		reset.addEventListener('click', () => {
+		this.registerDomEvent(reset, 'click', () => {
 			this.plugin.settings.dashboardLayout = DEFAULT_DASHBOARD_LAYOUT.map(widget => ({ ...widget }));
 			void this.plugin.saveSettings();
 			this.applyDashboardLayout();
@@ -531,21 +531,21 @@ export class CommandCenterView extends ItemView {
 			row.createEl('strong', { text: this.widgetLabel(widget.id) });
 			const up = row.createEl('button', { text: '↑', attr: { 'aria-label': `Move ${this.widgetLabel(widget.id)} up` } });
 			const down = row.createEl('button', { text: '↓', attr: { 'aria-label': `Move ${this.widgetLabel(widget.id)} down` } });
-			up.addEventListener('click', () => this.moveWidget(widget.id, -1));
-			down.addEventListener('click', () => this.moveWidget(widget.id, 1));
+			this.registerDomEvent(up, 'click', () => this.moveWidget(widget.id, -1));
+			this.registerDomEvent(down, 'click', () => this.moveWidget(widget.id, 1));
 			const size = row.createEl('select', { attr: { 'aria-label': `${this.widgetLabel(widget.id)} size` } });
 			for (const value of ['compact', 'standard', 'expanded'] as const) size.createEl('option', { value, text: value });
 			size.value = widget.size;
-			size.addEventListener('change', () => this.updateWidget(widget.id, { size: size.value as DashboardWidgetSize }));
+			this.registerDomEvent(size, 'change', () => this.updateWidget(widget.id, { size: size.value as DashboardWidgetSize }));
 			const protectedWidget = widget.id === 'approvals';
 			const collapse = row.createEl('button', { text: widget.collapsed ? 'Expand' : 'Collapse' });
 			collapse.disabled = protectedWidget;
 			collapse.title = protectedWidget ? 'Mutation approvals must remain visible.' : '';
-			collapse.addEventListener('click', () => this.updateWidget(widget.id, { collapsed: !widget.collapsed }));
+			this.registerDomEvent(collapse, 'click', () => this.updateWidget(widget.id, { collapsed: !widget.collapsed }));
 			const visibility = row.createEl('button', { text: widget.hidden ? 'Show' : 'Hide' });
 			visibility.disabled = protectedWidget;
 			visibility.title = protectedWidget ? 'Mutation approvals cannot be hidden.' : '';
-			visibility.addEventListener('click', () => this.updateWidget(widget.id, { hidden: !widget.hidden }));
+			this.registerDomEvent(visibility, 'click', () => this.updateWidget(widget.id, { hidden: !widget.hidden }));
 		}
 	}
 
@@ -657,15 +657,15 @@ export class CommandCenterView extends ItemView {
 		const evening = controls.createEl('button', {
 			text: '🌙 Evening Close',
 		});
-		morning.addEventListener(
+		this.registerDomEvent(morning, 
 			'click',
 			() => void this.runMorningTouchpoint(morning),
 		);
-		midday.addEventListener(
+		this.registerDomEvent(midday, 
 			'click',
 			() => void this.openMiddayPrompt(midday),
 		);
-		evening.addEventListener(
+		this.registerDomEvent(evening, 
 			'click',
 			() => void this.openEveningPrompt(evening),
 		);
@@ -701,12 +701,12 @@ export class CommandCenterView extends ItemView {
 			cls: 'cc-dashboard-orchestrator-input',
 			attr: { rows: '6', placeholder: 'Ask the Orchestrator…', 'aria-label': 'Orchestrator prompt' },
 		});
-		this.chatInputEl.addEventListener('input', () => this.resizeOrchestratorInput());
+		this.registerDomEvent(this.chatInputEl, 'input', () => this.resizeOrchestratorInput());
 		this.resizeOrchestratorInput();
 		const controls = section.createDiv({ cls: 'cc-dashboard-input-actions' });
 		const dictate = controls.createEl('button', { text: '🎙 Dictate' });
 		let stopDictation: (() => Promise<string>) | null = null;
-		dictate.addEventListener('click', () => void (async () => {
+		this.registerDomEvent(dictate, 'click', () => void (async () => {
 			if (stopDictation) {
 				dictate.disabled = true;
 				try {
@@ -731,8 +731,8 @@ export class CommandCenterView extends ItemView {
 			cls: 'mod-cta',
 		});
 		const submit = () => void this.submitOrchestratorChat(send);
-		send.addEventListener('click', submit);
-		this.chatInputEl.addEventListener('keydown', (event) => {
+		this.registerDomEvent(send, 'click', submit);
+		this.registerDomEvent(this.chatInputEl, 'keydown', (event) => {
 			if (event.key === 'Enter' && !event.shiftKey) {
 				event.preventDefault();
 				submit();
@@ -767,7 +767,7 @@ export class CommandCenterView extends ItemView {
 		row.setText(message);
 		if (role === 'assistant' && message.trim()) {
 			const read = row.createEl('button', { text: '🔊 Read aloud', cls: 'cc-read-aloud' });
-			read.addEventListener('click', () => this.plugin.accessibilityAudio.speak(message));
+			this.registerDomEvent(read, 'click', () => this.plugin.accessibilityAudio.speak(message));
 			if (this.plugin.settings.autoReadAiResponses) this.plugin.accessibilityAudio.speak(message);
 			this.plugin.accessibilityAudio.cue('complete');
 		}
@@ -995,7 +995,7 @@ export class CommandCenterView extends ItemView {
 			this.app.vault.on('delete', refresh),
 			this.app.vault.on('rename', refresh),
 		);
-		this.monitorTimer = window.setInterval(refresh, 5_000);
+		this.monitorTimer = this.registerInterval(window.setInterval(refresh, 5_000));
 	}
 
 	private refreshConfigurationState(): void {
@@ -1434,8 +1434,8 @@ export class CommandCenterView extends ItemView {
 				this.selectedSessionId = selected.sessionId;
 				new SessionReplayModal(this.plugin, selected).open();
 			};
-			entry.addEventListener('click', inspect);
-			entry.addEventListener('keydown', (keyboardEvent) => {
+			this.registerDomEvent(entry, 'click', inspect);
+			this.registerDomEvent(entry, 'keydown', (keyboardEvent) => {
 				if (
 					keyboardEvent.key === 'Enter' ||
 					keyboardEvent.key === ' '
@@ -1665,9 +1665,8 @@ class TextEntryModal extends Modal {
 		const actions = this.contentEl.createDiv({
 			cls: 'modal-button-container',
 		});
-		actions
-			.createEl('button', { text: 'Cancel' })
-			.addEventListener('click', () => this.close());
+		const cancel = actions.createEl('button', { text: 'Cancel' });
+		cancel.addEventListener('click', () => this.close());
 		const submit = actions.createEl('button', {
 			text: this.actionLabel,
 			cls: 'mod-cta',
@@ -1776,9 +1775,7 @@ class SessionReplayModal extends Modal {
 		const nav = this.contentEl.createDiv({ cls: 'cc-trace-detail-nav' });
 		const previous = nav.createEl('button', { text: '← Previous' });
 		previous.disabled = index === 0;
-		previous.addEventListener('click', () =>
-			this.select(events[index - 1]),
-		);
+		previous.addEventListener('click', () => this.select(events[index - 1]));
 		const next = nav.createEl('button', { text: 'Next →' });
 		next.disabled = index >= events.length - 1;
 		next.addEventListener('click', () => this.select(events[index + 1]));

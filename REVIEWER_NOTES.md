@@ -72,3 +72,17 @@ Command Center also supports optional remote model providers. Those connections 
 These capabilities are broader than those of a conventional note-formatting plugin, but they are intrinsic to a local-first desktop agent orchestrator. Removing subprocess management would remove the local Pi execution architecture; removing vault enumeration would prevent retrieval and vault-wide workflow features; and removing the narrow filesystem/environment checks would make reliable local-runtime and multimodal support impractical across supported desktop platforms.
 
 We respectfully request manual review of these permissions in the context of the bounded uses and safeguards described above.
+
+## Obsidian documentation baseline
+
+When changing the plugin, follow the official Obsidian documentation for:
+
+- plugin lifecycle (`onload` / `onunload`)
+- Vault, FileManager, and MetadataCache usage
+- Workspace / WorkspaceLeaf / view management
+- Commands, modals, ribbon actions, status bar, and settings UI
+- event registration and disposal
+- submission requirements and plugin guidelines
+- mobile constraints, even for desktop-only code paths when relevant
+
+Prefer Obsidian-native APIs and workspace/leaf management over custom substitutes whenever the official platform provides the capability.
