@@ -40,7 +40,7 @@ export class WorkflowInputModal extends Modal {
 		}
 		if (this.options.batchConcurrency !== undefined) {
 			new Setting(this.contentEl)
-				.setName('Batch Concurrency')
+				.setName('Batch concurrency')
 				.setDesc('Queue notes processed at the same time (1–10).')
 				.addSlider(slider => slider
 					.setLimits(1, 10, 1)

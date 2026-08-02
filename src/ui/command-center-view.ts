@@ -163,7 +163,7 @@ export class CommandCenterView extends ItemView {
 		const title = container.createDiv({ cls: 'command-center-title-row' });
 		const identity = title.createDiv({ cls: 'command-center-identity' });
 		identity.createEl('h2', { text: 'Command Center' });
-		identity.createEl('span', { text: 'Agentic operating system', cls: 'command-center-subtitle' });
+		identity.createSpan( { text: 'Agentic operating system', cls: 'command-center-subtitle' });
 		this.renderHeader(title);
 		this.telemetryEl = container.createDiv({ cls: 'cc-dashboard-telemetry' });
 		this.renderTelemetry();
@@ -413,7 +413,7 @@ export class CommandCenterView extends ItemView {
 		this.dashboardWorkspaceEl.empty();
 		this.dashboardWorkspaceEl.removeClass('cc-dashboard-onboarding');
 		const heading = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-heading' });
-		heading.createEl('div', { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
+		heading.createDiv( { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
 		heading.createEl('h2', { text: 'Operational overview' });
 		heading.createEl('p', { text: 'Observe, understand, propose, approve, execute, evaluate, and remember.' });
 		const cards = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-cards' });
@@ -482,7 +482,7 @@ export class CommandCenterView extends ItemView {
 		this.registerDomEvent(exportWorkflowBtn, 'click', () => void this.plugin.exportActiveWorkflowToCanvas());
 		const customize = actions.createEl('button', { text: 'Customize dashboard' });
 		this.registerDomEvent(customize, 'click', () => this.toggleLayoutEditor(customize));
-		const vault = actions.createEl('button', { text: 'Open Secrets' });
+		const vault = actions.createEl('button', { text: 'Open secrets' });
 		this.registerDomEvent(vault, 'click', () => new CredentialVaultModal(this.app, this.plugin, () => this.renderTelemetry()).open());
 	}
 
@@ -594,7 +594,7 @@ export class CommandCenterView extends ItemView {
 		this.markWidget(section, 'approvals');
 		const heading = section.createDiv({ cls: 'command-center-section-header' });
 		heading.createEl('h3', { text: 'Mutation approvals' });
-		heading.createEl('span', { text: 'Destructive and bulk operations stop here before any file is touched.', cls: 'cc-widget-caption' });
+		heading.createSpan( { text: 'Destructive and bulk operations stop here before any file is touched.', cls: 'cc-widget-caption' });
 		this.approvalQueueEl = section.createDiv({ cls: 'cc-dashboard-approval-queue' });
 		this.approvalQueueEl.createEl('p', { text: 'No operations awaiting approval.', cls: 'command-center-empty' });
 	}
@@ -617,7 +617,7 @@ export class CommandCenterView extends ItemView {
 		this.markWidget(section, 'bases');
 		const heading = section.createDiv({ cls: 'command-center-section-header' });
 		heading.createEl('h3', { text: 'Bases queue controller' });
-		heading.createEl('span', { text: 'Native .base views remain the queue definition and execution surface.', cls: 'cc-widget-caption' });
+		heading.createSpan( { text: 'Native .base views remain the queue definition and execution surface.', cls: 'cc-widget-caption' });
 		this.basesTelemetryEl = section.createDiv({ cls: 'cc-bases-telemetry' });
 		this.refreshBasesTelemetry();
 	}
@@ -686,7 +686,7 @@ export class CommandCenterView extends ItemView {
 		this.markWidget(section, 'orchestrator');
 		const header = section.createDiv({ cls: 'command-center-section-header' });
 		header.createEl('h3', { text: 'Orchestrator' });
-		header.createEl('span', { text: 'Dashboard agent workspace', cls: 'cc-widget-caption' });
+		header.createSpan( { text: 'Dashboard agent workspace', cls: 'cc-widget-caption' });
 		this.chatMessagesEl = section.createDiv({
 			cls: 'cc-dashboard-orchestrator-messages',
 			attr: { role: 'log', 'aria-live': 'polite' },
@@ -1408,7 +1408,7 @@ export class CommandCenterView extends ItemView {
 	private initializeTraceRowPool(): void {
 		const pool = createDiv({ cls: 'cc-react-entry-pool' });
 		for (let index = 0; index < MAX_TRACE_ENTRIES; index++) {
-			const entry = pool.createEl('div', { cls: 'cc-react-entry' });
+			const entry = pool.createDiv( { cls: 'cc-react-entry' });
 			entry.hidden = true;
 			entry.tabIndex = 0;
 			entry.setAttribute('role', 'button');
@@ -1459,7 +1459,7 @@ export class CommandCenterView extends ItemView {
 		entry: HTMLDivElement,
 		className: string,
 	): HTMLSpanElement {
-		return entry.createEl('span', { cls: className });
+		return entry.createSpan( { cls: className });
 	}
 
 	private updateTraceRow(row: TraceRowSlot, event: ReActTraceEvent): void {

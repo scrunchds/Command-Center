@@ -317,7 +317,8 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 		const timeoutId = window.setTimeout(() => this.abortController!.abort(), this.timeoutMs);
 		try {
 			const url = this.resolveEndpoint(model);
-			// The Obsidian requestUrl API does not support ReadableStreams/SSE. Standard fetch is strictly required here to stream local LLM tokens to the UI.
+			// The Obsidian requestUrl API does not support ReadableStreams/SSE.
+			// Standard fetch is strictly required here to stream local LLM tokens to the UI.
 			const response = await fetch(url, {
 				method: 'POST', headers,
 				body: JSON.stringify(body),

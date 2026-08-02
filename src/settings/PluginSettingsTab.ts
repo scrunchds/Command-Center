@@ -150,14 +150,6 @@ export class PluginSettingsTab extends PluginSettingTab {
 		];
 	}
 
-	/* ═══════════════════════════════════════════════════════
-	   Display
-	   ═══════════════════════════════════════════════════════ */
-
-	display(): void {
-		this.renderImperativeSettings();
-	}
-
 	/** Refresh the imperative settings UI after an interaction. */
 	override update(): void {
 		this.renderImperativeSettings();
@@ -571,11 +563,11 @@ export class PluginSettingsTab extends PluginSettingTab {
 			cls: 'cc-provider-key-badge',
 			text: this.plugin.credentialVault.unlocked ? '🔓 Vault unlocked' : '🔒 Vault locked · local-only',
 		});
-		const testAllBtn = this.createButton(actionBar, 'Test All', async () => {
+		const testAllBtn = this.createButton(actionBar, 'Test all', async () => {
 			testAllBtn.setButtonText('Testing...');
 			testAllBtn.setDisabled(true);
 			await this.healthCheckAll();
-			testAllBtn.setButtonText('Test All');
+			testAllBtn.setButtonText('Test all');
 			testAllBtn.setDisabled(false);
 		});
 		// Sync All Models — refreshes live models for all enabled providers
@@ -732,7 +724,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 				cls: 'cc-provider-key-badge',
 				text: !this.plugin.credentialVault.unlocked ? '🔒 Vault locked' : this.plugin.credentialVault.has(pid) ? '🔐 Configured' : authentication === 'optional' ? 'Not configured · unauthenticated' : 'Not configured',
 			});
-			const manage = keyRow.createEl('button', { text: 'Open Secrets' });
+			const manage = keyRow.createEl('button', { text: 'Open secrets' });
 			manage.addEventListener('click', () => new CredentialVaultModal(this.app, this.plugin, () => this.update()).open());
 		}
 
