@@ -4,6 +4,13 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.16] - 2026-08-02
+
+### Fixed
+
+- **Settings hydration lifecycle**: Added `loadSettings()` method called synchronously at the top of `onload()` before any views or subsystems are registered, ensuring `this.settings` is fully hydrated before the settings tab or any UI components read from it.
+- **Missing `containerEl` render on tab navigation**: Added `display()` override to `PluginSettingsTab` so the imperative settings UI re-renders when the user navigates to the settings tab, preventing stale/empty renders.
+
 ## [1.1.15] - 2026-08-02
 
 ### Fixed
