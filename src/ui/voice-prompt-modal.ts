@@ -1,7 +1,7 @@
 import { Modal } from 'obsidian';
 import type CommandCenterPlugin from '../main';
 import { AudioRecorder } from '../audio/audio-recorder';
-import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeTranscript, MIN_TRANSCRIPTION_DURATION_MS } from '../audio/transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MIN_TRANSCRIPTION_DURATION_MS } from '../audio/transcriber';
 import type { TranscriptionStatusCallback } from '../audio/AccessibilityAudio';
 import { resolveChatContext } from './chat-context';
 
@@ -145,7 +145,7 @@ export class VoicePromptModal extends Modal {
 			const blob = await recorder.stop();
 			const rawText = await this.transcribeWithFallback(blob, controller.signal);
 			// Sanitize: strip Whisper hallucination artifacts.
-			const spokenText = sanitizeTranscript(rawText);
+			const spokenText = sanitizeDictation(rawText);
 			if (!spokenText) {
 				console.debug('[CC] VoiceModal transcript sanitized to empty — likely silence hallucination');
 				if (!this.closed) {

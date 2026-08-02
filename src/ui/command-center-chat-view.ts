@@ -10,7 +10,7 @@ import { createObsidianTools } from '../obsidian-tools';
 import { DEFAULT_REACT_CONFIG } from '../react';
 import type { ReActTraceEvent } from '../react/react-trace';
 import { AudioRecorder } from '../audio/audio-recorder';
-import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeTranscript, MIN_TRANSCRIPTION_DURATION_MS, type TranscriptionCandidate } from '../audio/transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MIN_TRANSCRIPTION_DURATION_MS, type TranscriptionCandidate } from '../audio/transcriber';
 import { LiveTranscriber } from '../audio/live-transcriber';
 import { processTranscriptionOutput, insertIntoActiveEditor } from '../audio/transcription-integrations';
 import { createVaultSearchTool } from '../rag/rag-tool';
@@ -379,8 +379,8 @@ export class CommandCenterChatView extends ItemView {
 			console.debug(`[CC] Chat got audio blob: ${audio.size} bytes, type=${audio.type}`);
 			const rawText = await this.transcribeWithFallback(audio, controller.signal);
 			// Sanitize: strip Whisper hallucination artifacts.
-			const text = sanitizeTranscript(rawText);
-			if (!text) {
+			const sanitizedText = sanitizeDictation(rawText);
+			if (!sanitizedText) {
 				console.debug('[CC] Chat transcript sanitized to empty — likely silence hallucination');
 				this.hideComposerNotice();
 				if (this.isOpen) this.showComposerNotice('No speech detected — try again.', true);
@@ -392,15 +392,12 @@ export class CommandCenterChatView extends ItemView {
 				console.debug('[CC] Chat transcription discarded: recorder was superseded');
 				return;
 			}
-			// Insert at cursor position, not blindly at end of value.
+			// Append text and fire DOM events so Obsidian's state manager sees the change.
 			const el = this.textareaEl;
-			const before = el.value.slice(0, el.selectionStart);
-			const after = el.value.slice(el.selectionEnd);
-			const spacer = before && !/\s$/.test(before) ? ' ' : '';
-			el.value = `${before}${spacer}${text}${after}`;
-			// Move cursor to end of inserted text.
-			const newPos = before.length + spacer.length + text.length;
-			el.setSelectionRange(newPos, newPos);
+			el.value += (el.value.length > 0 ? ' ' : '') + sanitizedText;
+			el.dispatchEvent(new Event('input', { bubbles: true }));
+			el.dispatchEvent(new Event('change', { bubbles: true }));
+			el.setSelectionRange(el.value.length, el.value.length);
 			this.resizeTextarea();
 			await this.refreshDetectedContext();
 			el.focus();
