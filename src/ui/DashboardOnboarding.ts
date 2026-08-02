@@ -43,7 +43,7 @@ export class DashboardOnboarding {
 			text: 'Establish context and goals first. Vault structure and optional capabilities are negotiated only after the system understands what you need it to serve.',
 		});
 		const close = heading.createEl('button', { text: 'Return to operations' });
-		close.addEventListener('click', () => this.options.onClose?.());
+		this.renderer.registerDomEvent(close, 'click', () => this.options.onClose?.());
 
 		this.phase = this.host.createDiv({ cls: 'cc-onboarding-phase' });
 		this.updatePhase();
@@ -57,7 +57,7 @@ export class DashboardOnboarding {
 			cls: 'cc-onboarding-input',
 			attr: { rows: '3', placeholder: 'Answer in your own words…' },
 		});
-		this.input.addEventListener('keydown', (event) => {
+		this.renderer.registerDomEvent(this.input, 'keydown', (event) => {
 			if (event.key === 'Enter' && !event.shiftKey) {
 				event.preventDefault();
 				void this.submit();
@@ -65,11 +65,11 @@ export class DashboardOnboarding {
 		});
 		const actions = this.composer.createDiv({ cls: 'cc-onboarding-actions' });
 		const skip = actions.createEl('button', { text: 'Skip optional question' });
-		skip.addEventListener('click', () => void this.submit('Skip this optional question; record no invented value and continue.'));
+		this.renderer.registerDomEvent(skip, 'click', () => void this.submit('Skip this optional question; record no invented value and continue.'));
 		const dictate = actions.createEl('button', { text: '🎙 Dictate', attr: { 'aria-label': 'Start dictation' } });
-		dictate.addEventListener('click', () => void this.toggleDictation(dictate));
+		this.renderer.registerDomEvent(dictate, 'click', () => void this.toggleDictation(dictate));
 		this.send = actions.createEl('button', { text: 'Send', cls: 'mod-cta' });
-		this.send.addEventListener('click', () => void this.submit());
+		this.renderer.registerDomEvent(this.send, 'click', () => void this.submit());
 		this.status = this.composer.createDiv({ cls: 'cc-onboarding-status' });
 		try {
 			await this.render('assistant', await this.engine.start());
@@ -140,13 +140,13 @@ export class DashboardOnboarding {
 		const actions = this.approval.createDiv({ cls: 'cc-onboarding-actions' });
 		const revise = actions.createEl('button', { text: 'Reject and revise' });
 		const create = actions.createEl('button', { text: 'Approve selected assets', cls: 'mod-cta' });
-		revise.addEventListener('click', () => {
+		this.renderer.registerDomEvent(revise, 'click', () => {
 			this.approval?.remove();
 			this.approval = null;
 			this.composer.removeClass('is-hidden');
 			this.setStatus('No assets were created.');
 		});
-		create.addEventListener('click', () => void (async () => {
+		this.renderer.registerDomEvent(create, 'click', () => void (async () => {
 			create.disabled = revise.disabled = true;
 			this.setStatus('Creating approved assets…');
 			try {
@@ -183,7 +183,7 @@ export class DashboardOnboarding {
 		await MarkdownRenderer.render(this.app, content, bubble, '', this.renderer);
 		if (role === 'assistant') {
 			const read = row.createEl('button', { text: '🔊 Read aloud', cls: 'cc-read-aloud', attr: { 'aria-label': 'Read assistant response aloud' } });
-			read.addEventListener('click', () => this.plugin.accessibilityAudio.speak(content));
+			this.renderer.registerDomEvent(read, 'click', () => this.plugin.accessibilityAudio.speak(content));
 			if (this.plugin.settings.autoReadAiResponses) this.plugin.accessibilityAudio.speak(content);
 			this.plugin.accessibilityAudio.cue('complete');
 		}

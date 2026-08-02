@@ -44,19 +44,19 @@ export class CommandCenterBasesView extends BasesView {
 		const toolbar = this.containerEl.createDiv({ cls: 'cc-bases-toolbar' });
 		toolbar.createSpan({ text: `${rows.length} pending note${rows.length === 1 ? '' : 's'}` });
 		const selectAll = toolbar.createEl('button', { text: 'Select all' });
-		selectAll.addEventListener('click', () => {
+		this.registerDomEvent(selectAll, 'click', () => {
 			for (const row of rows) this.selected.add(row.file.path);
 			void this.render(++this.renderVersion);
 		});
 		const runSelected = toolbar.createEl('button', { text: `Execute selected (${this.selected.size})`, cls: 'mod-cta' });
 		runSelected.disabled = this.selected.size === 0;
-		runSelected.addEventListener('click', () => {
+		this.registerDomEvent(runSelected, 'click', () => {
 			const files = rows.filter(row => this.selected.has(row.file.path)).map(row => row.file);
 			this.enqueue(files);
 		});
 		const runAll = toolbar.createEl('button', { text: 'Execute pending' });
 		runAll.disabled = rows.length === 0;
-		runAll.addEventListener('click', () => this.enqueue(rows.map(row => row.file)));
+		this.registerDomEvent(runAll, 'click', () => this.enqueue(rows.map(row => row.file)));
 
 		if (rows.length === 0) {
 			this.containerEl.createEl('p', { text: 'No pending notes match this Base.', cls: 'command-center-empty' });
@@ -67,7 +67,7 @@ export class CommandCenterBasesView extends BasesView {
 			const item = list.createDiv({ cls: 'cc-bases-row' });
 			const checkbox = item.createEl('input', { type: 'checkbox' });
 			checkbox.checked = this.selected.has(row.file.path);
-			checkbox.addEventListener('change', () => {
+			this.registerDomEvent(checkbox, 'change', () => {
 				if (checkbox.checked) this.selected.add(row.file.path);
 				else this.selected.delete(row.file.path);
 				runSelected.textContent = `Execute selected (${this.selected.size})`;
@@ -75,7 +75,7 @@ export class CommandCenterBasesView extends BasesView {
 			});
 			const body = item.createDiv({ cls: 'cc-bases-row-body' });
 			const link = body.createEl('a', { text: row.file.path, cls: 'internal-link' });
-			link.addEventListener('click', event => {
+			this.registerDomEvent(link, 'click', event => {
 				event.preventDefault();
 				void this.plugin.app.workspace.getLeaf(false).openFile(row.file);
 			});

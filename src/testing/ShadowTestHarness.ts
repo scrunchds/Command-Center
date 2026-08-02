@@ -54,20 +54,27 @@ export class ShadowTestHarness {
 
 	private async testSecurityVault(): Promise<ShadowTestResult> {
 		try {
-			const vault = new MemoryCredentialVault();
+			const backing = new Map<string, string>();
+			const secretStorage = {
+				getSecret: (id: string) => backing.get(id) ?? null,
+				setSecret: (id: string, secret: string) => { backing.set(id, secret); },
+				listSecrets: () => [...backing.keys()],
+			};
+			const vault = new MemoryCredentialVault(secretStorage);
 			const fixture = 'synthetic-memory-credential';
 			vault.unlock({ openai: fixture });
-			const initialCheck = vault.has('openai') && vault.get('openai') === fixture;
-			vault.lock();
-			const clearedCheck = !vault.unlocked && !vault.has('openai') && vault.get('openai') === '';
+			const initialCheck = vault.has('openai') && vault.get('openai') === fixture && vault.count() === 1;
+			secretStorage.setSecret('command-center-openai', '');
+			backing.delete('command-center-openai');
+			const clearedCheck = !vault.has('openai') && vault.get('openai') === '' && vault.count() === 0;
 			const passed = initialCheck && clearedCheck;
 			return {
-				name: 'Air-Gapped Security Vault Lifecycle',
+				name: 'Obsidian Secret Storage Credential Lifecycle',
 				passed,
-				details: passed ? 'Credentials correctly stored in memory and completely wiped on clear/lock.' : 'Failed to correctly manage memory credential state.',
+				details: passed ? 'Credentials are stored and read through the Secret Storage adapter surface.' : 'Failed to correctly manage Secret Storage-backed credentials.',
 			};
 		} catch (error) {
-			return { name: 'Air-Gapped Security Vault Lifecycle', passed: false, details: String(error) };
+			return { name: 'Obsidian Secret Storage Credential Lifecycle', passed: false, details: String(error) };
 		}
 	}
 

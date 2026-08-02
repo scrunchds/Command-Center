@@ -23,7 +23,7 @@ export interface ProviderMeta {
 	icon: string;
 	/** Legacy required-key gate retained for adapter compatibility. */
 	requiresKey: boolean;
-	/** Endpoint authentication contract. Optional credentials are still encrypted. */
+	/** Endpoint authentication contract. Secrets live in Obsidian Secret Storage when available. */
 	authentication?: ProviderAuthentication;
 	defaultBaseUrl?: string;
 	models: ProviderModel[];

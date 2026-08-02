@@ -529,6 +529,10 @@ npm run sanitize:release  # repository plus current build/release assets
 
 ## Development
 
+### Obsidian plugin development baseline
+
+This repository follows the official Obsidian plugin documentation for lifecycle, workspace, settings, commands, modals, events, vault access, and submission requirements. When changing code, prefer Obsidian-native APIs over custom replacements, clean up event handlers on unload, and keep desktop-only code paths explicit where the plugin depends on them.
+
 ### Prerequisites
 
 - Node.js 20, 22, or 24
@@ -591,7 +595,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are both currently `1.1.7`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are currently `1.1.8`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**. Its remaining advisory warnings are non-blocking recommendations, primarily sentence-case UI labels and declarative settings-search adoption.
 

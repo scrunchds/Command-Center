@@ -4,6 +4,26 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.8] - 2026-08-02
+
+### Changed
+
+- Aligned plugin lifecycle cleanup and timer handling more closely with Obsidian's component and view guidelines.
+- Migrated provider credential storage to Obsidian Secret Storage-backed handling and removed the legacy custom encrypted credential payload path.
+- Updated release metadata, repository notes, and packaging defaults for the 1.1.8 release.
+
+### Fixed
+
+- Ensured settings-tab background sync timers are cleaned up when the tab hides.
+- Tightened modal and view event handling to keep listeners scoped to their UI lifecycle.
+- Updated the diagnostic harness to validate the Secret Storage credential path.
+- Kept build, lint, tests, and release packaging green after the compliance sweep.
+
+### Security
+
+- Removed the legacy encrypted credential vault flow in favor of Obsidian Secret Storage.
+- Kept release packaging and sanitization aligned with the repository's leak-prevention workflow.
+
 ## [1.1.7] - 2026-08-01
 
 ### Changed
@@ -49,6 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Retained onboarding credential/endpoint guards and release validation checks.
 
+[1.1.8]: https://github.com/scrunchds/Command-Center/compare/1.1.7...1.1.8
 [1.1.3]: https://github.com/scrunchds/Command-Center/compare/1.1.2...1.1.3
 
 ## [1.1.2] - 2026-07-29
@@ -90,9 +111,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Continued to prevent secret-like values from entering generated onboarding configuration.
 - Maintained release sanitization and packaging checks before publication.
 
-[1.1.1]: https://github.com/scrunchds/Command-Center/compare/1.1.0...1.1.1
-
-## [1.1.0] - 2026-07-27
+## [1.1.1] - 2026-07-29
 
 ### Added
 
