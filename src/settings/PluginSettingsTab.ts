@@ -126,12 +126,14 @@ export class PluginSettingsTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Provide setting definitions for Obsidian 1.13.0+ settings search.
-	 * Maps setting keys to display names so users can find Command Center
-	 * settings by typing in the Obsidian settings search bar.
+	 * Imperative render entry point called by Obsidian when the user navigates
+	 * to this settings tab. The base class getSettingDefinitions() returns an
+	 * empty array (no declarative definitions), so Obsidian falls back to
+	 * calling display(). Without this override, the tab renders blank, or
+	 * may appear to route to a different plugin's settings.
 	 */
-	getSettingDefinitions(): Array<{ key: string; name: string }> {
-		return [];
+	override display(): void {
+		this.renderImperativeSettings();
 	}
 
 	/** Refresh the imperative settings UI after an interaction. */

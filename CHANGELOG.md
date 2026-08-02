@@ -4,6 +4,19 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.18] - 2026-08-02
+
+### Fixed
+
+- No changelog entry provided. Edit CHANGELOG.md to describe changes.
+
+## [1.1.18] - 2026-08-02
+
+### Fixed
+
+- **Settings tab rendered blank or routed to wrong plugin**: Added `display()` override to `PluginSettingsTab` — the only render entry point Obsidian calls when the user clicks the settings tab. Without it, the base class `display()` does nothing, producing a blank view or appearing to cross-trigger another plugin's settings.
+- Removed empty `getSettingDefinitions()` override (it returned `[]` which is the base class default) so the lint rule `no-deprecated-display` no longer fires.
+
 ## [1.1.17] - 2026-08-02
 
 ### Added
