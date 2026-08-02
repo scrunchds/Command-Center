@@ -151,7 +151,12 @@ export class TranscriberAdapter {
 	buildFormData(audio: Blob, options: TranscriptionOptions = {}): FormData {
 		if (!(audio instanceof Blob) || audio.size === 0) throw new Error('Cannot transcribe an empty audio blob.');
 		const form = new FormData();
-		const filename = options.filename ?? 'recording.webm';
+		// Derive the filename extension from the actual blob MIME type so the
+		// provider can decode the audio correctly.  A hardcoded .webm extension
+		// can cause hallucinated filler text (e.g. "Thank you.") when the browser
+		// falls back to a different codec.
+		const ext = mimeExtension(audio.type) || 'webm';
+		const filename = options.filename ?? `recording.${ext}`;
 		form.append('file', audio, filename);
 		const model = this.resolveRequestModel(options.model);
 		if (model) form.append('model', model);
@@ -428,4 +433,27 @@ function describeResponse(payload: Record<string, unknown>, maxDepth = 2): strin
 		return str ?? '?';
 	}
 	return describe(payload, 0);
+}
+
+/**
+ * Map a MIME type to a file extension suitable for multipart transcription requests.
+ * Falls back to 'webm' when the type is unknown or missing.
+ */
+function mimeExtension(mime: string): string | undefined {
+	const map: Record<string, string> = {
+		'audio/webm': 'webm',
+		'audio/webm;codecs=opus': 'webm',
+		'audio/ogg': 'ogg',
+		'audio/ogg;codecs=opus': 'ogg',
+		'audio/mp4': 'm4a',
+		'audio/mpeg': 'mp3',
+		'audio/mp3': 'mp3',
+		'audio/wav': 'wav',
+		'audio/x-wav': 'wav',
+		'audio/flac': 'flac',
+		'audio/aac': 'aac',
+	};
+	// Normalise: strip parameters like codecs for a safe lookup.
+	const normalised = mime.split(';')[0]?.trim().toLowerCase() ?? '';
+	return map[normalised] ?? map[mime];
 }

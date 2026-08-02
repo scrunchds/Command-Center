@@ -93,6 +93,7 @@ export class VoicePromptModal extends Modal {
 	private async beginRecording(): Promise<void> {
 		const recorder = new AudioRecorder({
 			mimeType: 'audio/webm',
+			deviceId: this.plugin.settings.audioInputDeviceId || undefined,
 			onDurationChange: duration => { if (!this.closed) this.durationEl.setText(this.formatDuration(duration)); },
 			onAudioLevel: level => {
 				if (this.closed) return;

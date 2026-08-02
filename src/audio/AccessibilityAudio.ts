@@ -18,7 +18,7 @@ export class AccessibilityAudio {
 		if (!this.plugin.settings.speechToTextEnabled) {
 			throw new Error('Enable speech to text in Settings to use dictation.');
 		}
-		const recorder = new AudioRecorder({ mimeType: 'audio/webm' });
+		const recorder = new AudioRecorder({ mimeType: 'audio/webm', deviceId: this.plugin.settings.audioInputDeviceId || undefined });
 		await recorder.start();
 		this.cue('start');
 		return {

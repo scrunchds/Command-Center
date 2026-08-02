@@ -59,6 +59,8 @@ export interface CommandCenterSettings {
 	textToSpeechRate: number;
 	/** Master toggle for speech-to-text capture and transcription fallback. */
 	speechToTextEnabled: boolean;
+	/** Preferred audio input device ID (from enumerateDevices); empty uses the system default. */
+	audioInputDeviceId: string;
 	/** Preferred provider for speech-to-text; "auto" preserves fallback ordering. */
 	speechToTextProviderId: 'auto' | ProviderId;
 	/** Preferred transcription model; empty string lets the provider choose automatically. */
@@ -91,6 +93,7 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	textToSpeechVoice: '',
 	textToSpeechRate: 1,
 	speechToTextEnabled: true,
+	audioInputDeviceId: '',
 	speechToTextProviderId: 'auto',
 	speechToTextModel: '',
 	autoReadAiResponses: false,
