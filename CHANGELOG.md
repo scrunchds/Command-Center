@@ -8,7 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- No changelog entry provided. Edit CHANGELOG.md to describe changes.
+- **Whisper silence hallucinations**: Dictation now runs a silence/short-audio guard before sending audio to the API — clips under 500ms or below 0.02 RMS peak level are discarded without an API call.
+- **Transcript sanitization**: Added `sanitizeTranscript()` to strip known Whisper hallucination artifacts (`"Thank you."`, `"Thank you for watching."`, `"Subtitles by..."`, repetitive word loops) when they dominate the transcript.
+- **Cursor-aware insertion**: Dictation now inserts at the textarea cursor position (with proper spacing) instead of blindly appending to the end of the value.
+- **Clean status reset**: "No speech detected" notices auto-clear; "Listening..." / "Transcribing..." states reset on completion or error.
+- **MIME-derived file extension**: Recording filename extension is derived from the actual audio MIME type so providers decode codecs correctly (avoids hallucinated filler from mislabeled .webm).
 
 ## [1.1.18] - 2026-08-02
 
