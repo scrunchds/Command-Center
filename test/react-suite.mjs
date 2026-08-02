@@ -861,7 +861,7 @@ pass('15g: end-to-end evaluation across 3 agents produces aggregate scores');
 async function verifyImageProcessing() {
 console.log('\n─── 16. Vault Image Processing ───');
 const m = await import(pathToFileURL(SRC + '/providers/image-utils.ts').href);
-const { classifyTask } = await import(pathToFileURL(SRC + '/routing.ts').href);
+const { classifyTask } = await import(pathToFileURL(SRC + '/routing/routing-table.ts').href);
 const vault = await mkdtemp(join(tmpdir(), 'cc-images-'));
 const attachments = join(vault, 'Attachments');
 const notes = join(vault, 'Notes');
@@ -2111,7 +2111,7 @@ const { ProviderFactory } = await import(pathToFileURL(SRC + '/providers/provide
 const { PROVIDER_REGISTRY } = await import(pathToFileURL(SRC + '/providers/provider-registry.ts').href);
 const { ModelRouter } = await import(pathToFileURL(SRC + '/routing/ModelRouter.ts').href);
 const { ProviderDispatcher } = await import(pathToFileURL(SRC + '/dispatcher.ts').href);
-const { DEFAULT_ROUTING } = await import(pathToFileURL(SRC + '/routing.ts').href);
+const { DEFAULT_ROUTING } = await import(pathToFileURL(SRC + '/routing/routing-table.ts').href);
 {
 // A keyless local provider (LM Studio) is usable when enabled; a key-requiring
 // provider (OpenAI) is not usable without an API key even when enabled.

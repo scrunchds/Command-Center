@@ -41,11 +41,11 @@ import type { ProviderFactory } from '../providers/provider-factory';
 import type { ProviderDispatcher } from '../dispatcher';
 import type { Task } from '../types';
 import type { ModelRouter as RoutingModelRouter } from './ModelRouter';
-import type { CommandCenterSettings } from '../settings';
+import type { CommandCenterSettings } from '../settings/settings-model';
 import {
 	METACOGNITIVE_DEPTH_MIN,
 	METACOGNITIVE_DEPTH_MAX,
-} from '../settings';
+} from '../settings/settings-model';
 
 /* ─── 8-Modality Taxonomy (Directive 1.7) ─────────────────── */
 

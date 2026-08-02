@@ -10,7 +10,7 @@ import {
 	DEFAULT_SETTINGS,
 	DEFAULT_MULTI_PROVIDER,
 	PluginSettingsTab,
-} from './settings';
+} from './settings/settings-model';
 import { PersistenceManager } from './persistence';
 import type { StoredTask, StoredSessions } from './persistence';
 import { registerCommands } from './commands';

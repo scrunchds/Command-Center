@@ -15,7 +15,7 @@ import { ProviderFactory } from '../providers/provider-factory';
 import {
 	classifyProviderFailure, ProviderCircuitBreaker, type ProviderFailureAction,
 } from '../providers/provider-recovery';
-import { DEFAULT_ROUTING } from '../routing';
+import { DEFAULT_ROUTING } from '../routing/routing-table';
 import type { ToolDefinition } from '../types';
 import { preprocessPrompt, extractImageRefs } from '../providers/image-utils';
 import type { AgentMemoryStore } from '../memory/memory-store';

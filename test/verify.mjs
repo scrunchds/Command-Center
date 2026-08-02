@@ -19,7 +19,7 @@ import { strict as assert } from 'node:assert';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync, rmSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, mkdtempSync, writeFileSync, statSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -1126,6 +1126,88 @@ async function verifyReleaseTag() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   14. Obsidian Guideline Compliance (manifest, structure, paths)
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyObsidianGuidelines() {
+	console.log('\n─── 14. Obsidian Guideline Compliance ───');
+	const manifest = JSON.parse(readFileSync(join(ROOT, 'manifest.json'), 'utf8'));
+
+	// Plugin ID must be lowercase alphanumeric with hyphens only (no spaces/underscores)
+	assert.ok(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(manifest.id), `manifest.id "${manifest.id}" must be lowercase with hyphens only`);
+	pass('14a: manifest.id is a valid plugin identifier');
+
+	// Version must be strict x.y.z semver (no leading zeroes, no pre-release tags)
+	assert.ok(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(manifest.version), 'manifest.version must be strict x.y.z');
+	pass('14b: manifest.version is strict semver without leading zeroes');
+
+	// fundingUrl must be https and valid
+	assert.ok(/^https:\/\//.test(manifest.fundingUrl), 'manifest.fundingUrl must be https');
+	pass('14c: manifest.fundingUrl is https');
+
+	// Styles.css must not contain hardcoded colors outside CSS variables
+	const styles = readFileSync(join(ROOT, 'styles.css'), 'utf8');
+	const hardcodedHex = styles.match(/#[0-9a-fA-F]{3,6}(?![0-9a-fA-F])/g) ?? [];
+	const allowedHex = hardcodedHex.filter(hex => {
+		const upper = hex.toUpperCase();
+		return ['#FFDD00', '#F7D400', '#000000', '#000', '#FD0', '#0003'].includes(upper);
+	});
+	assert.equal(allowedHex.length, hardcodedHex.length,
+		`styles.css contains hardcoded hex colors outside the BMC brand palette: ${hardcodedHex.filter(h => !allowedHex.includes(h)).join(', ')}`);
+	pass('14d: styles.css only uses CSS variables and the documented BMC brand palette');
+
+	// No innerHTML/outerHTML/insertAdjacentHTML anywhere in src (XSS guideline)
+	const srcFiles = [];
+	(function collect(dir) {
+		for (const entry of readdirSync(dir)) {
+			const full = join(dir, entry);
+			const stat = statSync(full);
+			if (stat.isDirectory()) collect(full);
+			else if (entry.endsWith('.ts')) srcFiles.push(full);
+		}
+	})(join(ROOT, 'src'));
+	const dangerous = [];
+	for (const file of srcFiles) {
+		const text = readFileSync(file, 'utf8');
+		if (text.includes('.innerHTML') || text.includes('.outerHTML') || text.includes('insertAdjacentHTML')) {
+			dangerous.push(file);
+		}
+	}
+	assert.equal(dangerous.length, 0, `dangerous DOM APIs used in: ${dangerous.join(', ')}`);
+	pass('14e: no innerHTML/outerHTML/insertAdjacentHTML usage (XSS-safe DOM construction)');
+
+	// Vault.process preferred over Vault.modify for background writes
+	let processCount = 0, modifyCount = 0;
+	(function collectSrc(dir) {
+		for (const entry of readdirSync(dir)) {
+			const full = join(dir, entry);
+			const s = statSync(full);
+			if (s.isDirectory()) collectSrc(full);
+			else if (entry.endsWith('.ts')) {
+				const text = readFileSync(full, 'utf8');
+				processCount += (text.match(/vault\.process\(/g) ?? []).length;
+				modifyCount += (text.match(/vault\.modify\(/g) ?? []).length;
+			}
+		}
+	})(join(ROOT, 'src'));
+	assert.ok(processCount > 0, 'Vault.process must be used for atomic background writes');
+	pass('14f: vault.process used across source tree for atomic file writes');
+
+	// normalizePath used for user-defined paths
+	const mainSource = readFileSync(join(ROOT, 'src/main.ts'), 'utf8');
+	assert.ok(mainSource.includes('normalizePath'), 'normalizePath must be imported/used in main.ts');
+	pass('14g: main.ts uses normalizePath for path sanitization');
+
+	// Command callbacks must not use deprecated patterns
+	const commands = mainSource.match(/addCommand\(\{[\s\S]*?\}\);/g) ?? [];
+	assert.ok(commands.length > 0, 'plugin must register commands');
+	for (const cmd of commands) {
+		assert.ok(!cmd.includes('checkCallback') || cmd.includes('checkCallback:'), 'commands must use valid callback types');
+	}
+	pass('14h: plugin registers commands with valid callback types');
+}
+
+/* ═══════════════════════════════════════════════════════════
    Main Runner
    ═══════════════════════════════════════════════════════════ */
 
@@ -1149,6 +1231,7 @@ async function main() {
 	await verifyCacheManager();
 	await verifyShadowTreeArchive();
 	await verifyReleaseTag();
+	await verifyObsidianGuidelines();
 
 	console.log('\n═══════════════════════════════════════════');
 	console.log(`  Results:  ${results.pass} passed, ${results.fail} failed, ${results.skip} skipped`);

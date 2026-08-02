@@ -5,9 +5,9 @@
  * This file provides the settings data model, defaults, and convenience re-export.
  */
 
-import type { MultiProviderSettings, ProviderId } from './providers/provider-types';
-import { DEFAULT_FALLBACK_CONFIG } from './providers/provider-types';
-import { DEFAULT_ROUTING } from './routing';
+import type { MultiProviderSettings, ProviderId } from '../providers/provider-types';
+import { DEFAULT_FALLBACK_CONFIG } from '../providers/provider-types';
+import { DEFAULT_ROUTING } from '../routing/routing-table';
 
 /* ─── Settings Interface ────────────────────────────────── */
 
@@ -105,4 +105,4 @@ export const METACOGNITIVE_DEPTH_MIN = 1;
 export const METACOGNITIVE_DEPTH_MAX = 10;
 
 // Re-export the dynamic settings tab for convenience
-export { PluginSettingsTab } from './settings/PluginSettingsTab';
+export { PluginSettingsTab } from './PluginSettingsTab';

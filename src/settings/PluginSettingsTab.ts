@@ -32,11 +32,11 @@ import {
 	PROVIDER_REGISTRY,
 	getDefaultModelForProvider,
 } from '../providers/provider-registry';
-import { DEFAULT_ROUTING } from '../routing';
+import { DEFAULT_ROUTING } from '../routing/routing-table';
 import {
 	METACOGNITIVE_DEPTH_MIN,
 	METACOGNITIVE_DEPTH_MAX,
-} from '../settings';
+} from '../settings/settings-model';
 import { detectPiPath, clearPiDetectionCache } from '../daemon';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
 
@@ -1562,7 +1562,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			const el = select as HTMLSelectElement;
 			const current = this.plugin.settings.textToSpeechVoice;
 			const selected = Array.from(el.options).find(option => option.value === current);
-			el.innerHTML = '';
+			el.replaceChildren();
 			el.add(new Option('Default voice', ''));
 			for (const voice of voices) {
 				el.add(new Option(

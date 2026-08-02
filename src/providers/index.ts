@@ -33,7 +33,7 @@ export {
 	classifyProviderFailure, isTransientProviderError, ProviderCircuitBreaker,
 } from './provider-recovery';
 export type { ProviderFailureAction, ProviderCircuitState } from './provider-recovery';
-export { classifyTask, resolveRoute, buildRoutingTable, DEFAULT_ROUTING } from '../routing';
+export { classifyTask, resolveRoute, buildRoutingTable, DEFAULT_ROUTING } from '../routing/routing-table';
 export { ProviderDispatcher } from '../dispatcher';
 export { parseModelJson, repairModelJson, stripJsonCodeFence } from './json-repair';
 export {

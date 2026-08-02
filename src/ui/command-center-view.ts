@@ -18,7 +18,7 @@ import type { StoredTask } from '../persistence';
 import type { ReActTraceEvent, TraceEventCallback } from '../react/react-trace';
 import type { InterviewEngine } from '../onboarding/InterviewEngine';
 import type { OnboardingConfig } from '../onboarding/OnboardingTypes';
-import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings';
+import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings/settings-model';
 import { DashboardOnboarding } from './DashboardOnboarding';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
 import { ChatActionCard } from './chat-action-card';

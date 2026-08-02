@@ -1,6 +1,6 @@
 /** OpenAI-compatible speech-to-text adapter. */
 
-import type { CommandCenterSettings } from '../settings';
+import type { CommandCenterSettings } from '../settings/settings-model';
 import type { MultiProviderSettings, ProviderId } from '../providers/provider-types';
 import { detectLocalRuntime, isLocalBaseUrl, sanitizeBaseUrl } from '../providers/provider-types';
 import { PROVIDER_REGISTRY } from '../providers/provider-registry';

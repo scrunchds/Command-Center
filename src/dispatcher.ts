@@ -20,7 +20,7 @@ import { ProviderFactory } from './providers/provider-factory';
 import {
 	classifyProviderFailure, ProviderCircuitBreaker, type ProviderFailureAction,
 } from './providers/provider-recovery';
-import { classifyTask, resolveRoute, type ResolvedRoute } from './routing';
+import { classifyTask, resolveRoute, type ResolvedRoute } from './routing/routing-table';
 
 /* ─── Dispatcher ───────────────────────────────────────── */
 
