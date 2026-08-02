@@ -145,7 +145,7 @@ export class VoicePromptModal extends Modal {
 		for (const candidate of candidates) {
 			if (signal.aborted) throw new Error('Transcription cancelled.');
 			this.sttBadgeEl.setText(candidate.label);
-			const adapter = new TranscriberAdapter({ providerId: candidate.providerId, getSettings: () => this.plugin.settings, defaultModel: candidate.model, maxAttempts: candidate.local ? 1 : 2, signal });
+			const adapter = new TranscriberAdapter({ providerId: candidate.providerId, getSettings: () => this.plugin.settings, defaultModel: candidate.model, maxAttempts: candidate.local ? 1 : 2, getApiKey: providerId => this.plugin.credentialVault.get(providerId), signal });
 			try {
 				if (candidate.local) try { await adapter.fetchLiveAudioModels(); } catch { /* Try implicit local model. */ }
 				return await adapter.transcribe(blob, candidate.model);

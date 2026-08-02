@@ -14,7 +14,7 @@ export class SemanticDatabase {
 	private connection: SQLiteConnection | null = null;
 	private readonly memory = new Map<string, SemanticChunkRecord>();
 	private opened = false;
-	constructor(private readonly driver: SQLiteDriver | undefined, private readonly dimensions: number, private readonly vaultConfigDir = '.obsidian', private readonly path = SEMANTIC_DATABASE_PATH, private readonly vssExtension = 'vss0') {
+	constructor(private readonly driver: SQLiteDriver | undefined, private readonly dimensions: number, private readonly vaultConfigDir: string, private readonly path = SEMANTIC_DATABASE_PATH, private readonly vssExtension = 'vss0') {
 		if (!Number.isInteger(dimensions) || dimensions < 1) throw new Error('Embedding dimensions must be a positive integer.');
 	}
 

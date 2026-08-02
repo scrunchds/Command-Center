@@ -13,7 +13,7 @@ export interface VaultTopography {
 	noteCount: number;
 }
 
-const excluded = (path: string): boolean => path === '.obsidian' || path.startsWith('.obsidian/') || path === '.trash' || path.startsWith('.trash/');
+const excluded = (path: string, configDir: string): boolean => path === configDir || path.startsWith(`${configDir}/`) || path === '.trash' || path.startsWith('.trash/');
 const parent = (path: string): string | null => !path ? null : path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
 
 /** Read-only with respect to user content; only its localized plugin map is written. */
@@ -21,7 +21,7 @@ export class TopographySweep {
 	constructor(private readonly app: App, private readonly outputPath = VAULT_TOPOGRAPHY_PATH) {}
 
 	async run(signal?: AbortSignal): Promise<VaultTopography> {
-		const loaded: TAbstractFile[] = this.app.vault.getAllLoadedFiles().filter(file => !excluded(file.path));
+		const loaded: TAbstractFile[] = this.app.vault.getAllLoadedFiles().filter(file => !excluded(file.path, this.app.vault.configDir));
 		const notes = loaded.filter((file): file is TFile => file instanceof TFile && file.extension === 'md');
 		const folders = loaded.filter((file): file is TFolder => file instanceof TFolder);
 		const tags = new Map<string, number>();

@@ -691,7 +691,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 				cls: 'cc-provider-key-badge',
 				text: !this.plugin.credentialVault.unlocked ? '🔒 Vault locked' : this.plugin.credentialVault.has(pid) ? '🔐 Configured' : authentication === 'optional' ? 'Not configured · unauthenticated' : 'Not configured',
 			});
-			const manage = keyRow.createEl('button', { text: 'Manage Securely' });
+			const manage = keyRow.createEl('button', { text: 'Open Secrets' });
 			manage.addEventListener('click', () => new CredentialVaultModal(this.app, this.plugin, () => this.update()).open());
 		}
 
@@ -799,7 +799,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			) {
 				refreshBtn.disabled = true;
 				if (!credentialReady) {
-					refreshBtn.setAttribute('title', 'Unlock the credential vault to refresh live models.');
+					refreshBtn.setAttribute('title', 'Open Secrets to refresh live models.');
 				}
 			}
 			refreshBtn.addEventListener('click',  () => { void (async () => {
@@ -1450,17 +1450,15 @@ export class PluginSettingsTab extends PluginSettingTab {
 			)
 			.setHeading()
 			.setClass('cc-developer-support-heading');
-		const donate = support.createEl('a', {
-			text: '☕ Buy Dustin a coffee',
+		const donate = support.createEl('button', {
+			text: '☕ Open support page',
 			cls: 'mod-cta cc-developer-support-button',
-			href: DEVELOPER_SUPPORT_URL,
+			attr: { type: 'button' },
 		});
-		donate.setAttribute('target', '_blank');
-		donate.setAttribute('rel', 'noopener noreferrer');
-		donate.setAttribute(
-			'aria-label',
-			'Support Dustin on Buy Me a Coffee (opens in a browser)',
-		);
+		donate.addEventListener('click', () => {
+			void this.plugin.activateCommandCenterBrowserView(DEVELOPER_SUPPORT_URL);
+		});
+		donate.setAttribute('aria-label', 'Open support page in the built-in browser panel');
 
 		const footer = containerEl.createDiv({ cls: 'cc-settings-footer' });
 		footer.createEl('p', {

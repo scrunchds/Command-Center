@@ -112,6 +112,15 @@ Command Center — Agentic OS for Obsidian
 @media (max-width: 1000px) { .cc-dashboard-widget-grid > .is-size-compact { grid-column: span 6; } }
 @media (max-width: 720px) { .cc-dashboard-widget-grid > [data-widget-id] { grid-column: 1 / -1; } .cc-layout-row { grid-template-columns: 1fr repeat(2, auto); } .cc-layout-row select, .cc-layout-row button:nth-last-child(-n+2) { grid-row: 2; } }
 .cc-telemetry-card { min-width: 0; padding: 10px 12px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-secondary); }
+
+/* ─── Built-in browser view ───────────────────────── */
+.cc-browser-view { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.cc-browser-header { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--background-modifier-border); background: var(--background-secondary); }
+.cc-browser-nav { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; }
+.cc-browser-address { flex: 1 1 auto; min-width: 0; padding: 6px 10px; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-primary); color: var(--text-normal); font-family: var(--font-interface); }
+.cc-browser-status { margin-left: 6px; color: var(--text-muted); font-size: var(--font-smallest); white-space: nowrap; }
+.cc-browser-viewport { flex: 1 1 auto; min-height: 0; background: var(--background-primary); }
+.cc-browser-frame { width: 100%; height: 100%; min-height: 0; border: 0; background: var(--background-primary); }
 .cc-telemetry-card.is-ok { border-left: 3px solid var(--color-green); }
 .cc-telemetry-card.is-warning { border-left: 3px solid var(--color-orange); }
 .cc-telemetry-card.is-secure { border-left: 3px solid var(--color-blue); }

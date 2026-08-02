@@ -484,7 +484,7 @@ export class CommandCenterView extends ItemView {
 		exportWorkflowBtn.addEventListener('click', () => void this.plugin.exportActiveWorkflowToCanvas());
 		const customize = actions.createEl('button', { text: 'Customize dashboard' });
 		customize.addEventListener('click', () => this.toggleLayoutEditor(customize));
-		const vault = actions.createEl('button', { text: 'Secure vault' });
+		const vault = actions.createEl('button', { text: 'Open Secrets' });
 		vault.addEventListener('click', () => new CredentialVaultModal(this.app, this.plugin, () => this.renderTelemetry()).open());
 	}
 
@@ -496,7 +496,7 @@ export class CommandCenterView extends ItemView {
 			{ label: 'Route', value: `${route.providerId} · ${route.modelId ?? 'default'}`, state: route.source === 'fail-closed' ? 'warning' : 'ok' },
 			{ label: 'Depth', value: `${this.plugin.nativeAutoRouter.getDepth()} / 10`, state: 'neutral' },
 			{ label: 'Pi daemon', value: this.plugin.daemon.isRunning() ? 'Running' : 'Stopped', state: this.plugin.daemon.isRunning() ? 'ok' : 'warning' },
-			{ label: 'Secure vault', value: this.plugin.credentialVault.unlocked ? 'Unlocked' : 'Locked · local only', state: this.plugin.credentialVault.unlocked ? 'ok' : 'secure' },
+			{ label: 'Secrets', value: `${this.plugin.credentialVault.count()} stored`, state: this.plugin.credentialVault.count() > 0 ? 'ok' : 'secure' },
 		] as const;
 		for (const item of items) {
 			const card = this.telemetryEl.createDiv({ cls: `cc-telemetry-card is-${item.state}` });

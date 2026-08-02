@@ -23,6 +23,10 @@ import {
 	COMMAND_CENTER_CHAT_VIEW_TYPE,
 } from './ui/command-center-chat-view';
 import {
+	CommandCenterBrowserView,
+	COMMAND_CENTER_BROWSER_VIEW_TYPE,
+} from './ui/browser-view';
+import {
 	COMMAND_CENTER_BASES_VIEW_ID,
 	commandCenterBasesRegistration,
 } from './ui/command-center-bases-view';
@@ -108,10 +112,11 @@ export default class CommandCenterPlugin extends Plugin {
 	configManager!: ConfigManager;
 	commandCenterView: CommandCenterView | null = null;
 	commandCenterChatView: CommandCenterChatView | null = null;
+	commandCenterBrowserView: CommandCenterBrowserView | null = null;
 
 	/** Multi-provider subsystem (v2.0). */
 	providerFactory!: ProviderFactory;
-	readonly credentialVault = new MemoryCredentialVault();
+	credentialVault!: MemoryCredentialVault;
 	dispatcher!: ProviderDispatcher;
 	router!: ModelRouter;
 	endpointRouter!: EndpointModelRouter;
@@ -154,6 +159,7 @@ export default class CommandCenterPlugin extends Plugin {
 		this.settings.dashboardLayout = Array.isArray(this.settings.dashboardLayout)
 			? this.settings.dashboardLayout
 			: DEFAULT_SETTINGS.dashboardLayout.map(widget => ({ ...widget }));
+		this.credentialVault = new MemoryCredentialVault(this.app.secretStorage, 'command-center');
 		this.accessibilityAudio = new AccessibilityAudio(this);
 		// Ensure multiProvider exists (migration from v1)
 		if (!this.settings.multiProvider) {
@@ -269,7 +275,7 @@ export default class CommandCenterPlugin extends Plugin {
 		);
 		// SQLite is an optional injected desktop capability. The database remains
 		// operational with an in-memory local index when no safe native driver exists.
-		this.semanticDatabase = new SemanticDatabase(undefined, 384);
+		this.semanticDatabase = new SemanticDatabase(undefined, 384, this.app.vault.configDir);
 		await this.semanticDatabase.open();
 		this.dialecticRag = new DialecticRAG(
 			this.nativeAutoRouter,
@@ -465,6 +471,11 @@ export default class CommandCenterPlugin extends Plugin {
 			this.commandCenterChatView = view;
 			return view;
 		});
+		this.registerView(COMMAND_CENTER_BROWSER_VIEW_TYPE, (leaf) => {
+			const view = new CommandCenterBrowserView(leaf, this);
+			this.commandCenterBrowserView = view;
+			return view;
+		});
 		const basesRegistered = this.registerBasesView(
 			COMMAND_CENTER_BASES_VIEW_ID,
 			commandCenterBasesRegistration(this),
@@ -480,6 +491,9 @@ export default class CommandCenterPlugin extends Plugin {
 			'message-square',
 			'Command Center: Open Chat Panel',
 			() => this.activateCommandCenterChatView(),
+		);
+		this.addRibbonIcon('globe', 'Command Center: Open Browser', () =>
+			void this.activateCommandCenterBrowserView(),
 		);
 		this.addSettingTab(new PluginSettingsTab(this.app, this));
 		registerCommands(this);
@@ -499,6 +513,11 @@ export default class CommandCenterPlugin extends Plugin {
 			id: 'run-shadow-clone-diagnostics',
 			name: 'Run Shadow-Clone Diagnostics',
 			callback: () => { void this.runShadowCloneDiagnostics(); },
+		});
+		this.addCommand({
+			id: 'open-browser-panel',
+			name: 'Open Command Center Browser',
+			callback: () => { void this.activateCommandCenterBrowserView(); },
 		});
 
 		// Defer first-run discovery until Obsidian's workspace is ready. The
@@ -691,6 +710,7 @@ export default class CommandCenterPlugin extends Plugin {
 		this.daemon.trace.clearCallback();
 		this.commandCenterView = null;
 		this.commandCenterChatView = null;
+		this.commandCenterBrowserView = null;
 		this.pythonWorker?.dispose();
 		await this.semanticDatabase?.close();
 		this.daemon.stop();
@@ -1377,6 +1397,27 @@ export default class CommandCenterPlugin extends Plugin {
 		});
 		await workspace.revealLeaf(leaf);
 	}
+
+	/** Open the built-in web browser panel in a workspace leaf. */
+	async activateCommandCenterBrowserView(url?: string): Promise<void> {
+		const { workspace } = this.app;
+		const existing = workspace.getLeavesOfType(COMMAND_CENTER_BROWSER_VIEW_TYPE);
+		let leaf = existing[0] ?? null;
+		if (!leaf) {
+			leaf = workspace.getRightLeaf(true) ?? workspace.getLeaf('split');
+			if (!leaf) return;
+			await leaf.setViewState({
+				type: COMMAND_CENTER_BROWSER_VIEW_TYPE,
+				active: true,
+			});
+		} else {
+			await workspace.revealLeaf(leaf);
+		}
+		const view = this.commandCenterBrowserView ?? (leaf.view instanceof CommandCenterBrowserView ? leaf.view : null);
+		if (view && url) view.open(url);
+		await workspace.revealLeaf(leaf);
+	}
+
 }
 
 /* ─── ReAct Task Executor (module-level helper) ──────── */
