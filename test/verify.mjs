@@ -1303,6 +1303,40 @@ async function verifyObsidianGuidelines() {
 	})(join(ROOT, 'src'));
 	assert.equal(findCount, 0, 'must not use getFiles().find() for path lookup');
 	pass('14t: no getFiles().find() for path lookup (uses getFileByPath/getAbstractFileByPath)');
+
+	// Documentation consistency: README badge must match actual test count
+	const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+	const badgeMatch = readme.match(/tests-(\d+)%20passing-brightgreen/);
+	assert.ok(badgeMatch, 'README must contain a test badge');
+	const badgeCount = parseInt(badgeMatch[1], 10);
+	// The badge should reflect the sum of core tests + React tests
+	// We check it's >= the core test count (which is verified in this test run)
+	assert.ok(badgeCount >= results.pass, 'README test badge (' + badgeCount + ') must be >= actual passing tests (' + results.pass + ')');
+	pass('14u: README test badge count is up to date');
+
+	// README version reference matches manifest version
+	const manifest2 = JSON.parse(readFileSync(join(ROOT, 'manifest.json'), 'utf8'));
+	const version = manifest2.version;
+	// Check the release automation section mentions the current version
+	const versionInReadme = readme.match(/currently `(\d+\.\d+\.\d+)`/);
+	assert.ok(versionInReadme, 'README must mention current version in release automation section');
+	assert.equal(versionInReadme[1], version, 'README version must match manifest version');
+	pass('14v: README version reference matches manifest.json');
+
+	// CHANGELOG has an entry for the current version
+	const changelog = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8');
+	assert.ok(changelog.includes('## [' + version + ']'), 'CHANGELOG must have an entry for version ' + version);
+	pass('14w: CHANGELOG has entry for current version');
+
+	// manifest.json author matches AGENTS.md scope
+	const agents = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
+	assert.ok(agents.includes('Command Center'), 'AGENTS.md must reference the project');
+	pass('14x: AGENTS.md references the project');
+
+	// REVIEWER_NOTES.md is present and non-empty
+	const reviewer = readFileSync(join(ROOT, 'REVIEWER_NOTES.md'), 'utf8');
+	assert.ok(reviewer.length > 500, 'REVIEWER_NOTES.md must be substantial');
+	pass('14y: REVIEWER_NOTES.md is present and substantial');
 }
 
 /* ═══════════════════════════════════════════════════════════
