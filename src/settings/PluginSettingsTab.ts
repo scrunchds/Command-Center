@@ -1579,6 +1579,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		key: K,
 		value: CommandCenterPlugin['settings'][K],
 	): Promise<void> {
+		console.debug(`[CC] Settings saving: ${String(key)} =`, value);
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] =
 			value;
 		await this.plugin.saveSettings();

@@ -222,6 +222,7 @@ export class AudioRecorder {
 	};
 
 	private setState(state: AudioRecorderState): void {
+		console.debug(`[CC] AudioRecorder state: ${this.state} → ${state}`);
 		this.state = state;
 		for (const listener of this.listeners) {
 			try { listener(state); } catch { /* UI callbacks cannot break recorder cleanup. */ }

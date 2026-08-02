@@ -840,11 +840,18 @@ export default class CommandCenterPlugin extends Plugin {
 	/* ─── Settings persistence ──────────────────────── */
 
 	async saveSettings(): Promise<void> {
+		// Deep-clone settings so the mutation below never corrupts the live state.
+		const clone: CommandCenterSettings = JSON.parse(JSON.stringify(this.settings));
 		// Defense in depth: strip legacy plaintext fields before every disk write.
-		for (const credentials of Object.values(this.settings.multiProvider.credentials)) {
+		// Operate on the clone so the live in-memory object retains API keys from
+		// the vault. The vault is the source of truth for secrets; the settings
+		// object mirrors them transiently for UI-bound code that has not yet been
+		// migrated to the vault API (see getTranscriptionCandidates, etc.).
+		for (const credentials of Object.values(clone.multiProvider.credentials)) {
 			if (credentials && 'apiKey' in credentials) delete (credentials as unknown as { apiKey?: string }).apiKey;
 		}
-		this.persist.setSettings({ ...this.settings });
+		console.debug('[CC] Saving settings (strip apiKey from clone, live object untouched)');
+		this.persist.setSettings(clone as unknown as Record<string, unknown>);
 		await this.persist.forceFlush();
 	}
 

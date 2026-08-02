@@ -343,7 +343,12 @@ export class CommandCenterChatView extends ItemView {
 	private async stopRecordingAndTranscribe(): Promise<void> {
 		const recorder = this.audioRecorder;
 		if (!recorder || recorder.getState() !== 'recording' || this.isTranscribing) return;
+		console.debug('[CC] Chat stopRecordingAndTranscribe: stopping recorder');
 		this.isTranscribing = true;
+		// Generation counter prevents race when a new recording starts before the
+		// previous transcription completes. Capture before any await so the
+		// compare-and-swap in the finally block is deterministic.
+		const lockedRecorder = recorder;
 		this.stopRecordingTimer();
 		this.microphoneEl.removeClass('cc-mic-recording');
 		this.microphoneEl.addClass('is-transcribing');
@@ -356,9 +361,14 @@ export class CommandCenterChatView extends ItemView {
 		const controller = new AbortController();
 		this.transcriptionAbort = controller;
 		try {
-			const audio = await recorder.stop();
+			const audio = await lockedRecorder.stop();
+			console.debug(`[CC] Chat got audio blob: ${audio.size} bytes, type=${audio.type}`);
 			const text = await this.transcribeWithFallback(audio, controller.signal);
-			if (!this.isOpen || this.audioRecorder !== recorder) return;
+			// Guard: if a new recording started while transcribing, discard this result.
+			if (!this.isOpen || this.audioRecorder !== lockedRecorder) {
+				console.debug('[CC] Chat transcription discarded: recorder was superseded');
+				return;
+			}
 			if (text) {
 				const existing = this.textareaEl.value;
 				this.textareaEl.value = existing && !/\s$/.test(existing) ? `${existing} ${text}` : `${existing}${text}`;
@@ -372,7 +382,8 @@ export class CommandCenterChatView extends ItemView {
 			if (this.isOpen) this.showComposerNotice(`Transcription failed: ${(error as Error).message}`, true);
 		} finally {
 			if (this.transcriptionAbort === controller) this.transcriptionAbort = null;
-			if (this.audioRecorder === recorder) this.audioRecorder = null;
+			// Only null-out audioRecorder if we're still the one who captured it.
+			if (this.audioRecorder === lockedRecorder) this.audioRecorder = null;
 			this.isTranscribing = false;
 			if (this.isOpen) this.resetMicrophoneUi();
 		}
@@ -516,12 +527,14 @@ export class CommandCenterChatView extends ItemView {
 
 	private async transcribeWithFallback(audio: Blob, signal: AbortSignal): Promise<string> {
 		const candidates = this.getTranscriptionCandidates();
+		console.debug(`[CC] Chat transcribeWithFallback: ${candidates.length} candidate(s)`, candidates.map(c => c.label));
 		if (!candidates.length) throw new Error('Enable speech to text and configure a local or cloud transcription provider.');
 		const errors: string[] = [];
 		for (let index = 0; index < candidates.length; index++) {
 			if (signal.aborted) throw new Error('Transcription cancelled.');
 			const candidate = candidates[index]!;
 			const label = index > 0 ? `${candidate.label} · fallback ${index}` : candidate.label;
+			console.debug(`[CC] Trying transcription candidate ${index + 1}/${candidates.length}: ${candidate.label}`);
 			this.sttStatusEl.setText(`STT: ${label}`);
 			this.showComposerNotice(`Transcribing via ${label}...`);
 			try {
@@ -536,7 +549,7 @@ export class CommandCenterChatView extends ItemView {
 				if (candidate.local) {
 					this.showComposerNotice(`Discovering ${candidate.label} models...`);
 					try { await this.withTimeout(transcriber.fetchLiveAudioModels(), 5_000, `${candidate.label} model discovery timed out`); }
-					catch { /* The transcription endpoint may still support an implicit model. */ }
+					catch { console.debug(`[CC] Local model discovery failed for ${candidate.label}, trying implicit model`); }
 				}
 				this.showComposerNotice(`Transcribing via ${label}...`);
 				const text = await this.withTimeout(
@@ -544,17 +557,21 @@ export class CommandCenterChatView extends ItemView {
 					candidate.local ? 15_000 : 60_000,
 					`${candidate.label} timed out`,
 				);
+				console.debug(`[CC] Transcription succeeded from ${candidate.label} (${text.length} chars)`);
 				this.sttStatusEl.setText(`STT: ${candidate.label}`);
 				return text.trim();
 			} catch (error) {
 				const msg = (error as Error).message;
+				console.error(`[CC] Transcription failed for ${candidate.label}:`, error);
 				errors.push(`${candidate.label}: ${msg}`);
 				this.showComposerNotice(`${candidate.label} failed: ${msg}`, true);
 				// Brief pause so the user can see the fallback error before the next attempt
 				if (index < candidates.length - 1) await this.safeDelay(800);
 			}
 		}
-		throw new Error(`All transcription providers failed. ${errors.join(' | ')}`);
+		const finalErr = `All transcription providers failed. ${errors.join(' | ')}`;
+		console.error('[CC]', finalErr);
+		throw new Error(finalErr);
 	}
 
 	private withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {

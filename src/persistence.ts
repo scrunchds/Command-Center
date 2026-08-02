@@ -84,12 +84,14 @@ export class PersistenceManager {
 
 	async load(): Promise<PersistedData> {
 		const raw = (await this.plugin.loadData()) as Record<string, unknown> | null;
+		console.debug('[CC] PersistenceManager.load: raw data loaded', raw ? { schema: raw.schema, hasSettings: 'settings' in raw } : 'null');
 		const data = raw ? this.migrate(raw) : this.empty();
 		data.settings = sanitizeSettings(data.settings);
 		this.settingsSnapshot = data.settings;
 		this.history = data.history;
 		this.queue = data.queue ?? [];
 		this.sessions = data.sessions;
+		console.debug('[CC] PersistenceManager.load: resolved', { schema: data.schema, historySize: data.history.length, hasSessions: !!data.sessions });
 		return data;
 	}
 
@@ -216,13 +218,17 @@ export class PersistenceManager {
 		if (this.pendingTimer) { self.clearTimeout(this.pendingTimer); this.pendingTimer = null; }
 		if (this.dirty) {
 			this.dirty = false;
-			await this.plugin.saveData({
+			const payload = {
 				schema: CURRENT_SCHEMA,
 				settings: sanitizeSettings(this.settingsSnapshot),
 				history: this.history,
 				sessions: this.sessions,
 				queue: this.queue,
-			});
+			};
+			console.debug('[CC] PersistenceManager forceFlush: saving data', { schema: payload.schema, historySize: payload.history.length, queueSize: payload.queue.length });
+			await this.plugin.saveData(payload);
+		} else {
+			console.debug('[CC] PersistenceManager forceFlush: nothing dirty to flush');
 		}
 	}
 }

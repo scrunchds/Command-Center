@@ -146,6 +146,7 @@ export class VoicePromptModal extends Modal {
 
 	private async transcribeWithFallback(blob: Blob, signal: AbortSignal): Promise<string> {
 		const candidates = this.candidates();
+		console.debug(`[CC] VoicePromptModal transcribeWithFallback: ${candidates.length} candidate(s)`, candidates.map(c => c.label));
 		if (!candidates.length) throw new Error('Enable speech to text and configure a local or cloud transcription provider.');
 		const errors: string[] = [];
 		const onStatus: TranscriptionStatusCallback = (_phase, message) => {
@@ -158,6 +159,7 @@ export class VoicePromptModal extends Modal {
 			if (signal.aborted) throw new Error('Transcription cancelled.');
 			const candidate = candidates[index]!;
 			const label = index > 0 ? `${candidate.label} (fallback ${index})` : candidate.label;
+			console.debug(`[CC] Trying transcription candidate ${index + 1}/${candidates.length}: ${candidate.label}`);
 			onStatus('transcribing', label);
 			const adapter = new TranscriberAdapter({
 				providerId: candidate.providerId,
@@ -173,7 +175,7 @@ export class VoicePromptModal extends Modal {
 					try {
 						await this.withTimeout(adapter.fetchLiveAudioModels(), 5_000, `${candidate.label} model discovery timed out`);
 					} catch {
-						// Non-fatal; the endpoint may still support an implicit model.
+						console.debug(`[CC] Local model discovery failed for ${candidate.label}, trying implicit model`);
 					}
 				}
 				onStatus('transcribing', `${label} — processing audio...`);
@@ -182,6 +184,7 @@ export class VoicePromptModal extends Modal {
 					candidate.local ? 15_000 : 60_000,
 					`${candidate.label} timed out`,
 				);
+				console.debug(`[CC] Transcription succeeded from ${candidate.label} (${text.length} chars)`);
 				if (!this.closed) {
 					this.sttBadgeEl.setText(candidate.label);
 					this.statusEl.setText('Transcription complete — dispatching...');
@@ -189,13 +192,16 @@ export class VoicePromptModal extends Modal {
 				return text.trim();
 			} catch (error) {
 				const msg = (error as Error).message;
+				console.error(`[CC] Transcription failed for ${candidate.label}:`, error);
 				errors.push(`${candidate.label}: ${msg}`);
 				onStatus('error', `${candidate.label} failed: ${msg}`);
 				// Brief pause so user can see the error before the next fallback
 				if (index < candidates.length - 1) await this.delay(800);
 			}
 		}
-		throw new Error(`All transcription providers failed. ${errors.join(' | ')}`);
+		const finalErr = `All transcription providers failed. ${errors.join(' | ')}`;
+		console.error('[CC]', finalErr);
+		throw new Error(finalErr);
 	}
 
 	private delay(ms: number): Promise<void> {
