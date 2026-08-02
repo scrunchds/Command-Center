@@ -841,7 +841,7 @@ export default class CommandCenterPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		// Deep-clone settings so the mutation below never corrupts the live state.
-		const clone: CommandCenterSettings = JSON.parse(JSON.stringify(this.settings));
+		const clone = JSON.parse(JSON.stringify(this.settings)) as CommandCenterSettings;
 		// Defense in depth: strip legacy plaintext fields before every disk write.
 		// Operate on the clone so the live in-memory object retains API keys from
 		// the vault. The vault is the source of truth for secrets; the settings

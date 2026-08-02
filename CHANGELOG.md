@@ -4,6 +4,15 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.15] - 2026-08-02
+
+### Fixed
+
+- **saveSettings() deep-clone**: `saveSettings()` now deep-clones the settings object before stripping `apiKey` fields, preventing in-memory corruption of the live credentials object. API keys are now retained in memory after save.
+- **Vault credential routing**: `getTranscriptionCandidates()` and `candidates()` now use `credentialVault.has()` instead of reading `credentials.apiKey` directly (which was stripped on every save).
+- **Race condition in stopRecordingAndTranscribe()**: Added `lockedRecorder` generation counter to prevent a new recording from being silently overwritten during async transcription.
+- **Comprehensive logging**: Added `console.debug`/`console.error` at AudioRecorder state transitions, PersistenceManager load/flush, SettingsTab saves, and all transcription candidate attempts.
+
 ## [1.1.14] - 2026-08-02
 
 ### Added
