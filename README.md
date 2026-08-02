@@ -3,11 +3,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.13%2B-7C3AED?logo=obsidian)](https://obsidian.md/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022%20%7C%2024-339933?logo=node.js&logoColor=white)](package.json)
-[![Tests](https://img.shields.io/badge/tests-195%20passing-brightgreen)](#quality-security-and-release-controls)
+[![Tests](https://img.shields.io/badge/tests-254%20passing-brightgreen)](#quality-security-and-release-controls)
+[![Attestations](https://img.shields.io/badge/attestations-Sigstore-blue?logo=sigstore)](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20development-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/DustinS)
 
-**Command Center is a personal operational OS for Obsidian.** It combines an interview-driven setup, a multi-agent Orchestrator–Worker runtime, provider-aware model routing, native workflows, stationary vault indexes, retrieval-augmented generation, persistent memory, voice input, and headless automation—without imposing a productivity framework on your notes.
+**Command Center is a personal operational OS for Obsidian — a local-first AI multi-agent orchestrator that transforms your vault into an intelligent workspace.** It combines interview-driven onboarding, a 12-provider model routing layer, a local Pi ReAct engine with Orchestrator–Worker loops, hybrid vault RAG (BM25 + semantic retrieval), persistent agent memory, native Markdown/Canvas workflows with Bases queue integration, voice input/dictation/live transcription, a daily operations engine, and headless automation — all without imposing a productivity framework on your notes.
 
 > [!IMPORTANT]
 > Command Center can modify vault files when you approve or run mutating operations. Keep backups, review destructive action cards, and test workflows on non-critical notes first.
@@ -556,7 +557,7 @@ npm run dev
 |---|---|
 | `npm run typecheck` | Strict TypeScript check (including security, metacognition, execution, and diagnostic layers) |
 | `npm run lint` | Zero-warning ESLint gate |
-| `npm run test` | 44 core + 151 ReAct/workflow/UI/service tests |
+| `npm run test` | 103 core + 151 ReAct/workflow/UI/service tests |
 | `npm run benchmark` | Produce the standardized 10-metric report |
 | `npm run benchmark:check` | Enforce the 25% core regression threshold |
 | `npm run sanitize` | Scan public repository files for PII/secrets/runtime data |
@@ -579,7 +580,7 @@ License and attribution documents remain at repository level. Restricting the in
 
 ## Quality, security, and release controls
 
-The test suite currently contains **195 tests**:
+The test suite currently contains **254 tests**:
 
 - **44 core tests** — build integrity, parsers, byte-safe RPC framing, subprocess integration, task queue, recovery, and provider fallback
 - **151 ReAct and subsystem tests** — roles, evaluation, traces, workflows, Bases, chat context, action cards, audio, JIT lifecycle, RAG, memory, CLI, locks, and stress scenarios
@@ -595,7 +596,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are currently `1.1.14`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.1.14`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**.
 
