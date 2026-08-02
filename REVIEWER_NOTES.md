@@ -64,7 +64,7 @@ Command Center also supports optional remote model providers. Those connections 
 - Direct filesystem reads are narrow, validated, and feature-driven.
 - Vault retrieval applies bounded context budgets and least-privilege agent tool policies.
 - Clipboard behavior is user-initiated and write-only.
-- Non-streaming provider and catalog calls use Obsidian `requestUrl`. The remaining direct `fetch` path is limited to completion streaming because token-by-token SSE handling requires a `ReadableStream` response body.
+- Non-streaming provider and catalog calls use Obsidian `requestUrl`. The single `fetch` call at `src/providers/base-http-provider.ts:322` is exclusively for SSE token streaming, which Obsidian's `requestUrl` cannot support because `RequestUrlResponse` exposes only `status`, `headers`, `text`, `json`, and `arrayBuffer` — no `ReadableStream body`. This is the documented exception per the [Obsidian network requests guide](https://docs.obsidian.md/Plugins/Guides/Network+requests).
 - Runtime memory, generated configuration, and audit data remain in the vault's documented Command Center locations and are excluded from published repository artifacts.
 
 ## Requested Review Consideration

@@ -188,7 +188,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 				d.addOption('retriever', 'Retriever');
 				d.addOption('summarizer', 'Summarizer');
 				d.addOption('editor', 'Editor');
-				d.addOption('react-orchestrator', 'ReAct Orchestrator');
+				d.addOption('react-orchestrator', 'React orchestrator');
 				d.setValue(this.plugin.settings.activeProfile).onChange((v) =>
 					this.saveSetting('activeProfile', v),
 				);
@@ -217,7 +217,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		new Setting(body)
 			.setName('Passive prompt context budget')
-			.setDesc('Controls how much memory and vault retrieval can be injected into chat, ReAct, and voice prompts. Higher values help long-context work; the interview flow is unaffected.')
+			.setDesc('Controls how much memory and vault retrieval can be injected into chat, React, and voice prompts. Higher values help long-context work; the interview flow is unaffected.')
 			.addSlider((slider) =>
 				slider
 					.setLimits(2_000, 64_000, 1_000)
@@ -232,7 +232,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		const piSetting = new Setting(body)
 			.setName('Pi harness path')
 			.setDesc(
-				'Path to the pi CLI binary. Use "Detect" to auto-find it, or type a custom path.',
+				'Path to the pi CLI binary. Use "detect" to auto-find it, or type a custom path.',
 			);
 
 		// Status indicator showing whether the path is valid
@@ -267,7 +267,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		piSetting
 			.addText((text) => {
 			piTextInput = text;
-			text.setPlaceholder('pi')
+			text.setPlaceholder('Pi')
 				.setValue(this.plugin.settings.piPath)
 					.onChange((value) => {
 					if (piDebounce) window.clearTimeout(piDebounce);
@@ -365,7 +365,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		new Setting(body)
 			.setName('Silent daily startup')
 			.setDesc(
-				'Morning Start evaluates capacity and assembles today’s note without intermediate approval prompts. Inbox proposals remain unapproved and are summarized for later review.',
+				'Morning start evaluates capacity and assembles today’s note without intermediate approval prompts. Inbox proposals remain unapproved and are summarized for later review.',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -484,7 +484,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		new Setting(body)
 			.setName('Automatically read AI responses')
-			.setDesc('Read completed AI responses aloud automatically. Every response also has a manual Read aloud control.')
+			.setDesc('Read completed AI responses aloud automatically. Every response also has a manual read aloud control.')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.autoReadAiResponses).onChange(value => this.saveSetting('autoReadAiResponses', value)));
 
 		new Setting(body)
@@ -508,7 +508,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		new Setting(body)
 			.setName('Speech-to-text model')
 			.setDesc('Leave blank to use the provider default or live model discovery.')
-			.addText(text => text.setPlaceholder('whisper-large-v3-turbo').setValue(this.plugin.settings.speechToTextModel).onChange(value => this.saveSetting('speechToTextModel', value)));
+			.addText(text => text.setPlaceholder('Whisper-large-v3-turbo').setValue(this.plugin.settings.speechToTextModel).onChange(value => this.saveSetting('speechToTextModel', value)));
 
 		new Setting(body)
 			.setName('Microphone')
@@ -559,7 +559,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			syncAllBtn.setButtonText('⏳ Syncing...');
 			syncAllBtn.setDisabled(true);
 			await this.syncAllModels();
-			syncAllBtn.setButtonText('🔄 Sync All Models');
+			syncAllBtn.setButtonText('🔄 Sync all models');
 			syncAllBtn.setDisabled(false);
 		});
 		this.createButton(actionBar, 'Collapse All', () => {
@@ -816,7 +816,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			) {
 				refreshBtn.disabled = true;
 				if (!credentialReady) {
-					refreshBtn.setAttribute('title', 'Open Secrets to refresh live models.');
+					refreshBtn.setAttribute('title', 'Open secrets to refresh live models.');
 				}
 			}
 			refreshBtn.addEventListener('click',  () => { void (async () => {
@@ -1123,7 +1123,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		// If no live models were returned, show a note
 		if (liveModels && liveModels.length === 0) {
 			select.createEl('option', {
-				text: '⚠️ No models found',
+				text: '⚠️ no models found',
 				value: 'unknown',
 			});
 		}
@@ -1305,7 +1305,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Add fallback button
 		const addBtn = body.createEl('button', {
-			text: '+ Add Fallback',
+			text: '+ add fallback',
 			cls: 'cc-add-fallback-btn',
 		});
 		addBtn.addEventListener('click',  () => { void (async () => {
@@ -1463,19 +1463,19 @@ export class PluginSettingsTab extends PluginSettingTab {
 		new Setting(supportCopy)
 			.setName('Thank the developer')
 			.setDesc(
-				'If Command Center helps your workflow, you can support its continued development.',
+				'If command center helps your workflow, you can support its continued development.',
 			)
 			.setHeading()
 			.setClass('cc-developer-support-heading');
 		const donate = support.createEl('button', {
-			text: '☕ Open support page',
-			cls: 'mod-cta cc-developer-support-button',
+			text: '☕ Buy me a coffee',
+			cls: 'mod-cta cc-developer-support-button cc-bmc-button',
 			attr: { type: 'button' },
 		});
 		donate.addEventListener('click', () => {
 			void this.plugin.activateCommandCenterBrowserView(DEVELOPER_SUPPORT_URL);
 		});
-		donate.setAttribute('aria-label', 'Open support page in the built-in browser panel');
+		donate.setAttribute('aria-label', 'Buy me a coffee on buy me a coffee');
 
 		const footer = containerEl.createDiv({ cls: 'cc-settings-footer' });
 		footer.createEl('p', {
@@ -1607,13 +1607,13 @@ export class PluginSettingsTab extends PluginSettingTab {
 		}
 		const len = key.trim().length;
 		if (len < 10) {
-			el.textContent = '⚠️ Too short';
+			el.textContent = '⚠️ too short';
 			el.addClass('weak');
 		} else if (len < 20) {
-			el.textContent = '• Weak';
+			el.textContent = '• weak';
 			el.addClass('weak');
 		} else if (len >= 30 && /^sk-/.test(key)) {
-			el.textContent = '• Strong';
+			el.textContent = '• strong';
 			el.addClass('good');
 		} else {
 			el.textContent = '• OK';

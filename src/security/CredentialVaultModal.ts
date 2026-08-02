@@ -21,7 +21,7 @@ export class CredentialVaultModal extends Modal {
 		this.contentEl.addClass('cc-credential-vault-modal');
 		this.setTitle('Manage API keys');
 		this.contentEl.createEl('p', {
-			text: 'API keys are stored in Obsidian\'s built-in Secret Storage. New values save immediately; leaving a field blank preserves the existing secret.',
+			text: 'API keys are stored in Obsidian\'s built-in secret storage. New values save immediately; leaving a field blank preserves the existing secret.',
 		});
 
 

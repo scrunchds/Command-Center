@@ -637,6 +637,32 @@ Command Center — Agentic OS for Obsidian
 }
 .cc-developer-support-button:hover { text-decoration: none; }
 
+/* Buy Me a Coffee branded button (mirrors the official button widget) */
+.cc-bmc-button {
+	gap: 6px;
+	padding: 9px 18px;
+	border-radius: 999px;
+	font-family: 'Cookie', 'Segoe Script', cursive;
+	font-size: 17px;
+	line-height: 1.2;
+	font-weight: 700;
+	color: #000000;
+	background-color: #ffdd00;
+	border: none;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+	transition: background-color 120ms ease, transform 120ms ease;
+}
+.cc-bmc-button:hover {
+	color: #000000;
+	background-color: #f7d400;
+	transform: translateY(-1px);
+}
+.cc-bmc-button:active { transform: translateY(0); }
+.cc-bmc-button:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
 @media (max-width: 720px) {
 	.cc-settings { max-width: none; }
 	.cc-settings-tabs { position: static; }

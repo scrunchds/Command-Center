@@ -595,7 +595,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are currently `1.1.11`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are currently `1.1.13`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**.
 
@@ -653,7 +653,7 @@ Command Center is free and MIT-licensed. If it improves your workflow and you wo
   <a href="https://buymeacoffee.com/DustinS"><strong>☕ Buy Dustin a coffee</strong></a>
 </p>
 
-The same link is available in the support card at the bottom of **Settings → Command Center**. Donations are optional, do not unlock features, and are not required for support or updates.
+The same link is available as a branded Buy Me a Coffee button in the support card at the bottom of **Settings → Command Center**. Donations are optional, do not unlock features, and are not required for support or updates.
 
 ## License and attribution
 

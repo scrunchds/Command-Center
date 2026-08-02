@@ -59,7 +59,7 @@ export class CommandCenterBasesView extends BasesView {
 		this.registerDomEvent(runAll, 'click', () => this.enqueue(rows.map(row => row.file)));
 
 		if (rows.length === 0) {
-			this.containerEl.createEl('p', { text: 'No pending notes match this Base.', cls: 'command-center-empty' });
+			this.containerEl.createEl('p', { text: 'No pending notes match this base.', cls: 'command-center-empty' });
 			return;
 		}
 		const list = this.containerEl.createDiv({ cls: 'cc-bases-list' });

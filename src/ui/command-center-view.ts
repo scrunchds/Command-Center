@@ -162,7 +162,7 @@ export class CommandCenterView extends ItemView {
 
 		const title = container.createDiv({ cls: 'command-center-title-row' });
 		const identity = title.createDiv({ cls: 'command-center-identity' });
-		identity.createEl('h2', { text: 'Command Center' });
+		identity.createEl('h2', { text: 'Command center' });
 		identity.createSpan( { text: 'Agentic operating system', cls: 'command-center-subtitle' });
 		this.renderHeader(title);
 		this.telemetryEl = container.createDiv({ cls: 'cc-dashboard-telemetry' });
@@ -300,7 +300,7 @@ export class CommandCenterView extends ItemView {
 		const reactHeader = reactSection.createDiv({
 			cls: 'command-center-section-header',
 		});
-		reactHeader.createEl('h3', { text: 'ReAct monitor' });
+		reactHeader.createEl('h3', { text: 'React monitor' });
 		const reactActions = reactHeader.createDiv({ cls: 'cc-react-actions' });
 		this.debugToggleBtn = reactActions.createEl('button', {
 			text: 'Debug / step mode',
@@ -366,7 +366,7 @@ export class CommandCenterView extends ItemView {
 		});
 		this.initializeTraceRowPool();
 		this.reactEmptyEl = this.reactMonitorEl.createEl('p', {
-			text: 'No active ReAct session.',
+			text: 'No active React session.',
 			cls: 'command-center-empty',
 		});
 
@@ -646,14 +646,14 @@ export class CommandCenterView extends ItemView {
 			cls: 'command-center-daemon-controls',
 		});
 		const morning = controls.createEl('button', {
-			text: '🌅 Morning Start',
+			text: '🌅 Morning start',
 			cls: 'mod-cta',
 		});
 		const midday = controls.createEl('button', {
-			text: '⏱️ Midday Append',
+			text: '⏱️ midday append',
 		});
 		const evening = controls.createEl('button', {
-			text: '🌙 Evening Close',
+			text: '🌙 Evening close',
 		});
 		this.registerDomEvent(morning, 
 			'click',
@@ -697,7 +697,7 @@ export class CommandCenterView extends ItemView {
 		);
 		this.chatInputEl = section.createEl('textarea', {
 			cls: 'cc-dashboard-orchestrator-input',
-			attr: { rows: '6', placeholder: 'Ask the Orchestrator…', 'aria-label': 'Orchestrator prompt' },
+			attr: { rows: '6', placeholder: 'Ask the orchestrator…', 'aria-label': 'Orchestrator prompt' },
 		});
 		this.registerDomEvent(this.chatInputEl, 'input', () => this.resizeOrchestratorInput());
 		this.resizeOrchestratorInput();
@@ -728,7 +728,7 @@ export class CommandCenterView extends ItemView {
 						if (phase === 'error') new Notice(`Dictation: ${message}`, 5000);
 					});
 					stopDictation = session.stop;
-					dictate.setText('■ Stop dictation');
+					dictate.setText('■ stop dictation');
 				} catch (error) { new Notice(`Dictation failed: ${(error as Error).message}`); }
 			}
 		})());
@@ -885,7 +885,7 @@ export class CommandCenterView extends ItemView {
 	private async openMiddayPrompt(button: HTMLButtonElement): Promise<void> {
 		const file = await this.resolveDailyFile();
 		if (!file) {
-			new Notice('Create today’s Daily Note with Morning Start first.');
+			new Notice('Create today’s daily note with morning start first.');
 			return;
 		}
 		new TextEntryModal(
@@ -916,7 +916,7 @@ export class CommandCenterView extends ItemView {
 	private async openEveningPrompt(button: HTMLButtonElement): Promise<void> {
 		const file = await this.resolveDailyFile();
 		if (!file) {
-			new Notice('Today’s configured Daily Note does not exist.');
+			new Notice('Today’s configured daily note does not exist.');
 			return;
 		}
 		const questions = this.reflectionQuestions();
@@ -1064,14 +1064,14 @@ export class CommandCenterView extends ItemView {
 		this.statusIndicator.removeAttribute('title');
 		if (running) {
 			this.statusIndicator.addClass('running');
-			this.statusIndicator.textContent = '● Running';
+			this.statusIndicator.textContent = '● running';
 		} else if (err) {
 			this.statusIndicator.addClass('error');
-			this.statusIndicator.textContent = '✕ Error';
+			this.statusIndicator.textContent = '✕ error';
 			this.statusIndicator.setAttribute('title', err);
 		} else {
 			this.statusIndicator.addClass('stopped');
-			this.statusIndicator.textContent = '● Stopped';
+			this.statusIndicator.textContent = '● stopped';
 		}
 		if (this.daemonErrorEl) {
 			this.daemonErrorEl.textContent = err ? `Launch error: ${err}` : '';
@@ -1544,7 +1544,7 @@ export class CommandCenterView extends ItemView {
 			this.selectedSessionId ??
 			allEvents[allEvents.length - 1]?.sessionId;
 		if (!sessionId) {
-			new Notice('No ReAct session is available to export.');
+			new Notice('No React session is available to export.');
 			return;
 		}
 		const events = this.plugin.daemon.trace.getSessionEvents(sessionId);
@@ -1779,7 +1779,7 @@ class SessionReplayModal extends Modal {
 		});
 
 		const nav = this.contentEl.createDiv({ cls: 'cc-trace-detail-nav' });
-		const previous = nav.createEl('button', { text: '← Previous' });
+		const previous = nav.createEl('button', { text: '← previous' });
 		previous.disabled = index === 0;
 		previous.addEventListener('click', () => this.select(events[index - 1]));
 		const next = nav.createEl('button', { text: 'Next →' });

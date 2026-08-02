@@ -54,8 +54,8 @@ export class VoicePromptModal extends Modal {
 		void this.refreshSttBadge();
 		if (this.plugin.settings.speechToTextEnabled) void this.beginRecording();
 		else {
-			this.sttBadgeEl.setText('STT disabled');
-			this.statusEl.setText('Enable speech to text in Settings to use voice prompts.');
+			this.sttBadgeEl.setText('Stt disabled');
+			this.statusEl.setText('Enable speech to text in settings to use voice prompts.');
 			this.doneEl.disabled = true;
 		}
 	}

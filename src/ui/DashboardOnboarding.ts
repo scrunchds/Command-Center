@@ -106,7 +106,7 @@ export class DashboardOnboarding {
 			if (!this.plugin.settings.speechToTextEnabled) throw new Error('Enable speech to text in Settings to use dictation.');
 			const session = await this.plugin.accessibilityAudio.dictate(undefined, this.dictationStatusCallback);
 			this.dictationStop = session.stop;
-			button.setText('■ Stop dictation');
+			button.setText('■ stop dictation');
 			this.setStatus('Listening…');
 		} catch (error) { this.setStatus((error as Error).message, true); }
 	}
@@ -165,7 +165,7 @@ export class DashboardOnboarding {
 				this.approval?.createEl('h3', { text: 'Command center initialized' });
 				this.approval?.createEl('p', { text: `Created ${result.templatePaths.length} template(s) and ${result.workflowPaths.length} workflow(s).` });
 				this.setStatus('Approved configuration and assets initialized.');
-				new Notice('Command Center initialized.');
+				new Notice('Command center initialized.');
 			} catch (error) {
 				create.disabled = revise.disabled = false;
 				this.setStatus((error as Error).message, true);

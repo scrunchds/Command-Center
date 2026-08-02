@@ -4,6 +4,25 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.13] - 2026-08-02
+
+### Added
+
+- Buy Me a Coffee branded support button in settings footer with yellow pill styling matching the official widget
+- Comprehensive test suite expanded from 44 to 83 tests: DataNormalizer sanitization (8 tests), JSON repair (7 tests), CacheManager (10 tests), ShadowTreeArchive (6 tests), release version sync (2 tests), and release tag/manifest validation (6 tests)
+
+### Fixed
+
+- `version-bump.mjs` now also syncs `package-lock.json` root version so the release workflow's version gate passes and artifact attestations are published
+- All UI text now follows Obsidian's sentence-case guidelines (40 warnings resolved)
+
+## [1.1.11] - 2026-08-02
+
+### Fixed
+
+- `fetch()` usage in `_fetchStreaming()` is now explicitly documented as the required exception for SSE token streaming (Obsidian's `requestUrl` does not expose `ReadableStream`). Comment cites Obsidian's network requests guide.
+- `REVIEWER_NOTES.md` updated with exact line reference and Obsidian docs URL for the streaming fetch exception
+
 ## [1.1.10] - 2026-08-02
 
 ### Added

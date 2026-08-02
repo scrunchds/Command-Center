@@ -21,3 +21,15 @@ if (!(targetVersion in versions)) {
 	versions[targetVersion] = minAppVersion;
 	writeFileSync('versions.json', JSON.stringify(versions, null, '\t'));
 }
+
+// Sync package-lock.json root version so the release workflow's version gate
+// (which asserts manifest === package.json === package-lock.json) does not reject
+// an otherwise valid release tag.
+const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+lock.version = targetVersion;
+if (lock.packages?.['']?.version) {
+	lock.packages[''].version = targetVersion;
+}
+writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
+
+console.log(`Bumped manifest.json, versions.json, and package-lock.json to ${targetVersion}.`);

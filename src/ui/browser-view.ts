@@ -66,7 +66,7 @@ export class CommandCenterBrowserView extends ItemView {
 		this.frameEl = viewport.createEl('iframe', {
 			cls: 'cc-browser-frame',
 			attr: {
-				title: 'Command Center Browser',
+				title: 'Command center browser',
 				sandbox: 'allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts allow-downloads',
 				referrerpolicy: 'no-referrer',
 			},

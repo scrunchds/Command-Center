@@ -138,7 +138,7 @@ export class CommandCenterChatView extends ItemView {
 		this.textareaEl = inputRow.createEl('textarea', {
 			cls: 'cc-chat-input',
 			attr: {
-				placeholder: 'Message Command Center…',
+				placeholder: 'Message command center…',
 				rows: '1',
 				'aria-label': 'Chat message',
 			},
@@ -150,7 +150,7 @@ export class CommandCenterChatView extends ItemView {
 		});
 		this.submitEl = inputRow.createEl('button', {
 			cls: 'cc-chat-submit mod-cta',
-			attr: { type: 'button', 'aria-label': 'Send message', title: 'Send (Enter)' },
+			attr: { type: 'button', 'aria-label': 'Send message', title: 'Send (enter)' },
 		});
 		setIcon(this.submitEl, 'send');
 
@@ -672,7 +672,7 @@ export class CommandCenterChatView extends ItemView {
 	private ensureTraceBlock(message: ChatMessageElements): NonNullable<ChatMessageElements['trace']> {
 		if (message.trace) return message.trace;
 		const details = message.bubble.createEl('details', { cls: 'cc-chat-react-trace' });
-		details.createEl('summary', { text: '[⚡ ReAct Trace]' });
+		details.createEl('summary', { text: '[⚡ React trace]' });
 		const content = details.createDiv({ cls: 'cc-chat-react-trace-content' });
 		message.trace = { details, content, lines: [] };
 		return message.trace;

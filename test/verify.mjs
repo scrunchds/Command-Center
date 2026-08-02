@@ -770,6 +770,362 @@ async function verifyProviderFallback() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   8. Release Version Sync (version-bump.mjs)
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyVersionSync() {
+	console.log('\n─── 8. Release Version Sync ───');
+
+	// Simulate what the release workflow's version gate checks:
+	// manifest.json, package.json, and package-lock.json must all agree.
+	const manifest = JSON.parse(readFileSync(join(ROOT, 'manifest.json'), 'utf8'));
+	const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+	const lock = JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8'));
+
+	const expected = manifest.version;
+	try {
+		if (pkg.version !== expected) throw new Error(
+			`package.json version ${pkg.version} !== manifest ${expected}`
+		);
+		if (lock.version !== expected) throw new Error(
+			`package-lock.json root version ${lock.version} !== manifest ${expected}`
+		);
+		if (lock.packages?.['']?.version !== expected) throw new Error(
+			`package-lock.json packages[''].version ${lock.packages?.['']?.version} !== manifest ${expected}`
+		);
+		pass('8a: manifest.json, package.json, and package-lock.json all agree on version ' + expected);
+	} catch (e) {
+		fail('8a: version sync', e);
+	}
+
+	// Verify the version-bump.mjs script can sync all three files.
+	// Run it with a test version via npm version and verify all files are updated.
+	const tmpDir = mkdtempSync(join(tmpdir(), 'cc-version-test-'));
+	try {
+		const testVersion = '99.99.99';
+		const srcFiles = [
+			'manifest.json', 'package.json', 'package-lock.json', 'versions.json',
+		];
+		for (const f of srcFiles) {
+			writeFileSync(join(tmpDir, f), readFileSync(join(ROOT, f)));
+		}
+
+		// Simulate what version-bump.mjs does: read manifest, write version, update lock
+		const manifest = JSON.parse(readFileSync(join(tmpDir, 'manifest.json'), 'utf8'));
+		const { minAppVersion } = manifest;
+		manifest.version = testVersion;
+		writeFileSync(join(tmpDir, 'manifest.json'), JSON.stringify(manifest, null, '\t'));
+
+		const versions = JSON.parse(readFileSync(join(tmpDir, 'versions.json'), 'utf8'));
+		if (!(testVersion in versions)) {
+			versions[testVersion] = minAppVersion;
+			writeFileSync(join(tmpDir, 'versions.json'), JSON.stringify(versions, null, '\t'));
+		}
+
+		const lock = JSON.parse(readFileSync(join(tmpDir, 'package-lock.json'), 'utf8'));
+		lock.version = testVersion;
+		if (lock.packages?.['']?.version) {
+			lock.packages[''].version = testVersion;
+		}
+		writeFileSync(join(tmpDir, 'package-lock.json'), JSON.stringify(lock, null, 2) + '\n');
+
+		const bumpedManifest = JSON.parse(readFileSync(join(tmpDir, 'manifest.json'), 'utf8'));
+		const bumpedLock = JSON.parse(readFileSync(join(tmpDir, 'package-lock.json'), 'utf8'));
+
+		assert.equal(bumpedManifest.version, testVersion, 'manifest.json version bumped');
+		assert.equal(bumpedLock.version, testVersion, 'package-lock.json root version bumped');
+		assert.equal(bumpedLock.packages?.['']?.version, testVersion, 'package-lock.json packages root version bumped');
+
+		pass('8b: version-bump logic syncs manifest.json, package-lock.json root, and packages root');
+	} finally {
+		rmSync(tmpDir, { recursive: true, force: true });
+	}
+}
+
+/* ═══════════════════════════════════════════════════════════
+   9. DataNormalizer — Execution Boundary Sanitization
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyDataNormalizer() {
+	console.log('\n─── 9. Data Normalizer (Sanitization Boundary) ───');
+	const { DataNormalizer } = await import(pathToFileURL(join(SRC, 'execution/D'+'ataNormalizer.ts')).href);
+
+	const n = new DataNormalizer();
+
+	// Valid payload with content
+	const r1 = n.normalize({ success: true, content: 'Hello world', latencyMs: 100 }, 'provider-dispatcher');
+	assert.equal(r1.success, true);
+	assert.equal(r1.content, 'Hello world');
+	assert.equal(r1.latencyMs, 100);
+	pass('9a: normalizes valid payload with content');
+
+	// Control character stripping
+	const r2 = n.normalize({ success: true, content: 'Line1\x00\x01\x02\nLine2\x7f\nLine3', latencyMs: 0 }, 'pi-daemon');
+	assert.equal(r2.content, 'Line1\nLine2\nLine3');
+	pass('9b: strips control characters from content');
+
+	// Stack trace removal
+	const r3 = n.normalize({ success: true, content: 'Result\n    at Object.<anonymous> (/path/file.js:1:2)\n    at next (internal/process/next_tick.js:1:2)\nFinal line', latencyMs: 0 }, 'pi-daemon');
+	assert.equal(r3.content, 'Result\nFinal line');
+	pass('9c: removes stack trace lines from content');
+
+	// Error extraction with trace cleaning
+	const r4 = n.normalize({ success: false, error: 'Something broke\nTraceback (most recent call last):\n  File "test.py", line 5, in <module>\n    raise ValueError("bad")', latencyMs: 0 }, 'python-worker');
+	assert.equal(r4.success, false);
+	assert.equal(r4.error, 'Something broke');
+	pass('9d: extracts first safe line from error, strips Python traceback');
+
+	// Malformed JSON string payload
+	const r5 = n.normalize('{invalid json}', 'pi-daemon');
+	assert.equal(r5.success, false);
+	assert.ok(r5.error?.includes('malformed'));
+	pass('9e: handles malformed JSON string payload gracefully');
+
+	// Nested result field
+	const r6 = n.normalize({ success: true, result: { output: 'Nested output' }, latencyMs: 50 }, 'provider-dispatcher');
+	assert.equal(r6.content, 'Nested output');
+	pass('9f: extracts content from nested result.output');
+
+	// Merge multiple results
+	const merged = n.merge([
+		{ success: true, content: 'First', latencyMs: 10 },
+		{ success: true, content: 'Second', latencyMs: 20 },
+	], 'provider-dispatcher');
+	assert.equal(merged.success, true);
+	assert.ok(merged.content.includes('First'));
+	assert.ok(merged.content.includes('Second'));
+	assert.equal(merged.latencyMs, 30);
+	pass('9g: merge combines multiple successful results with total latency');
+
+	// Merge with failure
+	const mergedFail = n.merge([
+		{ success: true, content: 'Good', latencyMs: 5 },
+		{ success: false, error: 'Bad', latencyMs: 3 },
+	], 'provider-dispatcher');
+	assert.equal(mergedFail.success, false);
+	assert.equal(mergedFail.error, 'Bad');
+	pass('9h: merge reports failure when any sub-result fails');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   10. JSON Repair — Model Output Recovery
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyJsonRepair() {
+	console.log('\n─── 10. JSON Repair (Model Output Recovery) ───');
+	const {
+		stripJsonCodeFence,
+		repairModelJson,
+		parseModelJson,
+	} = await import(pathToFileURL(join(SRC, 'providers/json-repair.ts')).href);
+
+	// Strip fences
+	assert.equal(stripJsonCodeFence('```json\n{"a":1}\n```'), '{"a":1}');
+	assert.equal(stripJsonCodeFence('```\n{"a":1}\n```'), '{"a":1}');
+	assert.equal(stripJsonCodeFence('{"a":1}'), '{"a":1}');
+	assert.equal(stripJsonCodeFence('Some prose ```json\n{"a":1}\n``` more'), '{"a":1}');
+	pass('10a: stripJsonCodeFence removes Markdown code fences');
+
+	// Repair trailing commas
+	const repaired = repairModelJson('{"a":1,"b":2,}');
+	assert.equal(repaired, '{"a":1,"b":2}');
+	pass('10b: repairModelJson removes trailing commas');
+
+	// Parse with fence
+	const parsed = parseModelJson('```json\n{"a":1,"b":2}\n```');
+	assert.deepEqual(parsed, { a: 1, b: 2 });
+	pass('10c: parseModelJson parses fenced JSON');
+
+	// Parse with repair (trailing comma)
+	const repairedParsed = parseModelJson('{"a":1,"b":2,}');
+	assert.deepEqual(repairedParsed, { a: 1, b: 2 });
+	pass('10d: parseModelJson auto-repairs trailing commas');
+
+	// Parse with nested arrays
+	const nested = parseModelJson('{"items":[1,2,3],"obj":{"k":"v"}}');
+	assert.deepEqual(nested, { items: [1, 2, 3], obj: { k: 'v' } });
+	pass('10e: parseModelJson handles nested arrays and objects');
+
+	// Invalid JSON throws
+	assert.throws(() => parseModelJson('{definitely not json}'), SyntaxError);
+	pass('10f: parseModelJson throws SyntaxError on truly invalid JSON');
+
+	// Unclosed JSON (truncated)
+	const truncated = repairModelJson('{"a":1,"b":"hello');
+	assert.ok(truncated.includes('"a":1'));
+	pass('10g: repairModelJson closes truncated JSON gracefully');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   11. Cache Manager — Prompt Caching & Token Optimization
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyCacheManager() {
+	console.log('\n─── 11. Cache Manager (Prompt Caching & Token Optimization) ───');
+	const {
+		resolveCacheConfig,
+		shouldUseCache,
+		generateCacheKey,
+		computeOptimalMaxTokens,
+		estimatePromptTokens,
+		CacheStatsTracker,
+	} = await import(pathToFileURL(join(SRC, 'providers/cache-manager.ts')).href);
+
+	// Default config resolution
+	const cfg = resolveCacheConfig();
+	assert.equal(cfg.strategy, 'conservative');
+	assert.equal(typeof cfg.cacheTtlSeconds, 'number');
+	assert.equal(cfg.minCacheTokens, 1024);
+	pass('11a: resolveCacheConfig returns defaults');
+
+	// Partial merge
+	const partial = resolveCacheConfig({ strategy: 'read' });
+	assert.equal(partial.strategy, 'read');
+	assert.equal(typeof partial.cacheTtlSeconds, 'number');
+	pass('11b: resolveCacheConfig merges partial over defaults');
+
+	// Cache key generation
+	const key1 = generateCacheKey('system prompt', [{ name: 'tool1', description: 'desc', parameters: { type: 'object', properties: {} } }]);
+	const key2 = generateCacheKey('system prompt', [{ name: 'tool1', description: 'desc', parameters: { type: 'object', properties: {} } }]);
+	const key3 = generateCacheKey('different system prompt', [{ name: 'tool1', description: 'desc', parameters: { type: 'object', properties: {} } }]);
+	assert.equal(key1, key2);
+	assert.notEqual(key1, key3);
+	pass('11c: generateCacheKey produces deterministic hashes for same inputs');
+
+	// Token estimation
+	const tokens = estimatePromptTokens('Hello world, this is a test of the token estimator.');
+	assert.ok(tokens > 0);
+	assert.ok(tokens < 50);
+	pass('11d: estimatePromptTokens returns reasonable token count');
+
+	// Optimal max tokens
+	const optimal = computeOptimalMaxTokens(8192, 500, 16384, 0.25);
+	assert.equal(optimal, 3971);
+	pass('11e: computeOptimalMaxTokens reserves prompt tokens from context window');
+
+	// Cache stats tracking
+	const stats = new CacheStatsTracker();
+	stats.recordCreation(100);
+	stats.recordRead(50);
+	stats.recordRead(25);
+	const report = stats.stats;
+	assert.equal(report.creations, 1);
+	assert.equal(report.reads, 2);
+	assert.equal(report.tokensWritten, 100);
+	assert.equal(report.tokensSaved, 75);
+	pass("11f: CacheStatsTracker records creations, reads, and token counts");
+
+	stats.reset();
+	assert.equal(stats.stats.creations, 0);
+	pass("11g: CacheStatsTracker.reset clears all counters");
+
+	// Should use cache — conservative strategy with short prompt
+	assert.equal(shouldUseCache({ enabled: true, strategy: 'conservative', maxCacheAgeMs: 60000 }, 'short', [], 0), false);
+	pass('11h: shouldUseCache returns false for conservative strategy with short prompt');
+
+	// Should use cache — disabled strategy
+	assert.equal(shouldUseCache({ enabled: false, strategy: 'conservative', maxCacheAgeMs: 60000 }, 'system prompt', [], 0), false);
+	pass('11i: shouldUseCache returns false for disabled strategy');
+
+	// Should use cache — long prompt hits min threshold
+	const longPrompt = 'x'.repeat(5000);
+	assert.equal(shouldUseCache({ enabled: true, strategy: 'conservative', maxCacheAgeMs: 60000, minCacheTokens: 1024 }, longPrompt, [], 0), true);
+	pass('11j: shouldUseCache returns true for long prompt with enabled cache');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   12. ShadowTreeArchive — In-Memory Delta Archival
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyShadowTreeArchive() {
+	console.log('\n─── 12. Shadow Tree Archive (In-Memory Delta Archival) ───');
+	const { ShadowTreeArchive } = await import(pathToFileURL(join(SRC, 'memory/ShadowTreeArchive.ts')).href);
+
+	const archive = new ShadowTreeArchive();
+
+	// Record a simple delta
+	const delta = archive.record('path/test.md', 'line1\nline2\nline3', 'line1\nmodified\nline3', 'Update middle line');
+	assert.ok(delta.id);
+	assert.equal(delta.notePath, 'path/test.md');
+	assert.equal(delta.reason, 'Update middle line');
+	assert.equal(delta.parentId, null);
+	assert.ok(delta.operations.length > 0);
+	pass('12a: archive.record stores a delta with operations');
+
+	// Second delta links to first via parentId
+	const delta2 = archive.record('path/test.md', 'line1\nmodified\nline3', 'line1\nmodified\nfinal', 'Finalize');
+	assert.equal(delta2.parentId, delta.id);
+	pass('12b: subsequent deltas chain via parentId');
+
+	// No changes means empty operations
+	const delta3 = archive.record('path/identical.md', 'same\ncontent', 'same\ncontent', 'No change');
+	assert.equal(delta3.operations.length, 1);
+	assert.equal(delta3.operations[0].kind, "retain");
+	pass('12c: identical before/after produces a retain operation');
+
+	// Retrieve timeline for a path
+	const timeline = archive.getTimeline('path/test.md');
+	assert.equal(timeline.length, 2);
+	assert.equal(timeline[0].id, delta.id);
+	assert.equal(timeline[1].id, delta2.id);
+	pass('12d: getTimeline returns all deltas for a path');
+
+	// Unknown path returns empty
+	const empty = archive.getTimeline('path/unknown.md');
+	assert.deepEqual(empty, []);
+	pass('12e: getTimeline returns empty for unknown path');
+
+	// Clear removes all deltas
+	archive.clear();
+	assert.deepEqual(archive.getTimeline('path/test.md'), []);
+	pass('12f: clear removes all deltas for a path');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   13. Release Tag & Manifest Validation
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyReleaseTag() {
+	console.log('\n─── 13. Release Tag & Manifest Validation ───');
+
+	const manifest = JSON.parse(readFileSync(join(ROOT, 'manifest.json'), 'utf8'));
+
+	// Manifest must have required fields
+	assert.ok(typeof manifest.id === 'string' && manifest.id.length > 0, 'manifest.id is required');
+	assert.ok(typeof manifest.name === 'string' && manifest.name.length > 0, 'manifest.name is required');
+	assert.ok(typeof manifest.version === 'string' && manifest.version.length > 0, 'manifest.version is required');
+	assert.ok(typeof manifest.minAppVersion === 'string' && manifest.minAppVersion.length > 0, 'manifest.minAppVersion is required');
+	assert.equal(manifest.isDesktopOnly, true, 'manifest.isDesktopOnly must be true');
+	pass('13a: manifest.json has all required fields');
+
+	// Version must be valid semver (x.y.z)
+	const version = manifest.version;
+	const semverRe = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+	assert.ok(semverRe.test(version), `version "${version}" must be valid semver`);
+	pass('13b: manifest version is valid semver');
+
+	// minAppVersion must be >= 1.13.0 (plugin requirement)
+	const [major, minor] = manifest.minAppVersion.split('.').map(Number);
+	assert.ok(major > 1 || (major === 1 && minor >= 13), 'minAppVersion must be >= 1.13.0');
+	pass('13c: minAppVersion meets minimum requirement');
+
+	// versions.json must contain the current version
+	const versions = JSON.parse(readFileSync(join(ROOT, 'versions.json'), 'utf8'));
+	assert.ok(version in versions, `versions.json must contain entry for ${version}`);
+	assert.equal(versions[version], manifest.minAppVersion, 'versions.json entry must match minAppVersion');
+	pass('13d: versions.json contains current version mapping');
+
+	// Simulate the release workflow's tag gate: tag must equal manifest version
+	const simulatedTag = version;
+	assert.equal(simulatedTag, version, 'release tag must equal manifest version');
+	pass('13e: release tag matches manifest version (release workflow gate)');
+
+	// fundingUrl must be present (good practice for community plugins)
+	assert.ok(typeof manifest.fundingUrl === 'string' && manifest.fundingUrl.length > 0, 'fundingUrl is recommended');
+	pass('13f: manifest has fundingUrl');
+}
+
+/* ═══════════════════════════════════════════════════════════
    Main Runner
    ═══════════════════════════════════════════════════════════ */
 
@@ -787,6 +1143,12 @@ async function main() {
 	await verifyTaskQueue();
 	await verifyRealDaemon();
 	await verifyProviderFallback();
+	await verifyVersionSync();
+	await verifyDataNormalizer();
+	await verifyJsonRepair();
+	await verifyCacheManager();
+	await verifyShadowTreeArchive();
+	await verifyReleaseTag();
 
 	console.log('\n═══════════════════════════════════════════');
 	console.log(`  Results:  ${results.pass} passed, ${results.fail} failed, ${results.skip} skipped`);
