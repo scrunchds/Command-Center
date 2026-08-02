@@ -20,7 +20,7 @@ Most AI integrations add a chat box. Command Center adds an operational layer:
 - **Metacognitive Partner, not prescriptive organizer** — two-stage Socratic Triage first learns your goals, constraints, language, and personal definition of efficiency, then negotiates topology observations as neutral evidence. It preserves intentional friction and proposes capabilities only with consent.
 - **Interview-driven configuration** — embedded dashboard discovery collects topology, life map, capacity rules, triage policy, focus constraints, and writing style; confirmation and synthesis then generate only the assets you approve.
 - **Token-efficient stationary indexing** — protected `_index.md` files describe folder purpose and direct-child contents so agents can route work without repeatedly scanning the whole vault.
-- **Air-gapped credential bridge** — API keys are managed through a dedicated secure modal, persisted only as AES-256-GCM ciphertext, and decrypted into a process-lifetime memory vault. A locked vault disables keyed cloud providers while local routes remain available.
+- **Built-in Obsidian Secrets** — API keys are managed through Obsidian's native Secret Storage, so they persist with your vault instead of a custom encrypted file. Keys are edited from a dedicated settings modal, and keyed cloud providers remain available whenever their secrets are present.
 - **Local-first options** — Pi, Ollama, LM Studio, custom OpenAI-compatible endpoints, local embeddings, and deterministic fallback retrieval support private or disconnected workflows.
 - **Human control at mutation boundaries** — destructive and bulk changes pause on approval cards with collapsible, syntax-colored diff previews.
 
@@ -323,11 +323,11 @@ Configure text-to-speech enablement, speaking voice, speaking rate, speech-to-te
 
 Each provider has a collapsible card for enablement, endpoint configuration, health checks, and model refresh. API keys are not exposed through ordinary settings fields.
 
-Select **Manage API Keys** to open the secure credential-vault modal. A Vault Master Key derives an AES-256-GCM key with PBKDF2-SHA-256 and a random salt; only ciphertext, salt, IV, and non-secret derivation parameters are persisted. Master passwords, derived keys, and decrypted API keys remain memory-only and are wiped when the vault is locked or the plugin unloads. Existing keys cannot be revealed or copied back into the UI.
+Select **Manage API Keys** to open the built-in secrets editor. Provider secrets are stored in Obsidian Secret Storage under the Command Center namespace, so they persist with your vault instead of a custom encrypted file. Existing secrets can be replaced or removed, but they are not revealed back into the UI.
 
-Authentication metadata distinguishes **required**, **optional**, and **unsupported** credentials. LM Studio's Require Authentication token, authenticated Ollama proxies, and custom OpenAI-compatible bearer tokens use the same encrypted vault without making a key mandatory for ordinary local operation. Tokens are applied consistently to inference, streaming, model discovery, health checks, transcription, and local model lifecycle requests.
+Authentication metadata distinguishes **required**, **optional**, and **unsupported** credentials. LM Studio's Require Authentication token, authenticated Ollama proxies, and custom OpenAI-compatible bearer tokens all use Obsidian Secret Storage for persistence without making a key mandatory for ordinary local operation. Tokens are applied consistently to inference, streaming, model discovery, health checks, transcription, and local model lifecycle requests.
 
-Credentials are resolved only at request time. When the vault is locked, required-key cloud providers and authenticated local endpoints are unavailable, while unauthenticated local routes remain available. Credentials are excluded from interviews, generated workflows, CLI/URI arguments, subprocess argv/environment, logs, and repository examples.
+Credentials are resolved only at request time. Provider secrets stay in Obsidian's secret store, while interviews, generated workflows, CLI/URI arguments, subprocess argv/environment, logs, and repository examples continue to exclude credentials.
 
 ### 4. Task Routing Matrix
 
@@ -503,9 +503,9 @@ Use local Pi/Ollama/LM Studio/custom endpoints when content must remain on your 
 
 ### Local safeguards
 
-- Secrets are accepted only through the dedicated encrypted credential-vault modal.
-- Persisted provider secrets use AES-256-GCM; the PBKDF2-derived key and plaintext remain memory-only.
-- Lock and plugin unload wipe the in-memory credential map; locked state disables keyed providers.
+- Secrets are entered through Obsidian's built-in Secret Storage UI from the Command Center settings tab.
+- Provider secrets persist in Obsidian Secret Storage under the `command-center` namespace.
+- Existing secrets are managed in place: replace them, remove them, or leave them unchanged.
 - Interview, config generation, CLI/URI arguments, subprocess argv/environment, and examples prohibit credentials.
 - Tool paths reject traversal, absolute paths, NUL bytes, and unsafe characters.
 - Existing-note overwrites and bulk/destructive operations can require explicit approval.

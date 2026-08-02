@@ -383,6 +383,7 @@ export class CommandCenterChatView extends ItemView {
 					getSettings: () => this.plugin.settings,
 					defaultModel: candidate.model,
 					maxAttempts: candidate.local ? 1 : 2,
+					getApiKey: id => this.plugin.credentialVault.get(id),
 					signal,
 				});
 				if (candidate.local) {

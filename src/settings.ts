@@ -6,7 +6,6 @@
  */
 
 import type { MultiProviderSettings, ProviderId } from './providers/provider-types';
-import type { EncryptedCredentialPayload } from './security/VaultCrypto';
 import { DEFAULT_FALLBACK_CONFIG } from './providers/provider-types';
 import { DEFAULT_ROUTING } from './routing';
 
@@ -68,8 +67,6 @@ export interface CommandCenterSettings {
 	autoReadAiResponses: boolean;
 	/** Per-vault dashboard widget order, visibility, collapse, and width. */
 	dashboardLayout: DashboardWidgetLayout[];
-	/** AES-GCM ciphertext only; plaintext credentials are memory-only. */
-	encryptedCredentialVault?: EncryptedCredentialPayload;
 }
 
 export const DEFAULT_MULTI_PROVIDER: MultiProviderSettings = {
