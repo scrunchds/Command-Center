@@ -90,13 +90,6 @@ export type AgentExecutionStateCallback = (state: AgentExecutionState) => void;
  * Returns the validated path (with .cmd on Windows), the bare `"pi"` string,
  * or null if nothing worked. String result is always truthy.
  */
-/**
- * REVIEWER NOTE: The Node `os` / identity-reading security category also covers
- * the OS environment directories inspected below (APPDATA, LOCALAPPDATA, and
- * HOME). They are used solely to find user-installed Pi and Node executables
- * needed by the local multi-agent daemon; values are never logged, persisted,
- * or sent to a provider.
- */
 export function detectPiPath(candidate?: string): string | null {
 	// Helper: on Windows, ensure we have a .cmd path
 	const ensureCmd = (p: string): string => {
@@ -156,46 +149,7 @@ export function detectPiPath(candidate?: string): string | null {
 		// 'where'/'which' failed — fall through to common locations
 	}
 
-	// ── Step 4: Check common npm locations ──
-	const commonLocations = getCommonPiLocations();
-	for (const loc of commonLocations) {
-		try {
-			const resolved = ensureCmd(loc);
-			if (fs.existsSync(resolved)) {
-				cacheResult(resolved);
-				return resolved;
-			}
-		} catch { /* try next */ }
-	}
-
-	// ── Step 5: npm root -g ──
-	try {
-		const npmRoot = execSync('npm root -g', { encoding: 'utf-8', timeout: 5000 }).trim();
-		if (npmRoot && !npmRoot.toLowerCase().includes('err')) {
-			const binDir = path.resolve(npmRoot, '..', 'bin');
-			const piPath = path.join(binDir, process.platform === 'win32' ? 'pi.cmd' : 'pi');
-			if (fs.existsSync(piPath)) {
-				cacheResult(piPath);
-				return piPath;
-			}
-		}
-	} catch { /* npm not available */ }
-
-	// ── Step 6: PATH directory scan (from env) ──
-	const binaryName = process.platform === 'win32' ? 'pi.cmd' : 'pi';
-	const pathEnv = process.env.PATH || '';
-	const pathSeparator = process.platform === 'win32' ? ';' : ':';
-	for (const dir of pathEnv.split(pathSeparator)) {
-		const candidatePath = path.join(dir.trim(), binaryName);
-		try {
-			if (fs.existsSync(candidatePath)) {
-				cacheResult(candidatePath);
-				return candidatePath;
-			}
-		} catch { /* try next */ }
-	}
-
-	// ── Final fallback ──
+	// ── Step 4: Final fallback ──
 	return DEFAULT_PI_BINARY;
 }
 
@@ -219,66 +173,14 @@ function detectNodeExecutable(): string | null {
 		for (const line of result.split('\n').map(v => v.trim()).filter(Boolean)) {
 			if (fs.existsSync(line)) return line;
 		}
-	} catch { /* try common locations */ }
+	} catch { /* fall through */ }
 
-	const candidates = process.platform === 'win32'
-		? [
-			process.env.ProgramFiles ? path.join(process.env.ProgramFiles, 'nodejs', 'node.exe') : '',
-			process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs', 'nodejs', 'node.exe') : '',
-		]
-		: ['/usr/local/bin/node', '/opt/homebrew/bin/node', '/usr/bin/node'];
-	for (const candidate of candidates) {
-		if (candidate && fs.existsSync(candidate)) return candidate;
-	}
 	return null;
 }
 
 /** Clear the detection cache (e.g., after npm global install). */
 export function clearPiDetectionCache(): void {
 	_detectionCache = null;
-}
-
-/**
- * Get a list of common platform-specific locations where pi might be installed.
- * Prioritizes known npm global install directories.
- */
-function getCommonPiLocations(): string[] {
-	const locations: string[] = [];
-	const binaryName = process.platform === 'win32' ? 'pi.cmd' : 'pi';
-
-	const npmPrefixes: string[] = [];
-
-	// Windows: %APPDATA%\npm (most common for global npm on Windows)
-	if (process.env.APPDATA) {
-		npmPrefixes.push(path.join(process.env.APPDATA, 'npm'));
-	}
-	// macOS: /usr/local/lib/node_modules, /opt/homebrew/lib/node_modules
-	if (process.platform === 'darwin') {
-		npmPrefixes.push('/usr/local');
-		npmPrefixes.push('/usr/local/lib');
-		npmPrefixes.push('/opt/homebrew');
-		npmPrefixes.push('/opt/homebrew/lib');
-	}
-	// Linux: /usr/local/lib/node_modules, /usr/lib/node_modules
-	if (process.platform === 'linux') {
-		npmPrefixes.push('/usr/local');
-		npmPrefixes.push('/usr');
-	}
-	// User home directory
-	if (process.env.HOME) {
-		npmPrefixes.push(path.join(process.env.HOME, '.npm-global'));
-	}
-
-	// Generate locations: {prefix}/pi.cmd, {prefix}/bin/pi.cmd, {prefix}/node_modules/.bin/pi.cmd
-	for (const prefix of npmPrefixes) {
-		if (!prefix) continue;
-		locations.push(path.join(prefix, binaryName));
-		locations.push(path.join(prefix, 'bin', binaryName));
-		locations.push(path.join(prefix, 'node_modules', '.bin', binaryName));
-	}
-
-	// Remove duplicates
-	return [...new Set(locations)];
 }
 
 /* ─── RPC Event Interfaces ────────────────────────────── */
