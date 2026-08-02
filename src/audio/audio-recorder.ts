@@ -32,6 +32,7 @@ export class AudioRecorder {
 	private startedAt = 0;
 	private durationTimer: number | null = null;
 	private levelFrame: number | null = null;
+	private peakLevel = 0;
 	private audioContext: AudioContext | null = null;
 	private analyser: AnalyserNode | null = null;
 	private listeners = new Set<AudioRecorderStateCallback>();
@@ -47,6 +48,20 @@ export class AudioRecorder {
 
 	getState(): AudioRecorderState {
 		return this.state;
+	}
+
+	/** Returns the approximate duration of the current recording in milliseconds, or 0 if not recording. */
+	getDurationMs(): number {
+		if (this.state !== 'recording' || this.startedAt === 0) return 0;
+		return Date.now() - this.startedAt;
+	}
+
+	/**
+	 * Returns the peak RMS audio level observed during recording (0 = silence, 1 = max).
+	 * Returns 0 if the recorder is not recording or no level data was collected.
+	 */
+	getPeakLevel(): number {
+		return this.peakLevel;
 	}
 
 	isRecording(): boolean {
@@ -109,6 +124,7 @@ export class AudioRecorder {
 
 			this.chunks = [];
 			this.recordingError = null;
+			this.peakLevel = 0;
 			this.recorder = new MediaRecorder(this.stream, recorderOptions);
 			this.recorder.addEventListener('dataavailable', this.handleData);
 			this.recorder.addEventListener('error', this.handleRecorderError);
@@ -248,6 +264,7 @@ export class AudioRecorder {
 					sum += normalized * normalized;
 				}
 				const level = Math.min(1, Math.sqrt(sum / samples.length));
+				if (level > this.peakLevel) this.peakLevel = level;
 				for (const listener of this.levelListeners) {
 					try { listener(level); } catch { /* Keep metering after a consumer failure. */ }
 				}

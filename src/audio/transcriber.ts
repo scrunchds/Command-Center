@@ -357,6 +357,70 @@ export class TranscriberAdapter {
 /* ─── Helpers ──────────────────────────────────────────── */
 
 /**
+ * Minimum recording duration (ms) before audio is sent for transcription.
+ * Shorter clips are almost always accidental mic taps / silence.
+ */
+export const MIN_TRANSCRIPTION_DURATION_MS = 500;
+
+/**
+ * Normalized RMS amplitude threshold below which a clip is treated as
+ * silence and never sent to the transcription API.
+ */
+export const SILENCE_LEVEL_THRESHOLD = 0.02;
+
+/**
+ * Known Whisper hallucination / silence-filler artifacts. Whisper and its
+ * hosted derivatives (OpenRouter whisper-large-v3-turbo, Groq, etc.) emit
+ * these on near-silent input. They are stripped when they are the dominant
+ * content of the transcript.
+ */
+const HALLUCINATION_PATTERNS: RegExp[] = [
+	/^\s*thank you(?:,? you)?[.!]?\s*$/i,
+	/^\s*thank you for (?:watching|listening)[.!]?\s*$/i,
+	/^\s*thanks for (?:watching|listening)[.!]?\s*$/i,
+	/^\s*subtitles? (?:by|provided by)[^\n]*$/i,
+	/^\s*subscribed? (?:by|to)[^\n]*$/i,
+	/^\s*(?:the )?(?:end|fin)(?:\.| of (?:the )?(?:video|recording))?[.!]?\s*$/i,
+	/^\s*(?:captions?|transcript(?:ion)?) (?:by|provided by)[^\n]*$/i,
+	/^\s*music[.!]?\s*$/i,
+	/^\s*(?:applause|laughter)[.!]?\s*$/i,
+	/^\s*(?:♪|♫)[^\n]*$/u,
+];
+
+/**
+ * Strip known Whisper silence/hallucination artifacts from a transcript.
+ * Only removes content when the ENTIRE trimmed text matches a known filler
+ * pattern — real speech that merely contains "thank you" is preserved.
+ */
+export function sanitizeTranscript(raw: string): string {
+	if (!raw) return '';
+	const trimmed = raw.trim();
+	if (!trimmed) return '';
+
+	// Exact/near-exact hallucination match → discard entirely.
+	for (const pattern of HALLUCINATION_PATTERNS) {
+		if (pattern.test(trimmed)) {
+			console.debug(`[CC] Transcript filtered: matched ${pattern}`);
+			return '';
+		}
+	}
+
+	// Repetitive single-word loop ("you you you you", "thank thank thank")
+	const words = trimmed.split(/\s+/).filter(Boolean);
+	if (words.length > 1 && words.length <= 12) {
+		const first = words[0]!.toLowerCase();
+		if (first && words.every(word => word.toLowerCase() === first)) {
+			console.debug('[CC] Transcript filtered: repetitive word loop');
+			return '';
+		}
+	}
+
+	// Collapse excessive whitespace/newlines into single spaces.
+	const collapsed = trimmed.replace(/\s+/g, ' ').trim();
+	return collapsed;
+}
+
+/**
  * Extract transcription text from a JSON response, trying multiple common formats.
  *
  * Providers (OpenRouter, Groq, etc.) may return the transcription in one of

@@ -10,7 +10,7 @@ import { createObsidianTools } from '../obsidian-tools';
 import { DEFAULT_REACT_CONFIG } from '../react';
 import type { ReActTraceEvent } from '../react/react-trace';
 import { AudioRecorder } from '../audio/audio-recorder';
-import { buildTranscriptionCandidates, TranscriberAdapter, type TranscriptionCandidate } from '../audio/transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeTranscript, MIN_TRANSCRIPTION_DURATION_MS, type TranscriptionCandidate } from '../audio/transcriber';
 import { LiveTranscriber } from '../audio/live-transcriber';
 import { processTranscriptionOutput, insertIntoActiveEditor } from '../audio/transcription-integrations';
 import { createVaultSearchTool } from '../rag/rag-tool';
@@ -358,25 +358,52 @@ export class CommandCenterChatView extends ItemView {
 		this.microphoneEl.setAttribute('title', 'Transcribing...');
 		this.recordingTimerEl.removeClass('is-visible');
 		this.showComposerNotice('Transcribing...');
+
+		// ── Silence / short-audio guard ─────────────────
+		const durationMs = lockedRecorder.getDurationMs();
+		const peakLevel = lockedRecorder.getPeakLevel();
+		console.debug(`[CC] Chat recording stats: ${durationMs}ms, peakLevel=${peakLevel.toFixed(4)}`);
+		if (durationMs < MIN_TRANSCRIPTION_DURATION_MS || peakLevel < 0.02) {
+			console.debug('[CC] Chat audio too short or silent — discarding');
+			this.hideComposerNotice();
+			this.isTranscribing = false;
+			if (this.isOpen) this.resetMicrophoneUi();
+			if (this.audioRecorder === lockedRecorder) this.audioRecorder = null;
+			return;
+		}
+
 		const controller = new AbortController();
 		this.transcriptionAbort = controller;
 		try {
 			const audio = await lockedRecorder.stop();
 			console.debug(`[CC] Chat got audio blob: ${audio.size} bytes, type=${audio.type}`);
-			const text = await this.transcribeWithFallback(audio, controller.signal);
+			const rawText = await this.transcribeWithFallback(audio, controller.signal);
+			// Sanitize: strip Whisper hallucination artifacts.
+			const text = sanitizeTranscript(rawText);
+			if (!text) {
+				console.debug('[CC] Chat transcript sanitized to empty — likely silence hallucination');
+				this.hideComposerNotice();
+				if (this.isOpen) this.showComposerNotice('No speech detected — try again.', true);
+				window.setTimeout(() => { if (this.isOpen) this.hideComposerNotice(); }, 2500);
+				return;
+			}
 			// Guard: if a new recording started while transcribing, discard this result.
 			if (!this.isOpen || this.audioRecorder !== lockedRecorder) {
 				console.debug('[CC] Chat transcription discarded: recorder was superseded');
 				return;
 			}
-			if (text) {
-				const existing = this.textareaEl.value;
-				this.textareaEl.value = existing && !/\s$/.test(existing) ? `${existing} ${text}` : `${existing}${text}`;
-				this.resizeTextarea();
-				await this.refreshDetectedContext();
-				this.textareaEl.focus();
-				this.textareaEl.setSelectionRange(this.textareaEl.value.length, this.textareaEl.value.length);
-			}
+			// Insert at cursor position, not blindly at end of value.
+			const el = this.textareaEl;
+			const before = el.value.slice(0, el.selectionStart);
+			const after = el.value.slice(el.selectionEnd);
+			const spacer = before && !/\s$/.test(before) ? ' ' : '';
+			el.value = `${before}${spacer}${text}${after}`;
+			// Move cursor to end of inserted text.
+			const newPos = before.length + spacer.length + text.length;
+			el.setSelectionRange(newPos, newPos);
+			this.resizeTextarea();
+			await this.refreshDetectedContext();
+			el.focus();
 			this.hideComposerNotice();
 		} catch (error) {
 			if (this.isOpen) this.showComposerNotice(`Transcription failed: ${(error as Error).message}`, true);

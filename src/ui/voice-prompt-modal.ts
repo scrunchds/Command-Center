@@ -1,7 +1,7 @@
 import { Modal } from 'obsidian';
 import type CommandCenterPlugin from '../main';
 import { AudioRecorder } from '../audio/audio-recorder';
-import { buildTranscriptionCandidates, TranscriberAdapter } from '../audio/transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeTranscript, MIN_TRANSCRIPTION_DURATION_MS } from '../audio/transcriber';
 import type { TranscriptionStatusCallback } from '../audio/AccessibilityAudio';
 import { resolveChatContext } from './chat-context';
 
@@ -123,12 +123,39 @@ export class VoicePromptModal extends Modal {
 		this.statusEl.removeClass('is-error');
 		this.statusEl.setText('Transcribing audio...');
 		this.statusEl.addClass('is-loading');
+
+		// ── Silence / short-audio guard ─────────────────
+		const durationMs = recorder.getDurationMs();
+		const peakLevel = recorder.getPeakLevel();
+		console.debug(`[CC] VoiceModal recording stats: ${durationMs}ms, peakLevel=${peakLevel.toFixed(4)}`);
+		if (durationMs < MIN_TRANSCRIPTION_DURATION_MS || peakLevel < 0.02) {
+			console.debug('[CC] VoiceModal audio too short or silent — discarding');
+			this.statusEl.removeClass('is-loading');
+			this.statusEl.setText('No speech detected — try again.');
+			this.statusEl.addClass('is-error');
+			window.setTimeout(() => { if (!this.closed) this.statusEl.setText(''); }, 2500);
+			this.finishing = false;
+			this.doneEl.disabled = false;
+			return;
+		}
+
 		const controller = new AbortController();
 		this.transcriptionAbort = controller;
 		try {
 			const blob = await recorder.stop();
-			const spokenText = await this.transcribeWithFallback(blob, controller.signal);
-			if (!spokenText) throw new Error('The transcription was empty.');
+			const rawText = await this.transcribeWithFallback(blob, controller.signal);
+			// Sanitize: strip Whisper hallucination artifacts.
+			const spokenText = sanitizeTranscript(rawText);
+			if (!spokenText) {
+				console.debug('[CC] VoiceModal transcript sanitized to empty — likely silence hallucination');
+				if (!this.closed) {
+					this.statusEl.removeClass('is-loading');
+					this.statusEl.setText('No speech detected — try again.');
+					this.statusEl.addClass('is-error');
+					window.setTimeout(() => { if (!this.closed) this.statusEl.setText(''); }, 2500);
+				}
+				return;
+			}
 			this.statusEl.setText('Resolving vault context...');
 			const resolved = await resolveChatContext(this.plugin.app, spokenText);
 			if (this.closed || controller.signal.aborted) return;
