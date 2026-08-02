@@ -21,7 +21,7 @@
  * Exit code 0 on success.
  */
 
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,18 +30,42 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /* ─── Helpers ───────────────────────────────────────────── */
 
+/**
+ * Run a shell command string via execSync (no user input — safe).
+ */
 function run(cmd, cwd = ROOT) {
-	console.log(`\n$ ${Array.isArray(cmd) ? cmd.join(' ') : cmd}`);
+	console.log(`\n$ ${cmd}`);
 	try {
-		if (Array.isArray(cmd)) {
-			execSync(cmd[0], cmd.slice(1), { cwd, stdio: 'inherit', timeout: 180_000 });
-		} else {
-			execSync(cmd, { cwd, stdio: 'inherit', timeout: 180_000 });
-		}
+		execSync(cmd, { cwd, stdio: 'inherit', timeout: 180_000 });
 	} catch {
-		console.error(`\n❌ Command failed: ${Array.isArray(cmd) ? cmd.join(' ') : cmd}`);
+		console.error(`\n❌ Command failed: ${cmd}`);
 		process.exit(1);
 	}
+}
+
+/**
+ * Run a command with separate arguments via spawnSync (no shell, no injection).
+ * Used for git commands where CodeQL flags interpolated shell strings.
+ */
+function runArgs(cmd, args, cwd = ROOT, opts = {}) {
+	console.log(`\n$ ${cmd} ${args.join(' ')}`);
+	const result = spawnSync(cmd, args, { cwd, stdio: 'inherit', timeout: 180_000, ...opts });
+	if (result.status !== 0) {
+		console.error(`\n❌ Command failed: ${cmd} ${args.join(' ')}`);
+		process.exit(1);
+	}
+	return result;
+}
+
+/**
+ * Run a command with separate arguments and capture stdout (no shell).
+ */
+function captureArgs(cmd, args, cwd = ROOT, opts = {}) {
+	const result = spawnSync(cmd, args, { cwd, encoding: 'utf8', timeout: 60_000, ...opts });
+	if (result.status !== 0) {
+		throw new Error(`${cmd} ${args.join(' ')} failed: ${(result.stderr || '').toString().trim() || result.stdout?.toString().trim()}`);
+	}
+	return result.stdout.toString();
 }
 
 function readJSON(p) {
@@ -236,23 +260,23 @@ if (status) {
 
 console.log('\n─── 7. Tagging release ───');
 try {
-	execSync('git', ['tag', '-d', targetVersion], { cwd: ROOT, stdio: 'pipe' });
+	captureArgs('git', ['tag', '-d', targetVersion]);
 } catch { /* ok */ }
-run(['git', 'tag', '-a', targetVersion, '-m', targetVersion]);
+runArgs('git', ['tag', '-a', targetVersion, '-m', targetVersion]);
 
 /* ─── Step 8: Push ──────────────────────────────────────── */
 
 if (pushFlag === '--push') {
 	console.log('\n─── 8. Pushing to origin ───');
 	try {
-		execSync('git', ['pull', '--rebase', 'origin', 'main'], { cwd: ROOT, stdio: 'inherit', timeout: 30_000 });
+		runArgs('git', ['pull', '--rebase', 'origin', 'main'], undefined, { timeout: 30_000 });
 	} catch {
 		console.error('⚠️  git pull --rebase failed. Push manually:');
 		console.error('   git push origin main --tags');
 		process.exit(1);
 	}
-	run(['git', 'push', 'origin', 'main']);
-	run(['git', 'push', 'origin', targetVersion]);
+	runArgs('git', ['push', 'origin', 'main']);
+	runArgs('git', ['push', 'origin', targetVersion]);
 	console.log(`\n  ✅ Pushed main + ${targetVersion} to origin.`);
 } else {
 	console.log('\n─── 8. Skipping push (no --push flag) ───');

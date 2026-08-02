@@ -1,7 +1,7 @@
 {
 	"id": "command-center",
 	"name": "Command Center",
-	"version": "1.1.20",
+	"version": "1.1.21",
 	"minAppVersion": "1.13.0",
 	"description": "Orchestrate AI agents, workflows, retrieval, memory, and daily operations across your vault.",
 	"author": "Dustin Stringer",
