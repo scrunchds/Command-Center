@@ -704,23 +704,31 @@ export class CommandCenterView extends ItemView {
 		this.registerDomEvent(this.chatInputEl, 'input', () => this.resizeOrchestratorInput());
 		this.resizeOrchestratorInput();
 		const controls = section.createDiv({ cls: 'cc-dashboard-input-actions' });
-		const dictate = controls.createEl('button', { text: '🎙 Dictate' });
+		const dictate = controls.createEl('button', { text: '🎙 Dictate', attr: { 'aria-label': 'Start dictation' } });
 		let stopDictation: (() => Promise<string>) | null = null;
 		this.registerDomEvent(dictate, 'click', () => void (async () => {
 			if (stopDictation) {
 				dictate.disabled = true;
+				dictate.setText('⏳ Transcribing…');
 				try {
 					const text = await stopDictation();
-					if (this.chatInputEl) {
-						this.chatInputEl.value = [this.chatInputEl.value.trim(), text].filter(Boolean).join(' ');
-						this.resizeOrchestratorInput();
+					if (text.trim()) {
+						if (this.chatInputEl) {
+							this.chatInputEl.value = [this.chatInputEl.value.trim(), text].filter(Boolean).join(' ');
+							this.resizeOrchestratorInput();
+						}
+						this.plugin.accessibilityAudio.cue('complete');
+					} else {
+						new Notice('Dictation was empty — no text inserted.', 4000);
 					}
 				} catch (error) { new Notice(`Dictation failed: ${(error as Error).message}`); }
 				finally { stopDictation = null; dictate.disabled = false; dictate.setText('🎙 Dictate'); }
 			} else {
 				try {
 					if (!this.plugin.settings.speechToTextEnabled) throw new Error('Enable speech to text in Settings to use dictation.');
-					const session = await this.plugin.accessibilityAudio.dictate();
+					const session = await this.plugin.accessibilityAudio.dictate(undefined, (phase, message) => {
+						if (phase === 'error') new Notice(`Dictation: ${message}`, 5000);
+					});
 					stopDictation = session.stop;
 					dictate.setText('■ Stop dictation');
 				} catch (error) { new Notice(`Dictation failed: ${(error as Error).message}`); }

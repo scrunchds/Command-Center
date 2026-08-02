@@ -358,10 +358,14 @@ export class CommandCenterChatView extends ItemView {
 		this.sttStatusEl.toggleClass('is-unavailable', !this.plugin.settings.speechToTextEnabled || !candidate);
 		if (!candidate?.local) return;
 		try {
-			const models = await new TranscriberAdapter({
-				providerId: candidate.providerId,
-				getSettings: () => this.plugin.settings,
-			}).fetchLiveAudioModels();
+			const models = await this.withTimeout(
+				new TranscriberAdapter({
+					providerId: candidate.providerId,
+					getSettings: () => this.plugin.settings,
+				}).fetchLiveAudioModels(),
+				5_000,
+				'Local model discovery timed out',
+			);
 			if (!this.isOpen || models.length === 0) return;
 			this.sttStatusEl.setText(`STT: ${candidate.providerId === 'lmstudio' ? 'Local LM Studio' : 'Local Ollama'} (${models[0]})`);
 		} catch {
@@ -376,7 +380,9 @@ export class CommandCenterChatView extends ItemView {
 		for (let index = 0; index < candidates.length; index++) {
 			if (signal.aborted) throw new Error('Transcription cancelled.');
 			const candidate = candidates[index]!;
-			this.sttStatusEl.setText(`STT: ${candidate.label}${index ? ' · fallback' : ''}`);
+			const label = index > 0 ? `${candidate.label} · fallback ${index}` : candidate.label;
+			this.sttStatusEl.setText(`STT: ${label}`);
+			this.showComposerNotice(`Transcribing via ${label}...`);
 			try {
 				const transcriber = new TranscriberAdapter({
 					providerId: candidate.providerId,
@@ -387,9 +393,11 @@ export class CommandCenterChatView extends ItemView {
 					signal,
 				});
 				if (candidate.local) {
+					this.showComposerNotice(`Discovering ${candidate.label} models...`);
 					try { await this.withTimeout(transcriber.fetchLiveAudioModels(), 5_000, `${candidate.label} model discovery timed out`); }
 					catch { /* The transcription endpoint may still support an implicit model. */ }
 				}
+				this.showComposerNotice(`Transcribing via ${label}...`);
 				const text = await this.withTimeout(
 					transcriber.transcribe(audio, candidate.model),
 					candidate.local ? 15_000 : 60_000,
@@ -398,7 +406,11 @@ export class CommandCenterChatView extends ItemView {
 				this.sttStatusEl.setText(`STT: ${candidate.label}`);
 				return text.trim();
 			} catch (error) {
-				errors.push(`${candidate.label}: ${(error as Error).message}`);
+				const msg = (error as Error).message;
+				errors.push(`${candidate.label}: ${msg}`);
+				this.showComposerNotice(`${candidate.label} failed: ${msg}`, true);
+				// Brief pause so the user can see the fallback error before the next attempt
+				if (index < candidates.length - 1) await this.safeDelay(800);
 			}
 		}
 		throw new Error(`All transcription providers failed. ${errors.join(' | ')}`);
@@ -412,6 +424,10 @@ export class CommandCenterChatView extends ItemView {
 				error => { window.clearTimeout(timer); reject(error instanceof Error ? error : new Error(String(error))); },
 			);
 		});
+	}
+
+	private safeDelay(ms: number): Promise<void> {
+		return new Promise(resolve => window.setTimeout(resolve, ms));
 	}
 
 	private updateRecordingTimer(): void {

@@ -124,6 +124,31 @@ export class PluginSettingsTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	/**
+	 * Provide setting definitions for Obsidian 1.13.0+ settings search.
+	 * Maps setting keys to display names so users can find Command Center
+	 * settings by typing in the Obsidian settings search bar.
+	 */
+	getSettingDefinitions(): Array<{ key: string; name: string }> {
+		return [
+			{ key: 'pi-path', name: 'Pi Agent Binary Path' },
+			{ key: 'enable-daemon', name: 'Enable Agent Daemon' },
+			{ key: 'metacognitive-depth', name: 'Metacognitive Depth (Quality-Cost Slider)' },
+			{ key: 'audio-cues', name: 'Audio Cues for Dictation' },
+			{ key: 'speech-to-text', name: 'Speech-to-Text / Dictation' },
+			{ key: 'speech-to-text-model', name: 'Transcription Model' },
+			{ key: 'text-to-speech', name: 'Text-to-Speech / Read Aloud' },
+			{ key: 'auto-read', name: 'Auto-Read AI Responses' },
+			{ key: 'memory-max-notes', name: 'Memory Note Limit' },
+			{ key: 'context-char-limit', name: 'Context Character Limit' },
+			{ key: 'silent-daily', name: 'Silent Daily Startup' },
+			{ key: 'dashboard-layout', name: 'Dashboard Layout' },
+			{ key: 'providers', name: 'Provider Credentials' },
+			{ key: 'routing', name: 'Task Routing Matrix' },
+			{ key: 'health', name: 'Provider Health Checks' },
+		];
+	}
+
 	/* ═══════════════════════════════════════════════════════
 	   Display
 	   ═══════════════════════════════════════════════════════ */

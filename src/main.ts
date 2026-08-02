@@ -516,7 +516,7 @@ export default class CommandCenterPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: 'open-browser-panel',
-			name: 'Open Command Center Browser',
+			name: 'Open Browser',
 			callback: () => { void this.activateCommandCenterBrowserView(); },
 		});
 

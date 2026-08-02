@@ -4,6 +4,9 @@ import { AudioRecorder } from './audio-recorder';
 
 export type AudioCue = 'start' | 'stop' | 'complete' | 'attention';
 
+/** Optional callback surface for UI components to show per-provider status during transcription fallback. */
+export type TranscriptionStatusCallback = (phase: 'connecting' | 'transcribing' | 'fallback' | 'done' | 'error', message: string) => void;
+
 /** Shared dictation, speech, and cue boundary for dashboard and chat surfaces. */
 export class AccessibilityAudio {
 	private utterance: SpeechSynthesisUtterance | null = null;
@@ -11,7 +14,7 @@ export class AccessibilityAudio {
 
 	constructor(private readonly plugin: CommandCenterPlugin) {}
 
-	async dictate(signal?: AbortSignal): Promise<{ recorder: AudioRecorder; stop: () => Promise<string> }> {
+	async dictate(signal?: AbortSignal, onStatus?: TranscriptionStatusCallback): Promise<{ recorder: AudioRecorder; stop: () => Promise<string> }> {
 		if (!this.plugin.settings.speechToTextEnabled) {
 			throw new Error('Enable speech to text in Settings to use dictation.');
 		}
@@ -23,18 +26,21 @@ export class AccessibilityAudio {
 			stop: async () => {
 				const audio = await recorder.stop();
 				this.cue('stop');
-				return this.transcribe(audio, signal);
+				return this.transcribe(audio, signal, onStatus);
 			},
 		};
 	}
 
-	async transcribe(audio: Blob, signal?: AbortSignal): Promise<string> {
+	async transcribe(audio: Blob, signal?: AbortSignal, onStatus?: TranscriptionStatusCallback): Promise<string> {
 		const candidates = this.transcriptionCandidates();
 		if (!this.plugin.settings.speechToTextEnabled) throw new Error('Enable speech to text in Command Center settings.');
 		if (!candidates.length) throw new Error('Enable a local or cloud speech-to-text provider in Command Center settings.');
 		const errors: string[] = [];
-		for (const candidate of candidates) {
+		for (let index = 0; index < candidates.length; index++) {
 			if (signal?.aborted) throw new Error('Transcription cancelled.');
+			const candidate = candidates[index]!;
+			const label = index > 0 ? `${candidate.label} (fallback ${index})` : candidate.label;
+			onStatus?.(index > 0 ? 'fallback' : 'transcribing', label);
 			try {
 				const adapter = new TranscriberAdapter({
 					providerId: candidate.providerId,
@@ -44,9 +50,23 @@ export class AccessibilityAudio {
 					maxAttempts: candidate.local ? 1 : 2,
 					signal,
 				});
-				return (await adapter.transcribe(audio, candidate.model)).trim();
+				// Warm up local models before transcription
+				if (candidate.local) {
+					onStatus?.('connecting', `Discovering ${candidate.label} models...`);
+					try {
+						await adapter.fetchLiveAudioModels();
+					} catch {
+						// Non-fatal — the endpoint may still support an implicit model.
+					}
+				}
+				onStatus?.('transcribing', `${label} — processing audio...`);
+				const text = (await adapter.transcribe(audio, candidate.model)).trim();
+				onStatus?.('done', label);
+				return text;
 			} catch (error) {
-				errors.push(`${candidate.label}: ${(error as Error).message}`);
+				const msg = (error as Error).message;
+				errors.push(`${candidate.label}: ${msg}`);
+				onStatus?.('error', `${candidate.label} failed: ${msg}`);
 			}
 		}
 		throw new Error(`All transcription providers failed. ${errors.join(' | ')}`);
