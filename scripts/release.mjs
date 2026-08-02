@@ -31,11 +31,15 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /* ─── Helpers ───────────────────────────────────────────── */
 
 function run(cmd, cwd = ROOT) {
-	console.log(`\n$ ${cmd}`);
+	console.log(`\n$ ${Array.isArray(cmd) ? cmd.join(' ') : cmd}`);
 	try {
-		execSync(cmd, { cwd, stdio: 'inherit', timeout: 180_000 });
+		if (Array.isArray(cmd)) {
+			execSync(cmd[0], cmd.slice(1), { cwd, stdio: 'inherit', timeout: 180_000 });
+		} else {
+			execSync(cmd, { cwd, stdio: 'inherit', timeout: 180_000 });
+		}
 	} catch {
-		console.error(`\n❌ Command failed: ${cmd}`);
+		console.error(`\n❌ Command failed: ${Array.isArray(cmd) ? cmd.join(' ') : cmd}`);
 		process.exit(1);
 	}
 }
@@ -184,8 +188,8 @@ let changelog = readFileSync(changelogPath, 'utf8');
 // Collect commit subjects between the last tag and HEAD
 let logEntries = '';
 try {
-	const lastTag = execSync('git describe --tags --abbrev=0 2>/dev/null', { cwd: ROOT, encoding: 'utf8' }).trim();
-	const log = execSync(`git log ${lastTag}..HEAD --oneline --no-decorate`, { cwd: ROOT, encoding: 'utf8' }).trim();
+	const lastTag = execSync('git', ['describe', '--tags', '--abbrev=0'], { cwd: ROOT, encoding: 'utf8' }).trim();
+	const log = execSync('git', ['log', `${lastTag}..HEAD`, '--oneline', '--no-decorate'], { cwd: ROOT, encoding: 'utf8' }).trim();
 	if (log) {
 		logEntries = '\n' + log.split('\n')
 			.map(line => {
@@ -219,10 +223,10 @@ run('npm run package');
 
 console.log('\n─── 6. Committing release ───');
 
-const status = execSync('git status --porcelain', { cwd: ROOT, encoding: 'utf8' }).trim();
+const status = execSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim();
 if (status) {
-	run('git add -A');
-	run(`git commit -m "chore(release): ${targetVersion}"`);
+	run(['git', 'add', '-A']);
+	run(['git', 'commit', '-m', `chore(release): ${targetVersion}`]);
 	console.log(`  ✅ Committed: chore(release): ${targetVersion}`);
 } else {
 	console.log('  ℹ️  Nothing to commit.');
@@ -231,22 +235,24 @@ if (status) {
 /* ─── Step 7: Tag ───────────────────────────────────────── */
 
 console.log('\n─── 7. Tagging release ───');
-try { execSync(`git tag -d ${targetVersion}`, { cwd: ROOT, stdio: 'pipe' }); } catch { /* ok */ }
-	run(`git tag -a ${targetVersion} -m "${targetVersion}"`);
+try {
+	execSync('git', ['tag', '-d', targetVersion], { cwd: ROOT, stdio: 'pipe' });
+} catch { /* ok */ }
+run(['git', 'tag', '-a', targetVersion, '-m', targetVersion]);
 
 /* ─── Step 8: Push ──────────────────────────────────────── */
 
 if (pushFlag === '--push') {
 	console.log('\n─── 8. Pushing to origin ───');
 	try {
-		execSync('git pull --rebase origin main', { cwd: ROOT, stdio: 'inherit', timeout: 30_000 });
+		execSync('git', ['pull', '--rebase', 'origin', 'main'], { cwd: ROOT, stdio: 'inherit', timeout: 30_000 });
 	} catch {
 		console.error('⚠️  git pull --rebase failed. Push manually:');
 		console.error('   git push origin main --tags');
 		process.exit(1);
 	}
-	run('git push origin main');
-	run(`git push origin ${targetVersion}`);
+	run(['git', 'push', 'origin', 'main']);
+	run(['git', 'push', 'origin', targetVersion]);
 	console.log(`\n  ✅ Pushed main + ${targetVersion} to origin.`);
 } else {
 	console.log('\n─── 8. Skipping push (no --push flag) ───');
