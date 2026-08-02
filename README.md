@@ -595,7 +595,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are currently `1.1.13`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance, and creates a GitHub release. The package metadata and manifest version are currently `1.1.14`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**.
 
