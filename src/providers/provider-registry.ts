@@ -84,6 +84,10 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 			m('google/gemini-pro-1.5', 'Gemini 1.5 Pro (OpenRouter)', 2_097_152, 8192, { vision: true, strengths: ['reading', 'reasoning'] }),
 			m('deepseek/deepseek-coder', 'DeepSeek-Coder (OpenRouter)', 128_000, 8192, { cost: 'cheap', strengths: ['coding', 'fast'] }),
 			m('openai/whisper-large-v3', 'Whisper Large v3 (OpenRouter)', 0, 0, { cost: 'cheap', strengths: [] }),
+			m('openai/tts-1', 'OpenAI TTS-1 (OpenRouter)', 0, 0, { cost: 'cheap', strengths: [] }),
+			m('openai/tts-1-hd', 'OpenAI TTS-1 HD (OpenRouter)', 0, 0, { cost: 'moderate', strengths: [] }),
+			m('mistralai/voxtral-mini-tts-2603', 'Voxtral Mini TTS (OpenRouter)', 0, 0, { cost: 'cheap', strengths: [] }),
+			m('mistralai/voxtral-mini', 'Voxtral Mini (OpenRouter)', 0, 0, { cost: 'cheap', strengths: [] }),
 		],
 	},
 	'ollama': {
