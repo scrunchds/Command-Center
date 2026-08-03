@@ -93,7 +93,10 @@ export function buildTranscriptionCandidates(
 		const credentials = mp.credentials[providerId];
 		const meta = PROVIDER_REGISTRY[providerId];
 		if (!credentials?.enabled || (!credentials.baseUrl && !meta.defaultBaseUrl)) return [];
-		if (meta.requiresKey && options.hasApiKey && !options.hasApiKey(providerId)) return [];
+		if (meta.requiresKey) {
+			const hasKey = options.hasApiKey ? options.hasApiKey(providerId) : !!(credentials?.apiKey?.trim());
+			if (!hasKey) return [];
+		}
 		const local = providerId === 'lmstudio' || providerId === 'ollama';
 		const persisted = mp.liveModels?.[providerId]?.find(model => /(whisper|speech[-_ ]?to[-_ ]?text|transcri|\bstt\b)/i.test(model.id));
 		const model = persisted?.id ?? configuredModel ?? (providerId === 'groq' ? 'whisper-large-v3' : providerId === 'xai' ? 'grok-stt' : providerId === 'openrouter' ? 'openai/whisper-large-v3' : providerId === 'cohere' ? 'cohere-transcribe-03-2026' : local ? undefined : 'whisper-large-v3-turbo');
@@ -320,14 +323,14 @@ export class TranscriberAdapter {
 
 	private transcriptionUrl(baseUrl: string): string {
 		const base = baseUrl.replace(/\/+$/, '');
-		// Provider-specific path override (e.g. xAI uses /v1/stt instead of OpenAI's
-		// /v1/audio/transcriptions).
+		// Provider-specific path override (e.g. xAI uses /v1/stt, Cohere uses /v2/audio/transcriptions).
+		// The path includes the version prefix, so we use the server root to avoid doubling.
 		if (this.options.transcriptionPath) {
 			const path = this.options.transcriptionPath.startsWith('/')
 				? this.options.transcriptionPath
 				: `/${this.options.transcriptionPath}`;
-			if (/\/v1$/i.test(base)) return `${base}${path.replace(/^\/v1/, '') || ''}`;
-			return `${base}${path}`;
+			const serverRoot = base.replace(/\/v\d+$/i, '');
+			return `${serverRoot}${path}`;
 		}
 		if (/\/audio\/transcriptions$/i.test(base)) return base;
 		return /\/v1$/i.test(base) ? `${base}/audio/transcriptions` : `${base}/v1/audio/transcriptions`;

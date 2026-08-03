@@ -82,7 +82,12 @@ export class VoicePromptModal extends Modal {
 		if (!candidate?.local || !this.plugin.settings.speechToTextEnabled) return;
 		try {
 			const models = await this.withTimeout(
-				new TranscriberAdapter({ providerId: candidate.providerId, getSettings: () => this.plugin.settings, transcriptionPath: candidate.transcriptionPath }).fetchLiveAudioModels(),
+				new TranscriberAdapter({
+					providerId: candidate.providerId,
+					getSettings: () => this.plugin.settings,
+					getApiKey: id => this.plugin.credentialVault.get(id),
+					transcriptionPath: candidate.transcriptionPath,
+				}).fetchLiveAudioModels(),
 				5_000,
 				'Local model discovery timed out',
 			);

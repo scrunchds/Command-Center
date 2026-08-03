@@ -569,6 +569,7 @@ export class CommandCenterChatView extends ItemView {
 					maxAttempts: candidate.local ? 1 : 2,
 					getApiKey: id => this.plugin.credentialVault.get(id),
 					signal,
+					transcriptionPath: candidate.transcriptionPath,
 				});
 				if (candidate.local) {
 					this.showComposerNotice(`Discovering ${candidate.label} models...`);
