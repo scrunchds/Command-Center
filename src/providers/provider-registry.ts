@@ -88,6 +88,12 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 			m('openai/tts-1-hd', 'OpenAI TTS-1 HD (OpenRouter)', 0, 0, { cost: 'moderate', strengths: [] }),
 			m('mistralai/voxtral-mini-tts-2603', 'Voxtral Mini TTS (OpenRouter)', 0, 0, { cost: 'cheap', strengths: [] }),
 			m('mistralai/voxtral-mini', 'Voxtral Mini (OpenRouter)', 0, 0, { cost: 'cheap', strengths: [] }),
+			// Image generation models (discoverable via /api/v1/models/user)
+			m('google/gemini-3.1-flash-image', 'Nano Banana 2 (OpenRouter)', 1_000_000, 8192, { cost: 'moderate', strengths: ['vision'] }),
+			m('google/gemini-2.5-flash-image', 'Nano Banana (OpenRouter)', 1_000_000, 8192, { cost: 'cheap', strengths: ['vision'] }),
+			m('openai/gpt-5-image', 'GPT-5 Image (OpenRouter)', 128_000, 8192, { cost: 'expensive', strengths: ['vision'] }),
+			m('openai/gpt-5-image-mini', 'GPT-5 Image Mini (OpenRouter)', 128_000, 8192, { cost: 'moderate', strengths: ['vision'] }),
+			m('openai/gpt-5.4-image-2', 'GPT-5.4 Image 2 (OpenRouter)', 128_000, 8192, { cost: 'expensive', strengths: ['vision'] }),
 		],
 	},
 	'ollama': {

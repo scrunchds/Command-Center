@@ -6,6 +6,10 @@
  * OpenAI-compatible model list format. This provider subclass parses
  * those fields and maps them to Command Center's ProviderModel.
  *
+ * Media generation endpoints (POST /api/v1/videos, POST /api/v1/images/generations)
+ * are exposed as static URL builders for the future video/image generation
+ * feature; models are discovered dynamically through /api/v1/models/user.
+ *
  * @see https://openrouter.ai/docs/api/api-reference/models/get-a-model-by-its-slug
  */
 
@@ -43,6 +47,39 @@ function hasAudio(inputModalities: string[] | undefined): boolean {
 /* ─── Provider Adapter ─────────────────────────────────── */
 
 export class OpenRouterProvider extends OpenAICompatibleProvider {
+	/* ─── Media generation endpoints (future implementation) ─── */
+
+	/**
+	 * OpenRouter video generation submission endpoint.
+	 * POST /api/v1/videos
+	 * Used by the future video generation feature; models are discovered
+	 * dynamically through /api/v1/models/user when they become available.
+	 */
+	static getVideoGenerationUrl(baseUrl: string): string {
+		const b = baseUrl.replace(/\/+$/, '');
+		if (/\/videos$/i.test(b)) return b;
+		return b + '/videos';
+	}
+
+	/**
+	 * OpenRouter video generation status polling endpoint.
+	 * GET /api/v1/videos/{generation_id}
+	 */
+	static getVideoStatusUrl(baseUrl: string, generationId: string): string {
+		const b = baseUrl.replace(/\/+$/, '');
+		return b + '/videos/' + generationId;
+	}
+
+	/**
+	 * OpenRouter image generation submission endpoint.
+	 * POST /api/v1/images/generations
+	 */
+	static getImageGenerationUrl(baseUrl: string): string {
+		const b = baseUrl.replace(/\/+$/, '');
+		if (/\/images\/generations$/i.test(b)) return b;
+		return b + '/images/generations';
+	}
+
 	/**
 	 * Use the personalized model list endpoint that respects the user's
 	 * provider preferences, privacy settings, and guardrails.
@@ -50,7 +87,7 @@ export class OpenRouterProvider extends OpenAICompatibleProvider {
 	 */
 	protected getModelListEndpoint(): string {
 		const base = this.getBaseUrl().replace(/\/+$/, '');
-		return `${base}/models/user`;
+		return base + '/models/user';
 	}
 
 	/**

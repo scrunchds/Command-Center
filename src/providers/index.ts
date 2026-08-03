@@ -40,7 +40,7 @@ export { ProviderDispatcher } from '../dispatcher';
 export { parseModelJson, repairModelJson, stripJsonCodeFence } from './json-repair';
 export {
 	preprocessPrompt, extractImageRefs, resolveVaultPath,
-	readImageAsBase64, isImageFile, mimeFromExtension,
+	readImageAsBase64, isImageFile, isVideoFile, mimeFromExtension,
 } from './image-utils';
 export type { ImageRef } from './image-utils';
 export {

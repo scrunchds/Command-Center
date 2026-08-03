@@ -73,7 +73,7 @@
       "4":  { "providerId": "deepinfra",  "modelId": "openai/vision",    "rationale": "Cloud open video frames." },
       "5":  { "providerId": "openrouter", "modelId": "openai/gpt-4o-mini", "rationale": "Cloud cheap frame analysis." },
       "6":  { "providerId": "groq",       "modelId": "llama-3.2-90b-vision-preview", "rationale": "Cloud fast frames." },
-      "7":  { "providerId": "openrouter", "modelId": "anthropic/claude-3.5-sonnet", "rationale": "Cloud multimodal frames." },
+      "7":  { "providerId": "openrouter", "modelId": "openai/gpt-5-image",    "rationale": "Cloud image/video generation." },
       "8":  { "providerId": "anthropic",  "modelId": "claude-3-5-sonnet-latest", "rationale": "Cloud frontier frame analysis." },
       "9":  { "providerId": "openai",     "modelId": "gpt-4o",           "rationale": "Cloud quality video." },
       "10": { "providerId": "openai",     "modelId": "gpt-4o",           "rationale": "Cloud premium video." }

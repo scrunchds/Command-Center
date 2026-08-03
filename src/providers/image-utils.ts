@@ -59,9 +59,16 @@ const MIME_TYPES: Record<string, string> = {
 	'.svg': 'image/svg+xml',
 	'.tiff': 'image/tiff',
 	'.tif': 'image/tiff',
+	// Video formats (future video generation feature)
+	'.mp4': 'video/mp4',
+	'.webm': 'video/webm',
+	'.mov': 'video/quicktime',
+	'.avi': 'video/x-msvideo',
+	'.mkv': 'video/x-matroska',
 };
 
 const IMAGE_EXTENSIONS = 'png|jpg|jpeg|gif|webp|bmp|svg|tiff|tif';
+const VIDEO_EXTENSIONS = 'mp4|webm|mov|avi|mkv';
 export const DEFAULT_MAX_IMAGE_PAYLOAD_BYTES = 20 * 1024 * 1024;
 const DATA_URI_OVERHEAD_BYTES = 128;
 
@@ -355,4 +362,13 @@ export function mimeFromExtension(filePath: string): string | null {
 
 export function isImageFile(filePath: string): boolean {
 	return path.extname(stripLinkDecorations(filePath)).toLowerCase() in MIME_TYPES;
+}
+
+/**
+ * Check if a file path refers to a supported video format.
+ * Used by the future video generation feature for vault media ingestion.
+ */
+export function isVideoFile(filePath: string): boolean {
+	const ext = path.extname(stripLinkDecorations(filePath)).toLowerCase();
+	return ext === '.mp4' || ext === '.webm' || ext === '.mov' || ext === '.avi' || ext === '.mkv';
 }
