@@ -69,6 +69,8 @@ export interface CommandCenterSettings {
 	autoReadAiResponses: boolean;
 	/** Enable web search tool for models that support it (OpenRouter, xAI, etc.). */
 	webSearchEnabled: boolean;
+	/** MCP server configurations for dynamic tool discovery. */
+	mcpServers: import('../mcp/MCPToolManager').MCPServerConfig[];
 	/** Per-vault dashboard widget order, visibility, collapse, and width. */
 	dashboardLayout: DashboardWidgetLayout[];
 }
@@ -100,6 +102,7 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	speechToTextModel: '',
 	autoReadAiResponses: false,
 	webSearchEnabled: false,
+	mcpServers: [],
 	dashboardLayout: DEFAULT_DASHBOARD_LAYOUT.map(widget => ({ ...widget })),
 };
 
