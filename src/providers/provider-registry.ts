@@ -142,12 +142,14 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 	},
 	'cohere': {
 		id: 'cohere', label: 'Cohere', icon: '🔗',
-		description: 'Command models optimized for RAG.',
+		description: 'Command models optimized for RAG with native STT.',
 		requiresKey: true, defaultBaseUrl: 'https://api.cohere.com/v2',
 		capabilities: caps({ vision: false, maxContextWindow: 128_000 }),
 		models: [
 			m('command-r-plus-08-2024', 'Command R+', 128_000, 4096, { strengths: ['reasoning', 'reading'] }),
 			m('command-r-08-2024', 'Command R', 128_000, 4096, { cost: 'cheap', strengths: ['fast', 'reading'] }),
+			m('command-a-03-2026', 'Command A', 256_000, 8192, { cost: 'moderate', strengths: ['reasoning', 'reading', 'coding'] }),
+			m('cohere-transcribe-03-2026', 'Cohere Transcribe', 0, 0, { cost: 'moderate', strengths: [] }),
 		],
 	},
 	'lmstudio': {
@@ -204,6 +206,7 @@ export const DEFAULT_STT_MODELS: Partial<Record<ProviderId, string>> = {
 	'openai': 'whisper-large-v3-turbo',
 	'deepinfra': 'whisper-large-v3-turbo',
 	'openrouter': 'openai/whisper-large-v3',
+	'cohere': 'cohere-transcribe-03-2026',
 };
 
 /** Best default model for each provider, per task type. */

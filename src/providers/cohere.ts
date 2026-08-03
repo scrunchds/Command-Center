@@ -11,6 +11,12 @@ import type {
 import { BaseHttpProvider } from './base-http-provider';
 import type { ToolDefinition } from '../types';
 
+/** Cohere STT endpoint is /v2/audio/transcriptions. */
+export const COHERE_STT_URL_PATH = '/v2/audio/transcriptions';
+
+/** Cohere STT default model. */
+export const COHERE_STT_MODEL = 'cohere-transcribe-03-2026';
+
 export class CohereProvider extends BaseHttpProvider {
 	/** @note Cohere doesn't support multimodal yet; images are ignored. */
 	protected buildRequestBody(

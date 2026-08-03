@@ -27,6 +27,7 @@ export { XAIProvider, XAI_STT_URL_PATH, XAI_TTS_URL_PATH, XAI_VOICES_URL_PATH } 
 export { AnthropicProvider } from './anthropic';
 export { GeminiProvider } from './google-gemini';
 export { CohereProvider } from './cohere';
+export { COHERE_STT_URL_PATH, COHERE_STT_MODEL } from './cohere';
 export { PiDaemonAdapter } from './pi-daemon-provider';
 export { ProviderFactory } from './provider-factory';
 export { JitModelManager } from './jit-manager';
