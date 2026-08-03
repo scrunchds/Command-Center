@@ -71,6 +71,15 @@ export class OpenRouterProvider extends OpenAICompatibleProvider {
 	}
 
 	/**
+	 * OpenRouter video generation download endpoint.
+	 * GET /api/v1/videos/{generation_id}/download
+	 * Returns the generated video file bytes.
+	 */
+	static getVideoDownloadUrl(baseUrl: string, generationId: string): string {
+		return OpenRouterProvider.getVideoStatusUrl(baseUrl, generationId) + '/download';
+	}
+
+	/**
 	 * OpenRouter image generation submission endpoint.
 	 * POST /api/v1/images/generations
 	 */
