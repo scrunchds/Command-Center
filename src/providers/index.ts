@@ -30,8 +30,8 @@ export { CohereProvider } from './cohere';
 export { COHERE_STT_URL_PATH, COHERE_STT_MODEL } from './cohere';
 export { PiDaemonAdapter } from './pi-daemon-provider';
 export { ProviderFactory } from './provider-factory';
-export { JitModelManager } from './jit-manager';
-export type { JitModelManagerOptions } from './jit-manager';
+export { JitModelManager, getLMStudioDownloadUrl, getLMStudioDownloadStatusUrl } from './jit-manager';
+export type { JitModelManagerOptions, DownloadProgress } from './jit-manager';
 export {
 	classifyProviderFailure, isTransientProviderError, ProviderCircuitBreaker,
 } from './provider-recovery';
