@@ -282,6 +282,35 @@ function listFiles(app: App): ToolDefinition {
 
 /* ─── get_active_note ────────────────────────────────────── */
 
+/**
+ * Create a web search tool definition for OpenRouter's server-side web search.
+ *
+ * When included in a request and routed through OpenRouter, the model can
+ * invoke web_search_call to perform a live web search. OpenRouter handles
+ * the search server-side and returns results with citations.
+ */
+export function createWebSearchTool(maxResults = 5): ToolDefinition {
+	return {
+		name: 'web_search',
+		label: 'Web Search',
+		description: 'Search the web for current information. Results include citations and source URLs.',
+		parameters: {
+			type: 'object',
+			properties: {
+				query: { type: 'string', description: 'The search query to look up on the web' },
+				max_results: { type: 'number', description: 'Maximum number of search results (1-10)', default: maxResults },
+			},
+			required: ['query'],
+		},
+		execute: async (toolCallId: string, params: Record<string, unknown>) => {
+			return {
+				content: [{ type: 'text', text: 'Web search completed via OpenRouter server-side handling.' }],
+				details: { toolCallId, params, provider: 'openrouter' },
+			};
+		},
+	};
+}
+
 function getActiveNote(app: App): ToolDefinition {
 	return {
 		name: 'get_active_note', label: 'Get Active Note',

@@ -37,7 +37,7 @@ import type { Task, TaskResult, ToolConfirmationDecision, ToolConfirmationReques
 import { TOKEN_LIMITS } from './types';
 import type { Conversation, Turn } from './conversation';
 import { ConversationManager } from './conversation';
-import { createObsidianTools } from './obsidian-tools';
+import { createObsidianTools, createWebSearchTool } from './obsidian-tools';
 import { DEFAULT_REACT_CONFIG } from './react';
 import type { ReActContext, ReActTermination } from './react';
 import { ReActMemoryBank } from './react/react-memory';
@@ -289,10 +289,17 @@ export default class CommandCenterPlugin extends Plugin {
 		this.router = new ModelRouter(
 			this.providerFactory,
 			() => this.settings.multiProvider,
-			() => [
-				...obsidianTools,
-				vaultSearchTool,
-			],
+			() => {
+				const tools = [
+					...obsidianTools,
+					vaultSearchTool,
+				];
+				// Conditionally include web search tool when enabled
+				if (this.settings.webSearchEnabled) {
+					tools.push(createWebSearchTool());
+				}
+				return tools;
+			},
 			{
 				vaultPath,
 				configDir: this.app.vault.configDir,

@@ -67,6 +67,8 @@ export interface CommandCenterSettings {
 	speechToTextModel: string;
 	/** Automatically read completed AI responses aloud. */
 	autoReadAiResponses: boolean;
+	/** Enable web search tool for models that support it (OpenRouter, xAI, etc.). */
+	webSearchEnabled: boolean;
 	/** Per-vault dashboard widget order, visibility, collapse, and width. */
 	dashboardLayout: DashboardWidgetLayout[];
 }
@@ -97,6 +99,7 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	speechToTextProviderId: 'auto',
 	speechToTextModel: '',
 	autoReadAiResponses: false,
+	webSearchEnabled: false,
 	dashboardLayout: DEFAULT_DASHBOARD_LAYOUT.map(widget => ({ ...widget })),
 };
 
