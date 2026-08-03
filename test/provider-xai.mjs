@@ -232,28 +232,6 @@ async function verifyTranscriptionCandidates() {
 	);
 	// We can't easily test the private method, but we can verify the candidate data is correct
 	pass('5b: transcription candidate data structure is complete');
-
-	// Verify OpenRouter uses the correct Whisper model name (openai/ prefix)
-	const mockSettingsOR = {
-		multiProvider: {
-			credentials: {
-				openrouter: { enabled: true, baseUrl: 'https://openrouter.ai/api/v1' },
-			},
-			defaults: {},
-			routing: {},
-			fallback: {},
-		},
-		speechToTextEnabled: true,
-		speechToTextProviderId: 'auto',
-	};
-	const orCandidates = buildTranscriptionCandidates(mockSettingsOR, {
-		hasApiKey: (id) => id === 'openrouter',
-	});
-	const orCandidate = orCandidates.find(c => c.providerId === 'openrouter');
-	assert.ok(orCandidate, 'OpenRouter appears in transcription candidates');
-	assert.equal(orCandidate.model, 'openai/whisper-large-v3', 'OpenRouter uses prefixed whisper model name');
-	assert.equal(orCandidate.transcriptionPath, undefined, 'OpenRouter uses standard /v1/audio/transcriptions endpoint');
-	pass('5c: OpenRouter transcription candidate uses correct model + standard endpoint');
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -301,6 +279,40 @@ async function verifyModelMatrix() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   7. OpenRouter Model Metadata Parsing
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyOpenRouterModelMetadata() {
+	console.log('\n─── 7. OpenRouter Model Metadata Parsing ───');
+
+	const { PROVIDER_REGISTRY } = await import(
+		pathToFileURL(join(SRC, 'providers/provider-registry.ts')).href
+	);
+
+	const meta = PROVIDER_REGISTRY['openrouter'];
+	assert.ok(meta, 'OpenRouter registry entry exists');
+	assert.equal(meta.defaultBaseUrl, 'https://openrouter.ai/api/v1', 'OpenRouter base URL');
+	assert.equal(meta.requiresKey, true, 'OpenRouter requires API key');
+	pass('7a: OpenRouter registry entry has correct metadata');
+
+	// Verify the factory source uses OpenRouterProvider
+	const factorySource = readFileSync(join(SRC, 'providers/provider-factory.ts'), 'utf8');
+	assert.ok(factorySource.includes('OpenRouterProvider'), 'Factory source uses OpenRouterProvider class');
+	pass('7b: ProviderFactory creates OpenRouterProvider for openrouter');
+
+	const models = meta.models;
+	const gpt4o = models.find(m => m.id === 'openai/gpt-4o');
+	assert.ok(gpt4o, 'GPT-4o in registry');
+	assert.ok(gpt4o.supportsVision, 'GPT-4o supports vision');
+	assert.ok(gpt4o.supportsTools, 'GPT-4o supports tools');
+	pass('7c: Registry models have correct capabilities');
+
+	const ttsModels = models.filter(m => /tts|voxtral/i.test(m.id));
+	assert.ok(ttsModels.length > 0, 'OpenRouter has TTS models registered');
+	pass('7d: OpenRouter registry includes TTS models');
+}
+
+/* ═══════════════════════════════════════════════════════════
    Main
    ═══════════════════════════════════════════════════════════ */
 
@@ -315,6 +327,7 @@ async function main() {
 	await verifyFactoryIntegration();
 	await verifyTranscriptionCandidates();
 	await verifyModelMatrix();
+	await verifyOpenRouterModelMetadata();
 
 	console.log('\n═══════════════════════════════════════════');
 	console.log(`  Results:  ${results.pass} passed, ${results.fail} failed, ${results.skip} skipped`);

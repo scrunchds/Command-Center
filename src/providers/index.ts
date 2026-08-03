@@ -21,6 +21,7 @@ export { PROVIDER_REGISTRY, getDefaultModelForProvider, DEFAULT_ROUTE_MODELS, DE
 export { BaseHttpProvider } from './base-http-provider';
 export type { BaseHttpProviderOptions } from './base-http-provider';
 export { OpenAICompatibleProvider, toOpenAITools } from './openai-compatible';
+export { OpenRouterProvider } from './openrouter';
 export { LMStudioProvider } from './lm-studio';
 export { XAIProvider, XAI_STT_URL_PATH, XAI_TTS_URL_PATH, XAI_VOICES_URL_PATH } from './xai';
 export { AnthropicProvider } from './anthropic';

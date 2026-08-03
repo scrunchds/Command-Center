@@ -13,6 +13,7 @@ import type {
 import { sanitizeBaseUrl } from './provider-types';
 import { PROVIDER_REGISTRY } from './provider-registry';
 import { OpenAICompatibleProvider } from './openai-compatible';
+import { OpenRouterProvider } from './openrouter';
 import { LMStudioProvider } from './lm-studio';
 import { XAIProvider } from './xai';
 import { AnthropicProvider } from './anthropic';
@@ -168,7 +169,7 @@ export class ProviderFactory {
 			case 'openai':
 				return this.createOpenAICompatible('openai');
 			case 'openrouter':
-				return this.createOpenAICompatible('openrouter');
+				return new OpenRouterProvider(this.httpOpts('openrouter'));
 			case 'groq':
 				return this.createOpenAICompatible('groq');
 			case 'deepinfra':
