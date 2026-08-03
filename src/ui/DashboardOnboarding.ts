@@ -226,6 +226,7 @@ export class DashboardOnboarding {
 				this.approval?.empty();
 				this.approval?.createEl('h3', { text: 'Command center initialized' });
 				this.approval?.createEl('p', { text: `Created ${result.templatePaths.length} template(s) and ${result.workflowPaths.length} workflow(s).` });
+				this.renderNextSteps();
 				this.setStatus('Approved configuration and assets initialized.');
 				new Notice('Command center initialized.');
 			} catch (error) {
@@ -233,6 +234,19 @@ export class DashboardOnboarding {
 				this.setStatus((error as Error).message, true);
 			}
 		})());
+	}
+
+	/** Show a compact "what next" guide after the interview completes. */
+	private renderNextSteps(): void {
+		if (!this.approval) return;
+		const steps = this.approval.createDiv({ cls: 'cc-onboarding-next-steps' });
+		steps.createEl('h4', { text: 'Next steps' });
+		const list = steps.createEl('ol');
+		list.createEl('li', { text: 'Configure providers: Settings → Command Center → Providers.' });
+		list.createEl('li', { text: 'Add API keys via the "Set API key" button on each provider card.' });
+		list.createEl('li', { text: 'Open the chat panel (Command Center: Open Chat Panel) to start working.' });
+		list.createEl('li', { text: 'Run your first morning cycle from the dashboard when ready.' });
+		steps.createDiv({ cls: 'cc-onboarding-next-steps-hint', text: 'You can also use local-only mode (LM Studio / Ollama) with no API keys — see Settings → Command Center → Quick start.' });
 	}
 
 	private checklist<T extends { id: string; name: string; description: string }>(heading: string, items: T[]): Array<{ id: string; input: HTMLInputElement }> {

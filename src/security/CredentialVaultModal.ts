@@ -9,7 +9,12 @@ export class CredentialVaultModal extends Modal {
 	private legacyPassword = '';
 	private errorEl: HTMLElement | null = null;
 
-	constructor(app: App, private readonly plugin: CommandCenterPlugin, private readonly changed: () => void) {
+	constructor(
+		app: App,
+		private readonly plugin: CommandCenterPlugin,
+		private readonly changed: () => void,
+		private readonly focusProviderId?: ProviderId,
+	) {
 		super(app);
 	}
 
@@ -37,7 +42,12 @@ export class CredentialVaultModal extends Modal {
 			const meta = PROVIDER_REGISTRY[id];
 			const authentication = meta.authentication ?? (meta.requiresKey ? 'required' : 'none');
 			if (authentication === 'none') continue;
-			const row = this.contentEl.createDiv({ cls: 'cc-credential-row' });
+			const row = this.contentEl.createDiv({
+				cls: `cc-credential-row${id === this.focusProviderId ? ' cc-credential-row-focused' : ''}`,
+			});
+			if (id === this.focusProviderId) {
+				row.setAttribute('data-provider-id', id);
+			}
 			const label = row.createDiv({ cls: 'cc-credential-label' });
 			label.createSpan({ text: meta.label });
 			label.createEl('small', { text: authentication === 'required' ? 'Required' : 'Optional bearer token' });
@@ -82,6 +92,18 @@ export class CredentialVaultModal extends Modal {
 		const actions = this.contentEl.createDiv({ cls: 'cc-provider-actions-row' });
 		const close = actions.createEl('button', { text: 'Done', cls: 'mod-cta' });
 		close.addEventListener('click', () => this.close());
+
+		// Scroll the focused provider into view and highlight its key input.
+		if (this.focusProviderId) {
+			const target = this.contentEl.querySelector<HTMLElement>(`[data-provider-id="${this.focusProviderId}"]`);
+			const input = target?.querySelector<HTMLInputElement>('input.cc-key-input');
+			if (input) {
+				window.setTimeout(() => {
+					input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+					input.focus();
+				}, 60);
+			}
+		}
 	}
 
 	private syncRowState(id: ProviderId, input: HTMLInputElement, remove: HTMLButtonElement, forceClearPlaceholder = false): void {

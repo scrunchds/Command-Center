@@ -126,6 +126,19 @@ Command Center — Agentic OS for Obsidian
 .cc-telemetry-card.is-secure { border-left: 3px solid var(--color-blue); }
 .cc-telemetry-label { color: var(--text-muted); font-size: var(--font-smallest); letter-spacing: .04em; text-transform: uppercase; }
 .cc-telemetry-value { margin-top: 3px; overflow: hidden; font-size: var(--font-small); font-weight: var(--font-semibold); text-overflow: ellipsis; white-space: nowrap; }
+/* Provider readiness dots row in the dashboard telemetry. */
+.cc-telemetry-providers {
+	grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px;
+	padding: 6px 8px; border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m); background: var(--background-secondary);
+}
+.cc-provider-dot {
+	font-size: 15px; line-height: 1; cursor: default;
+	transition: transform 120ms ease;
+}
+.cc-provider-dot:hover { transform: scale(1.25); }
+.cc-provider-dot.is-ready::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 3px; border-radius: 50%; background: var(--color-green); vertical-align: super; }
+.cc-provider-dot.is-missing-key::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 3px; border-radius: 50%; background: var(--color-red); vertical-align: super; }
 .cc-dashboard-approvals, .cc-bases-controller { padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); }
 .cc-dashboard-approvals { border-color: hsla(var(--color-orange-hsl), .35); }
 .cc-dashboard-approval-queue { display: flex; flex-direction: column; gap: 10px; }
@@ -147,6 +160,17 @@ Command Center — Agentic OS for Obsidian
 .cc-dashboard-workspace-card { padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); }
 .cc-dashboard-workspace-card div { margin-top: 3px; color: var(--text-muted); font-size: var(--font-small); }
 .cc-dashboard-workspace-actions { display: flex; gap: 8px; margin-top: 12px; }
+/* First-run setup banner: shown when no providers are configured yet. */
+.cc-setup-banner {
+	display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; padding: 14px 16px;
+	border: 1px solid hsla(var(--color-orange-hsl), 0.4); border-radius: var(--radius-l);
+	background: hsla(var(--color-orange-hsl), 0.08);
+}
+.cc-setup-banner-icon { font-size: 24px; line-height: 1; flex-shrink: 0; }
+.cc-setup-banner-text { flex: 1; font-size: var(--font-small); line-height: 1.5; }
+.cc-setup-banner-text strong { display: block; margin-bottom: 4px; font-size: var(--font-medium); }
+.cc-setup-banner-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.cc-setup-banner-actions button { white-space: nowrap; }
 @media (max-width: 800px) { .cc-dashboard-workspace-cards { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 480px) { .cc-dashboard-workspace-cards { grid-template-columns: 1fr; } .cc-dashboard-workspace-heading > button { position: static; margin-top: 10px; } }
 
@@ -790,10 +814,21 @@ Command Center — Agentic OS for Obsidian
 
 /* Credential rows */
 .cc-credential-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+/* Highlight the provider row the user navigated to via a provider card shortcut. */
+.cc-credential-row-focused {
+	padding: 6px 8px; margin: -6px -8px 8px; border: 1px solid hsla(var(--interactive-accent-hsl), 0.45);
+	border-radius: 8px; background: hsla(var(--interactive-accent-hsl), 0.08);
+}
 .cc-credential-label {
 	font-size: var(--font-smallest); font-weight: var(--font-semibold); color: var(--text-muted);
 	text-transform: uppercase; letter-spacing: 0.3px; width: 65px; flex-shrink: 0;
 }
+.cc-set-key-button {
+	padding: 2px 10px; border: 1px solid var(--background-modifier-border); border-radius: 6px;
+	background: var(--background-primary); color: var(--text-accent); font-size: var(--font-smallest);
+	cursor: pointer;
+}
+.cc-set-key-button:hover { background: var(--background-modifier-hover); }
 
 .cc-key-input-container { display: flex; align-items: center; gap: 4px; flex: 1; }
 .cc-key-input, .cc-url-input {
@@ -964,6 +999,8 @@ Command Center — Agentic OS for Obsidian
 .cc-chat-status-dot.offline { background: var(--color-red); }
 .cc-chat-route-label { overflow: hidden; margin-top: 2px; color: var(--text-muted); font-size: var(--font-smallest); text-overflow: ellipsis; white-space: nowrap; }
 .cc-chat-mode-select { flex: 0 1 auto; max-width: 140px; font-size: var(--font-small); }
+.cc-chat-conv-select { flex: 1 1 auto; min-width: 0; max-width: 180px; font-size: var(--font-small); }
+.cc-chat-conv-select.is-empty { opacity: 0.5; }
 .cc-chat-history {
 	display: flex; flex: 1 1 auto; flex-direction: column; gap: 10px; min-height: 0;
 	overflow-y: auto; padding: 14px 12px; overscroll-behavior: contain;
@@ -979,15 +1016,39 @@ Command Center — Agentic OS for Obsidian
 .cc-chat-bubble * { user-select: text; -webkit-user-select: text; }
 .cc-chat-message-user .cc-chat-bubble { border-color: hsla(var(--interactive-accent-hsl), 0.35); background: hsla(var(--interactive-accent-hsl), 0.14); }
 .cc-chat-bubble.is-pending:empty::after, .cc-chat-message-content:empty::after { content: "…"; color: var(--text-faint); }
+.cc-chat-message-content.is-streaming::after {
+	content: "▊"; margin-left: 2px; color: var(--text-accent);
+	animation: cc-cursor-blink 1s steps(1) infinite;
+}
+@keyframes cc-cursor-blink {
+	50% { opacity: 0; }
+}
 .cc-chat-message-content { user-select: text; -webkit-user-select: text; }
 .cc-chat-message-content > :first-child { margin-top: 0; }
 .cc-chat-message-content > :last-child { margin-bottom: 0; }
-.cc-chat-message-time { margin-top: 5px; color: var(--text-faint); font-size: 9px; line-height: 1; text-align: left; }
-.cc-chat-message-user .cc-chat-message-time { text-align: right; }
+/* Hover-revealed action bar: hidden until the bubble is hovered or focused. */
+.cc-chat-message-actions {
+	display: flex; align-items: center; justify-content: flex-end; gap: 6px;
+	margin-top: 5px; opacity: 0; transition: opacity 120ms ease;
+}
+.cc-chat-message-actions:focus-within { opacity: 1; }
+.cc-chat-bubble:hover .cc-chat-message-actions { opacity: 1; }
+.cc-chat-message-actions button {
+	display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px;
+	border: 1px solid var(--background-modifier-border); border-radius: 6px;
+	background: var(--background-primary); color: var(--text-muted);
+	font-size: var(--font-smallest); line-height: 1.6; cursor: pointer;
+}
+.cc-chat-message-actions button:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.cc-chat-message-actions button.is-copied { color: var(--color-green); border-color: hsla(var(--color-green-hsl), 0.4); }
+.cc-chat-message-actions svg { width: 12px; height: 12px; }
+.cc-chat-message-time { margin-top: 0; color: var(--text-faint); font-size: 9px; line-height: 1; margin-right: auto; }
+.cc-chat-message-user .cc-chat-message-time { text-align: right; margin-right: 0; margin-left: auto; }
 .cc-chat-react-trace { margin-top: 8px; border-top: 1px solid var(--background-modifier-border); padding-top: 6px; }
 .cc-chat-react-trace summary { cursor: pointer; color: var(--text-muted); font-size: var(--font-smallest); }
 .cc-chat-react-trace-content { max-height: 180px; overflow: auto; padding-top: 6px; white-space: pre-wrap; font: var(--font-smallest) var(--font-monospace); color: var(--text-muted); user-select: text; -webkit-user-select: text; }
 .cc-chat-composer { flex: 0 0 auto; padding: 8px 10px 10px; border-top: 1px solid var(--background-modifier-border); background: var(--background-secondary); }
+.cc-chat-composer.is-drag-over { outline: 2px dashed var(--interactive-accent); outline-offset: -4px; border-radius: 8px; }
 .cc-chat-context-pills { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
 .cc-chat-context-pills.is-empty { display: none; }
 .cc-chat-context-pill { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 6px; border: 1px solid var(--background-modifier-border); border-radius: 12px; background: var(--background-primary); font-size: var(--font-smallest); user-select: text; -webkit-user-select: text; }
@@ -1077,7 +1138,24 @@ Command Center — Agentic OS for Obsidian
 .cc-onboarding-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .cc-onboarding-status { min-height: 18px; margin-top: 5px; color: var(--text-muted); font-size: var(--font-smallest); }
 .cc-onboarding-status.is-error { color: var(--color-red); }
+.cc-onboarding-next-steps { margin-top: 16px; padding: 14px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); }
+.cc-onboarding-next-steps h4 { margin: 0 0 8px; font-size: var(--font-medium); }
+.cc-onboarding-next-steps ol { margin: 0; padding-left: 20px; font-size: var(--font-small); line-height: 1.8; }
+.cc-onboarding-next-steps-hint { margin-top: 10px; color: var(--text-muted); font-size: var(--font-smallest); }
 .cc-read-aloud { display: inline-flex; align-items: center; margin-top: 6px; padding: 2px 7px; color: var(--text-muted); font-size: var(--font-smallest); }
+/* Code block copy button: positioned in the top-right corner of the <pre> block. */
+pre.cc-code-with-copy { position: relative; }
+.cc-copy-code {
+	position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center;
+	justify-content: center; width: 26px; height: 26px; padding: 0;
+	border: 1px solid var(--background-modifier-border); border-radius: 5px;
+	background: var(--background-primary); color: var(--text-muted);
+	opacity: 0; transition: opacity 120ms ease; cursor: pointer;
+}
+pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
+.cc-copy-code:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.cc-copy-code.is-copied { color: var(--color-green); border-color: hsla(var(--color-green-hsl), 0.4); }
+.cc-copy-code svg { width: 14px; height: 14px; }
 .cc-orchestrator-chat { display: flex; flex-direction: column; min-width: 0; padding: clamp(12px, 1.5vw, 20px); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); background: var(--background-primary-alt); }
 .cc-dashboard-orchestrator-messages { display: flex; flex-direction: column; gap: 9px; width: 100%; min-height: clamp(180px, 26vh, 360px); height: clamp(240px, 34vh, 520px); max-height: 65vh; padding: 12px; overflow: auto; resize: vertical; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); }
 .cc-dashboard-orchestrator-message { align-self: flex-start; max-width: min(86%, 900px); padding: 9px 12px; overflow-wrap: anywhere; white-space: pre-wrap; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); background: var(--background-secondary); }

@@ -3,8 +3,10 @@
 import type { CommandCenterSettings } from '../settings/settings-model';
 import type { MultiProviderSettings, ProviderId } from '../providers/provider-types';
 import { detectLocalRuntime, isLocalBaseUrl, sanitizeBaseUrl } from '../providers/provider-types';
-import { PROVIDER_REGISTRY } from '../providers/provider-registry';
+import { PROVIDER_REGISTRY, DEFAULT_STT_MODELS } from '../providers/provider-registry';
 import { JitModelManager } from '../providers/jit-manager';
+import { XAI_STT_URL_PATH } from '../providers/xai';
+import { COHERE_STT_URL_PATH } from '../providers/cohere';
 
 export interface TranscriptionOptions {
 	model?: string;
@@ -48,7 +50,7 @@ export interface TranscriptionCandidate {
 	transcriptionPath?: string;
 }
 
-const TRANSCRIPTION_PROVIDER_ORDER: ProviderId[] = [
+export const TRANSCRIPTION_PROVIDER_ORDER: ProviderId[] = [
 	'lmstudio',
 	'ollama',
 	'groq',
@@ -99,10 +101,10 @@ export function buildTranscriptionCandidates(
 		}
 		const local = providerId === 'lmstudio' || providerId === 'ollama';
 		const persisted = mp.liveModels?.[providerId]?.find(model => /(whisper|speech[-_ ]?to[-_ ]?text|transcri|\bstt\b)/i.test(model.id));
-		const model = persisted?.id ?? configuredModel ?? (providerId === 'groq' ? 'whisper-large-v3' : providerId === 'xai' ? 'grok-stt' : providerId === 'openrouter' ? 'openai/whisper-large-v3' : providerId === 'cohere' ? 'cohere-transcribe-03-2026' : local ? undefined : 'whisper-large-v3-turbo');
+		const model = persisted?.id ?? configuredModel ?? DEFAULT_STT_MODELS[providerId] ?? (local ? undefined : 'whisper-large-v3-turbo');
 		const providerLabel = providerId === 'lmstudio' ? 'Local LM Studio' : providerId === 'ollama' ? 'Local Ollama' : meta.label;
 		// xAI uses a non-standard STT endpoint (/v1/stt instead of /v1/audio/transcriptions).
-		const transcriptionPath = providerId === 'xai' ? '/v1/stt' : providerId === 'cohere' ? '/v2/audio/transcriptions' : undefined;
+		const transcriptionPath = providerId === 'xai' ? XAI_STT_URL_PATH : providerId === 'cohere' ? COHERE_STT_URL_PATH : undefined;
 		return [{ providerId, model, label: `${providerLabel} (${model ?? 'automatic Whisper'})`, local, transcriptionPath }];
 	});
 }
@@ -251,7 +253,9 @@ export class TranscriberAdapter {
 		if (contentType.includes('application/json')) {
 			const payload = await response.json() as Record<string, unknown>;
 			const extracted = extractTranscriptionText(payload);
-			if (extracted) return extracted;
+			// Return the extracted text, even if empty (e.g. silent audio).
+			// Only throw when the response had no recognizable text field at all.
+			if (extracted !== undefined) return extracted;
 			// Include the actual response shape so provider mismatches are debuggable
 			// instead of surfacing as a generic "did not contain text" failure.
 			throw new TranscriptionError(
@@ -300,7 +304,7 @@ export class TranscriberAdapter {
 			// field so endpoints with an implicit model can select their own fallback.
 			return this.discoveredAudioModels[0];
 		}
-		return requested || 'whisper-large-v3-turbo';
+		return requested || DEFAULT_STT_MODELS[this.options.providerId] || 'whisper-large-v3-turbo';
 	}
 
 	private resolveConnection(): { apiKey: string; baseUrl: string; meta: typeof PROVIDER_REGISTRY[ProviderId] } {
@@ -318,7 +322,7 @@ export class TranscriberAdapter {
 	private modelsUrl(baseUrl: string): string {
 		const base = baseUrl.replace(/\/+$/, '');
 		if (/\/models$/i.test(base)) return base;
-		return /\/v1$/i.test(base) ? `${base}/models` : `${base}/v1/models`;
+		return `${base}/models`;
 	}
 
 	private transcriptionUrl(baseUrl: string): string {
@@ -333,7 +337,7 @@ export class TranscriberAdapter {
 			return `${serverRoot}${path}`;
 		}
 		if (/\/audio\/transcriptions$/i.test(base)) return base;
-		return /\/v1$/i.test(base) ? `${base}/audio/transcriptions` : `${base}/v1/audio/transcriptions`;
+		return `${base}/audio/transcriptions`;
 	}
 
 	private async readErrorMessage(response: Response): Promise<string> {
@@ -436,9 +440,13 @@ export function sanitizeDictation(text: string): string {
 function extractTranscriptionText(payload: Record<string, unknown>): string | undefined {
 	// Priority-ordered list of field names that may hold transcription text.
 	const candidates = ['text', 'transcript', 'results', 'transcription', 'content', 'output'];
+	// Track whether any candidate field was present (even if empty) — if so,
+	// the provider processed the audio successfully but detected no speech.
+	let foundField = false;
 	for (const key of candidates) {
 		const value = payload[key];
 		if (typeof value === 'string') {
+			foundField = true;
 			const trimmed = value.trim();
 			if (trimmed) return trimmed;
 		}
@@ -451,7 +459,7 @@ function extractTranscriptionText(payload: Record<string, unknown>): string | un
 				}
 				if (item && typeof item === 'object') {
 					const nested = extractTranscriptionText(item as Record<string, unknown>);
-					if (nested) return nested;
+					if (nested !== undefined) return nested;
 				}
 			}
 		}
@@ -459,8 +467,13 @@ function extractTranscriptionText(payload: Record<string, unknown>): string | un
 	// Last resort: check for a nested structure like { data: { text: "..." } }
 	if (payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
 		const nested = extractTranscriptionText(payload.data as Record<string, unknown>);
-		if (nested) return nested;
+		if (nested !== undefined) return nested;
 	}
+	// If any recognized text field was present (even empty), the provider
+	// processed the audio successfully but detected no speech. Return empty
+	// string so upstream sanitizeDictation() handles it rather than burning
+	// through every fallback provider.
+	if (foundField) return '';
 	return undefined;
 }
 

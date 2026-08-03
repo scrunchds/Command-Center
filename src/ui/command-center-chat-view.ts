@@ -37,6 +37,7 @@ export class CommandCenterChatView extends ItemView {
 	private historyEl!: HTMLElement;
 	private textareaEl!: HTMLTextAreaElement;
 	private modeSelectEl!: HTMLSelectElement;
+	private convSelectEl!: HTMLSelectElement;
 	private submitEl!: HTMLButtonElement;
 	private microphoneEl!: HTMLButtonElement;
 	private recordingTimerEl!: HTMLElement;
@@ -99,6 +100,17 @@ export class CommandCenterChatView extends ItemView {
 			['quick', 'Quick'], ['react', 'ReAct Agent'], ['workflow', 'Workflow'],
 		] as const) this.modeSelectEl.createEl('option', { value, text: label });
 
+		this.convSelectEl = header.createEl('select', {
+			cls: 'cc-chat-conv-select',
+			attr: { 'aria-label': 'Conversation', title: 'Switch conversation' },
+		});
+		this.registerDomEvent(this.convSelectEl, 'change', () => {
+			const id = this.convSelectEl.value;
+			if (id && this.plugin.conversations.setActive(id)) {
+				this.replayChatHistory();
+			}
+		});
+
 		const exportBtn = header.createEl('button', {
 			cls: 'cc-chat-export',
 			text: '📥',
@@ -114,6 +126,7 @@ export class CommandCenterChatView extends ItemView {
 			this.plugin.conversations.create('default', 'New conversation');
 			this.historyEl.empty();
 			this.addMessage('assistant', 'How can I help with your vault?');
+			this.refreshConversationList();
 			new Notice('Started a new conversation.');
 		});
 
@@ -215,6 +228,41 @@ export class CommandCenterChatView extends ItemView {
 				else void this.sendCurrentMessage();
 			}
 		});
+		this.registerDomEvent(this.textareaEl, 'paste', (event: ClipboardEvent) => {
+			const items = event.clipboardData?.items;
+			if (!items) return;
+			for (const item of Array.from(items)) {
+				if (item.type.startsWith('image/')) {
+					event.preventDefault();
+					new Notice('Image paste is not yet supported in chat. Use @ to attach a vault note.', 5000);
+					return;
+				}
+			}
+		});
+		// Drag-and-drop: accept .md, .canvas, and .base files from the file explorer.
+		this.registerDomEvent(composer, 'dragover', (event: DragEvent) => {
+			if (event.dataTransfer?.types.includes('text/plain')) {
+				event.preventDefault();
+				composer.addClass('is-drag-over');
+			}
+		});
+		this.registerDomEvent(composer, 'dragleave', () => {
+			composer.removeClass('is-drag-over');
+		});
+		this.registerDomEvent(composer, 'drop', (event: DragEvent) => {
+			composer.removeClass('is-drag-over');
+			const text = event.dataTransfer?.getData('text/plain');
+			if (!text) return;
+			// Check if it looks like a vault path (markdown, canvas, or base file).
+			if (/\.(md|canvas|base)$/i.test(text)) {
+				event.preventDefault();
+				const mention = text.startsWith('@') ? text : `@${text}`;
+				this.textareaEl.value += (this.textareaEl.value.length > 0 ? ' ' : '') + mention;
+				this.resizeTextarea();
+				void this.refreshDetectedContext();
+				new Notice(`Attached ${text.split('/').pop()}`);
+			}
+		});
 		this.registerDomEvent(this.microphoneEl, 'click', (event) => { void this.toggleRecording(event); });
 		this.registerDomEvent(this.submitEl, 'click', () => { void this.sendCurrentMessage(); });
 
@@ -233,6 +281,7 @@ export class CommandCenterChatView extends ItemView {
 	private replayChatHistory(): void {
 		// Clear the default welcome message if we have saved turns.
 		const active = this.plugin.conversations.getActive();
+		this.refreshConversationList();
 		if (!active || active.turns.length === 0) return;
 		this.historyEl.empty();
 		for (const turn of active.turns) {
@@ -241,6 +290,21 @@ export class CommandCenterChatView extends ItemView {
 			}
 		}
 		this.scrollToBottom(true);
+	}
+
+	/** Refresh the conversation selector with all saved conversations. */
+	private refreshConversationList(): void {
+		if (!this.convSelectEl) return;
+		const conversations = this.plugin.conversations.list();
+		const active = this.plugin.conversations.getActive();
+		this.convSelectEl.empty();
+		for (const conv of conversations) {
+			const turnCount = conv.turns.filter(t => t.role === 'user' || t.role === 'assistant').length;
+			const label = `${conv.name}${turnCount ? ` (${turnCount})` : ''}`;
+			const option = this.convSelectEl.createEl('option', { value: conv.id, text: label });
+			if (active && conv.id === active.id) option.selected = true;
+		}
+		this.convSelectEl.toggleClass('is-empty', conversations.length === 0);
 	}
 
 	/** Export the current conversation as a Markdown file with frontmatter metadata. */
@@ -436,6 +500,11 @@ export class CommandCenterChatView extends ItemView {
 
 	private async toggleRecording(event?: MouseEvent): Promise<void> {
 		if (this.isSending || this.isTranscribing || !this.plugin.settings.speechToTextEnabled) return;
+		// Show a clear notice when no STT providers are configured.
+		if (!this.hasSttCandidates()) {
+			this.showComposerNotice('Configure a transcription provider in Settings first.', true);
+			return;
+		}
 		// Shift+click starts live (chunked) transcription; regular click is push-to-talk.
 		if (event?.shiftKey || this.liveTranscriber) {
 			await this.toggleLiveRecording();
@@ -561,7 +630,7 @@ export class CommandCenterChatView extends ItemView {
 		}
 		const candidates = this.getTranscriptionCandidates();
 		if (!candidates.length) {
-			this.showComposerNotice('Enable an OpenAI-compatible transcription provider first.', true);
+			this.showComposerNotice('Configure a transcription provider in Settings first.', true);
 			return;
 		}
 		this.hideComposerNotice();
@@ -673,10 +742,20 @@ export class CommandCenterChatView extends ItemView {
 		});
 	}
 
+	/** True when at least one STT provider is configured and has a key. */
+	private hasSttCandidates(): boolean {
+		return this.getTranscriptionCandidates().length > 0;
+	}
+
 	private async refreshSttStatus(): Promise<void> {
 		const candidate = this.getTranscriptionCandidates()[0];
 		this.sttStatusEl.setText(candidate ? `STT: ${candidate.label}` : this.plugin.settings.speechToTextEnabled ? 'STT: not configured' : 'STT: disabled');
 		this.sttStatusEl.toggleClass('is-unavailable', !this.plugin.settings.speechToTextEnabled || !candidate);
+		// Sync mic button disabled state with candidate availability.
+		if (this.microphoneEl) {
+			this.microphoneEl.disabled = this.isSending || this.isTranscribing || !this.plugin.settings.speechToTextEnabled || !this.hasSttCandidates();
+			this.microphoneEl.setAttribute('title', this.hasSttCandidates() ? 'Record voice message (Shift+click for live)' : 'No STT provider configured');
+		}
 		if (!candidate?.local) return;
 		try {
 			const models = await this.withTimeout(
@@ -772,10 +851,10 @@ export class CommandCenterChatView extends ItemView {
 
 	private resetMicrophoneUi(): void {
 		this.microphoneEl.removeClass('cc-mic-recording', 'is-transcribing', 'cc-mic-live');
-		this.microphoneEl.disabled = this.isSending || !this.plugin.settings.speechToTextEnabled;
+		this.microphoneEl.disabled = this.isSending || !this.plugin.settings.speechToTextEnabled || !this.hasSttCandidates();
 		this.microphoneEl.setAttribute('aria-label', 'Start voice recording');
 		this.microphoneEl.setAttribute('aria-pressed', 'false');
-		this.microphoneEl.setAttribute('title', 'Record voice message (Shift+click for live)');
+		this.microphoneEl.setAttribute('title', this.hasSttCandidates() ? 'Record voice message (Shift+click for live)' : 'No STT provider configured');
 		this.recordingTimerEl.removeClass('is-visible');
 		this.recordingTimerEl.setText('00:00');
 	}
@@ -803,15 +882,24 @@ export class CommandCenterChatView extends ItemView {
 			attr: { title: new Date().toLocaleString() },
 		});
 		if (role === 'assistant') {
-			const read = actions.createEl('button', { text: '🔊 Read aloud', cls: 'cc-read-aloud', attr: { 'aria-label': 'Read AI response aloud' } });
+			const read = actions.createEl('button', {
+				cls: 'cc-read-aloud',
+				attr: { 'aria-label': 'Read AI response aloud', title: 'Read aloud' },
+			});
+			setIcon(read, 'volume-2');
 			this.registerDomEvent(read, 'click', () => this.plugin.accessibilityAudio.speak(message.markdown));
 		}
-		const copy = actions.createEl('button', { text: 'Copy', cls: 'cc-copy-button', attr: { 'aria-label': 'Copy message text' } });
-		this.registerDomEvent(copy, 'click', () => void this.copyText(message.markdown, copy));
-		const del = actions.createEl('button', { text: '✕', cls: 'cc-delete-button', attr: { 'aria-label': 'Delete message' } });
-		this.registerDomEvent(del, 'click', () => {
-			row.remove();
+		const copy = actions.createEl('button', {
+			cls: 'cc-copy-button',
+			attr: { 'aria-label': 'Copy message text', title: 'Copy' },
 		});
+		setIcon(copy, 'copy');
+		this.registerDomEvent(copy, 'click', () => void this.copyText(message.markdown, copy));
+		const del = actions.createEl('button', {
+			cls: 'cc-delete-button',
+			attr: { 'aria-label': 'Delete message', title: 'Delete' },
+		});
+		setIcon(del, 'x');
 		void this.renderMessage(message);
 		this.pinnedToBottom = true;
 		this.scrollToBottom(true);
@@ -875,9 +963,9 @@ export class CommandCenterChatView extends ItemView {
 			pre.classList.add('cc-code-with-copy');
 			const btn = pre.createEl('button', {
 				cls: 'cc-copy-code',
-				text: '📋',
 				attr: { 'aria-label': 'Copy code block' },
 			});
+			setIcon(btn, 'copy');
 			this.registerDomEvent(btn, 'click', async (event) => {
 				event.stopPropagation();
 				const code = pre.textContent ?? '';
@@ -1097,7 +1185,7 @@ export class CommandCenterChatView extends ItemView {
 		this.isSending = sending;
 		if (!this.isOpen) return;
 		this.submitEl.disabled = sending;
-		this.microphoneEl.disabled = sending || this.isTranscribing || !this.plugin.settings.speechToTextEnabled;
+		this.microphoneEl.disabled = sending || this.isTranscribing || !this.plugin.settings.speechToTextEnabled || !this.hasSttCandidates();
 		this.textareaEl.disabled = sending;
 		this.updateHeader();
 		if (!sending) this.textareaEl.focus();

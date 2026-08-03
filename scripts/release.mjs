@@ -263,10 +263,10 @@ run('npm run package');
 
 console.log('\n─── 6. Committing release ───');
 
-const status = execSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim();
+const status = execSync('git status --porcelain', { cwd: ROOT, encoding: 'utf8' }).trim();
 if (status) {
-	run(['git', 'add', '-A']);
-	run(['git', 'commit', '-m', `chore(release): ${targetVersion}`]);
+	runArgs('git', ['add', '-A']);
+	runArgs('git', ['commit', '-m', `chore(release): ${targetVersion}`]);
 	console.log(`  ✅ Committed: chore(release): ${targetVersion}`);
 } else {
 	console.log('  ℹ️  Nothing to commit.');

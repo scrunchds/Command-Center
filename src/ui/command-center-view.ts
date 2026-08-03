@@ -10,6 +10,7 @@ import {
 	TFile,
 	WorkspaceLeaf,
 	normalizePath,
+	App,
 	type EventRef,
 } from 'obsidian';
 import type CommandCenterPlugin from '../main';
@@ -22,6 +23,8 @@ import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetLayout, type DashboardWid
 import { DashboardOnboarding } from './DashboardOnboarding';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
 import { ChatActionCard } from './chat-action-card';
+import type { ProviderId } from '../providers/provider-types';
+import { PROVIDER_REGISTRY } from '../providers/provider-registry';
 
 const MAX_TRACE_ENTRIES = 50;
 const MAX_COMPLETED_STREAMS = 3;
@@ -412,6 +415,29 @@ export class CommandCenterView extends ItemView {
 		if (!this.dashboardWorkspaceEl) return;
 		this.dashboardWorkspaceEl.empty();
 		this.dashboardWorkspaceEl.removeClass('cc-dashboard-onboarding');
+
+		// First-run setup hint: no providers configured yet
+		const mp = this.plugin.settings.multiProvider;
+		const hasProviders = Object.values(mp.credentials).some(c => c?.enabled);
+		if (!hasProviders) {
+			const banner = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-setup-banner' });
+			banner.createSpan({ text: '🔑', cls: 'cc-setup-banner-icon' });
+			const text = banner.createDiv({ cls: 'cc-setup-banner-text' });
+			text.createEl('strong', { text: 'No providers configured yet' });
+			text.createDiv({ text: 'Enable at least one provider in Settings → Command Center → Providers to start using Command Center. Add an API key via the "Set API key" button on each provider card.' });
+			const actions = banner.createDiv({ cls: 'cc-setup-banner-actions' });
+			const openSettings = actions.createEl('button', { text: 'Open settings', cls: 'mod-cta' });
+			this.registerDomEvent(openSettings, 'click', () => {
+				const appWithSetting = this.plugin.app as App & { setting: { open: () => void; openTab: (id: string) => void } };
+				if (appWithSetting.setting) {
+					appWithSetting.setting.open();
+					appWithSetting.setting.openTab('Command Center');
+				}
+			});
+			const startInterview = actions.createEl('button', { text: 'Start setup interview' });
+			this.registerDomEvent(startInterview, 'click', () => this.plugin.openOnboarding());
+		}
+
 		const heading = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-heading' });
 		heading.createDiv( { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
 		heading.createEl('h2', { text: 'Operational overview' });
@@ -500,6 +526,28 @@ export class CommandCenterView extends ItemView {
 			const card = this.telemetryEl.createDiv({ cls: `cc-telemetry-card is-${item.state}` });
 			card.createDiv({ text: item.label, cls: 'cc-telemetry-label' });
 			card.createDiv({ text: item.value, cls: 'cc-telemetry-value' });
+		}
+		// Compact provider readiness row: one dot per enabled provider so the
+		// dashboard shows at a glance which providers are configured and ready.
+		const mp = this.plugin.settings.multiProvider;
+		const enabledProviders: Array<{ id: ProviderId; ready: boolean }> = [];
+		for (const [rawId, cred] of Object.entries(mp.credentials)) {
+			const id = rawId as ProviderId;
+			if (!cred?.enabled || !PROVIDER_REGISTRY[id]) continue;
+			const meta = PROVIDER_REGISTRY[id];
+			const ready = id === 'pi-daemon' || meta.authentication === 'none' || this.plugin.credentialVault.has(id);
+			enabledProviders.push({ id, ready });
+		}
+		if (enabledProviders.length) {
+			const row = this.telemetryEl.createDiv({ cls: 'cc-telemetry-providers', attr: { 'aria-label': 'Enabled providers' } });
+			for (const { id, ready } of enabledProviders) {
+				const meta = PROVIDER_REGISTRY[id];
+				const dot = row.createEl('span', {
+					cls: `cc-provider-dot ${ready ? 'is-ready' : 'is-missing-key'}`,
+					attr: { title: `${meta.label} · ${ready ? 'ready' : 'missing API key'}`, 'aria-label': meta.label },
+				});
+				dot.setText(meta.icon);
+			}
 		}
 	}
 

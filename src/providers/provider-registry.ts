@@ -204,7 +204,7 @@ export const DEFAULT_STT_MODELS: Partial<Record<ProviderId, string>> = {
 	'xai': 'grok-stt',
 	'groq': 'whisper-large-v3',
 	'openai': 'whisper-large-v3-turbo',
-	'deepinfra': 'whisper-large-v3-turbo',
+	'deepinfra': 'openai/whisper-large-v3-turbo',
 	'openrouter': 'openai/whisper-large-v3',
 	'cohere': 'cohere-transcribe-03-2026',
 };

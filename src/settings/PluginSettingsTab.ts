@@ -22,13 +22,13 @@ import {
 } from 'obsidian';
 import CommandCenterPlugin from '../main';
 import { getAudioInputDevices } from '../audio/audio-recorder';
-import { buildTranscriptionCandidates, TranscriberAdapter } from '../audio/transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, TRANSCRIPTION_PROVIDER_ORDER } from '../audio/transcriber';
 import type {
 	ProviderId,
 	TaskType,
 	ProviderModel,
 } from '../providers/provider-types';
-import { TASK_TYPE_LABELS, TASK_TYPE_ICONS } from '../providers/provider-types';
+import { TASK_TYPE_LABELS, TASK_TYPE_ICONS, DEFAULT_FALLBACK_CONFIG } from '../providers/provider-types';
 import {
 	PROVIDER_REGISTRY,
 	getDefaultModelForProvider,
@@ -64,6 +64,7 @@ const PROVIDER_ORDER: ProviderId[] = [
 	'deepinfra',
 	'mistral',
 	'cohere',
+	'xai',
 	'ollama',
 	'lmstudio',
 	'custom',
@@ -221,6 +222,28 @@ export class PluginSettingsTab extends PluginSettingTab {
 				});
 				return d;
 			});
+
+		// Quick-start: one-click local-only setup (prominent in all modes)
+		new Setting(body)
+			.setName('Quick start — local setup')
+			.setDesc('Enable local providers (LM Studio / Ollama) and disable cloud routing. Great for trying Command Center without API keys. Change anytime in the Providers tab.')
+			.addButton(button => button.setButtonText('Use local only').onClick(() => {
+				this.plugin.settings.multiProvider = {
+					credentials: {
+						lmstudio: { providerId: 'lmstudio', apiKey: '', baseUrl: 'http://localhost:1234/v1', enabled: true },
+						ollama: { providerId: 'ollama', apiKey: '', baseUrl: 'http://localhost:11434/v1', enabled: true },
+					},
+					routing: DEFAULT_ROUTING,
+					fallback: DEFAULT_FALLBACK_CONFIG,
+					defaults: {},
+				};
+				this.plugin.providerFactory.invalidate('lmstudio');
+				this.plugin.providerFactory.invalidate('ollama');
+				void this.plugin.saveSettings().then(() => {
+					this.showSaved();
+					new Notice('Local-only mode enabled. LM Studio and Ollama are now active.');
+				});
+			}));
 
 		new Setting(body)
 			.setName('Audio cues')
@@ -612,13 +635,14 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.setDesc('Allow voice recording and transcription for chat, workflow voice prompts, and dictation.')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.speechToTextEnabled).onChange(value => this.saveSetting('speechToTextEnabled', value)));
 
-		const sttProviders: Array<'auto' | ProviderId> = ['auto', 'lmstudio', 'ollama', 'groq', 'openai', 'deepinfra', 'openrouter', 'xai', 'cohere', 'custom'];
+		const sttProviders: Array<'auto' | ProviderId> = ['auto', ...TRANSCRIPTION_PROVIDER_ORDER];
 		new Setting(body)
 			.setName('Speech-to-text provider')
 			.setDesc('Auto uses the normal fallback order; pick a provider to prefer it first.')
 			.addDropdown(dropdown => {
 				for (const providerId of sttProviders) {
-					dropdown.addOption(providerId, providerId === 'auto' ? 'Auto' : PROVIDER_REGISTRY[providerId].label);
+					const label = providerId === 'auto' ? 'Auto' : this.sttProviderLabel(providerId);
+					dropdown.addOption(providerId, label);
 				}
 				dropdown.setValue(this.plugin.settings.speechToTextProviderId);
 				dropdown.onChange(value => this.saveSetting('speechToTextProviderId', value as 'auto' | ProviderId));
@@ -751,6 +775,18 @@ export class PluginSettingsTab extends PluginSettingTab {
 		}
 	}
 
+	/** Build a provider label with a readiness indicator for the STT dropdown. */
+	private sttProviderLabel(providerId: ProviderId): string {
+		const meta = PROVIDER_REGISTRY[providerId];
+		if (!meta) return providerId;
+		const base = meta.label;
+		const mp = this.plugin.settings.multiProvider;
+		const cred = mp.credentials[providerId];
+		if (!cred?.enabled) return `${base} ⚪`;
+		if (meta.requiresKey && !this.plugin.credentialVault.has(providerId)) return `${base} 🔴`;
+		return `${base} 🟢`;
+	}
+
 	private renderProviderCard(container: HTMLElement, pid: ProviderId): void {
 		const meta = PROVIDER_REGISTRY[pid];
 		if (!meta) return;
@@ -880,8 +916,8 @@ export class PluginSettingsTab extends PluginSettingTab {
 				cls: 'cc-provider-key-badge',
 				text: !this.plugin.credentialVault.unlocked ? '🔒 Vault locked' : this.plugin.credentialVault.has(pid) ? '🔐 Configured' : authentication === 'optional' ? 'Not configured · unauthenticated' : 'Not configured',
 			});
-			const manage = keyRow.createEl('button', { text: 'Open secrets' });
-			manage.addEventListener('click', () => new CredentialVaultModal(this.app, this.plugin, () => this.update()).open());
+			const manage = keyRow.createEl('button', { text: 'Set API key', cls: 'cc-set-key-button' });
+			manage.addEventListener('click', () => new CredentialVaultModal(this.app, this.plugin, () => this.update(), pid).open());
 		}
 
 		// Base URL — HTTP providers only. Pi Daemon is a local subprocess.
@@ -1406,21 +1442,6 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		const chainContainer = body.createDiv({ cls: 'cc-fallback-chain' });
 
-		const allProviderIds: ProviderId[] = [
-			'pi-daemon',
-			'openai',
-			'anthropic',
-			'google-gemini',
-			'openrouter',
-			'groq',
-			'deepinfra',
-			'mistral',
-			'cohere',
-			'ollama',
-			'lmstudio',
-			'custom',
-		];
-
 		for (let i = 0; i < fb.fallbacks.length; i++) {
 			const idx = i;
 			const chainLink = chainContainer.createDiv({
@@ -1434,7 +1455,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			const select = chainLink.createEl('select', {
 				cls: 'cc-fallback-select',
 			});
-			for (const pid of allProviderIds) {
+			for (const pid of PROVIDER_ORDER) {
 				const opt = select.createEl('option', {
 					text: `${PROVIDER_REGISTRY[pid]?.icon ?? ''} ${PROVIDER_REGISTRY[pid]?.label ?? pid}`,
 					value: pid,

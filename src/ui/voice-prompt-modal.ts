@@ -96,6 +96,11 @@ export class VoicePromptModal extends Modal {
 	}
 
 	private async beginRecording(): Promise<void> {
+		if (!this.candidates().length) {
+			this.statusEl.setText('Configure a transcription provider in Settings first.');
+			this.statusEl.addClass('is-error');
+			return;
+		}
 		const recorder = new AudioRecorder({
 			mimeType: 'audio/webm',
 			deviceId: this.plugin.settings.audioInputDeviceId || undefined,

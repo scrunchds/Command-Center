@@ -8,7 +8,7 @@
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20development-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/DustinS)
 
-**Command Center is a personal operational OS for Obsidian — a local-first AI multi-agent orchestrator that transforms your vault into an intelligent workspace.** It combines interview-driven onboarding, a 12-provider model routing layer, a local Pi ReAct engine with Orchestrator–Worker loops, hybrid vault RAG (BM25 + semantic retrieval), persistent agent memory, native Markdown/Canvas workflows with Bases queue integration, voice input/dictation/live transcription, a daily operations engine, and headless automation — all without imposing a productivity framework on your notes.
+**Command Center is a personal operational OS for Obsidian — a local-first AI multi-agent orchestrator that transforms your vault into an intelligent workspace.** It combines interview-driven onboarding, a 13-provider model routing layer, a local Pi ReAct engine with Orchestrator–Worker loops, hybrid vault RAG (BM25 + semantic retrieval), persistent agent memory, native Markdown/Canvas workflows with Bases queue integration, voice input/dictation/live transcription, a daily operations engine, and headless automation — all without imposing a productivity framework on your notes.
 
 > [!IMPORTANT]
 > Command Center can modify vault files when you approve or run mutating operations. Keep backups, review destructive action cards, and test workflows on non-critical notes first.
@@ -37,6 +37,7 @@ Most AI integrations add a chat box. Command Center adds an operational layer:
 - [Voice and automation](#voice-and-automation)
 - [Privacy and security model](#privacy-and-security-model)
 - [Development](#development)
+- [Future improvements](#future-improvements-not-yet-implemented)
 - [Quality, security, and release controls](#quality-security-and-release-controls)
 - [Community and support](#community-and-support)
 - [License and attribution](#license-and-attribution)
@@ -199,6 +200,12 @@ The right-sidebar chat supports **Quick**, **ReAct**, and **Workflow** modes wit
 - Inline collapsible ReAct traces
 - Dashboard handoff for approval/rejection of destructive tools
 - Tail-aware auto-scroll and lifecycle-safe cancellation
+- **Message actions**: copy to clipboard, delete, and read-aloud buttons with SVG icons
+- **Code block copy**: hover-revealed copy button on every rendered code block
+- **Blinking streaming cursor** (`▊`) on pending assistant messages
+- **Hover-revealed action bar**: timestamp, copy, delete, and read-aloud fade in on bubble hover
+- **Scroll-to-bottom button**: appears when chat history is scrolled up
+- **New conversation** and **Markdown export** with tagged frontmatter
 
 ## Architecture
 
@@ -459,6 +466,7 @@ The chat microphone and **Command Center: Quick Voice Prompt** use browser-nativ
 - Deterministic microphone-track cleanup
 - OpenAI-compatible multipart transcription
 - Retry only for transient network/408/429/5xx failures
+- **Mic button disabled** when no STT provider is configured, with tooltip feedback
 - Spoken `@` mentions and active-selection context resolution
 
 Audio is sent only to the transcription endpoint configured in your local settings. Review that provider's privacy policy before use.
@@ -593,6 +601,31 @@ styles.css
 
 License and attribution documents remain at repository level. Restricting the installable directory to Obsidian's three production files prevents stale development or documentation files from leaking into the plugin package.
 
+## Future improvements (not yet implemented)
+
+### Chat conversation management — delete and rename
+- The chat view now supports switching between conversations via a dropdown selector.
+- A future change could add the ability to delete or rename conversations from the selector.
+
+### Image paste support in chat
+- The chat view now shows a notice when images are pasted. A future change could save pasted images to the vault and attach them as multimodal context.
+
+### Dashboard layout customization in the onboarding interview
+- The dashboard layout is manually configurable via the "Customize dashboard" button in the dashboard header, with 11 widgets supporting reorder, show/hide, collapse/expand, and size (compact/standard/expanded).
+- A future enhancement could add a dashboard layout phase to the onboarding interview (e.g. extending the "style" phase, or adding a new phase after "confirmation").
+- This would require:
+  1. Adding `dashboardLayout` to the `OnboardingConfig` type in `src/onboarding/OnboardingTypes.ts`
+  2. Updating the interview system prompt in `src/onboarding/InterviewEngine.ts` to ask about widget preferences
+  3. Applying the interview-derived layout after interview completion in `src/main.ts`
+
+The `OnboardingConfig` already has a `style.dailyNoteLayout` field, so a `style.dashboardLayout` field would follow the same pattern.
+
+### Dashboard telemetry health summary
+- The dashboard now shows provider icons with green/red readiness dots. A future change could show live health check status (connected/error) next to each icon.
+
+### Voice Prompt Modal — candidate-less mic guard
+- The voice prompt modal now shows a warning when no transcription providers are configured. A future change could disable the mic button entirely, matching the chat view behavior.
+
 ## Quality, security, and release controls
 
 The test suite currently contains **282 tests**:
@@ -611,7 +644,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.3.0`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.4.0`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**.
 
