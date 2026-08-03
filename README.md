@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.13%2B-7C3AED?logo=obsidian)](https://obsidian.md/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022%20%7C%2024-339933?logo=node.js&logoColor=white)](package.json)
-[![Tests](https://img.shields.io/badge/tests-259%20passing-brightgreen)](#quality-security-and-release-controls)
+[![Tests](https://img.shields.io/badge/tests-281%20passing-brightgreen)](#quality-security-and-release-controls)
 [![Attestations](https://img.shields.io/badge/attestations-Sigstore-blue?logo=sigstore)](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20development-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/DustinS)
@@ -45,7 +45,7 @@ Most AI integrations add a chat box. Command Center adds an operational layer:
 
 ### Multi-Provider v2.0
 
-Command Center exposes one dispatch layer across **12 providers**:
+Command Center exposes one dispatch layer across **13 providers**:
 
 | Provider | Type | Notes |
 |---|---|---|
@@ -58,8 +58,9 @@ Command Center exposes one dispatch layer across **12 providers**:
 | Groq | Cloud | Low-latency inference and transcription-compatible routing |
 | DeepInfra | Cloud | Hosted open-weight models |
 | Mistral AI | Cloud | Mistral and Codestral families |
-| Cohere | Cloud | Command models for retrieval-heavy work |
+| Cohere | Cloud | Command models for RAG with native STT (/v2/audio/transcriptions). |
 | LM Studio | Local | Dynamic native model resolution, resource-aware JIT loading, OpenAI-compatible inference, and optional bearer authentication |
+| xAI (Grok) | Cloud | Grok models with vision, tools, native STT (/v1/stt), and TTS (/v1/tts). |
 | Custom Endpoint | Local or remote | User-defined OpenAI-compatible service with optional bearer authentication |
 
 Routing classifies work as `coding`, `vision`, `reading`, `reasoning`, or `fast`. Capability checks prevent invalid model selection; optional exponential moving averages optimize initial routes for **latency**, **cost**, or a **balanced** objective. Recovery remains reliability-first: authentication and invalid-request failures fail or fall through immediately, while rate limits, network errors, timeouts, and server errors use isolated circuit breakers, bounded backoff, and a configurable multi-tier fallback chain.
@@ -70,7 +71,8 @@ Additional provider capabilities include:
 - Anthropic prompt caching and Gemini cached-content bookkeeping
 - Multimodal image preprocessing for vault attachments and Canvas file nodes
 - Structured-output repair only at model-authored JSON boundaries
-- Local model pre-warm, TTL/keep-alive, and best-effort eviction
+- Local model pre-warm, TTL/keep-alive, best-effort eviction, and auto-download of missing models
+- LM Studio model download via `POST /api/v1/models/download` with progress tracking
 - Dynamic LM Studio model resolution through `/api/v1/models`: reuse a loaded primary LLM or select the smallest downloaded non-draft conversational model, excluding embedding and speculative draft models
 - Optional secure-vault bearer tokens for LM Studio Require Authentication, authenticated Ollama proxies, and custom OpenAI-compatible endpoints; unauthenticated local operation remains supported
 - Cloud-bound payload scrubbing of local-only lifecycle fields
@@ -161,6 +163,15 @@ Logic Discovery uses bounded generation and disables model reasoning where suppo
 
 Open **Command Center** from the ribbon or run **Command Center: Start Setup / Onboarding Interview**. Both routes use the same full-page dashboard.
 
+### MCP (Model Context Protocol) tool discovery
+
+Command Center now supports the [Model Context Protocol](https://modelcontextprotocol.io/) for discovering and executing external tools from MCP servers. Add MCP server URLs in settings to make their tools available to the LLM during inference:
+
+- **JSON-RPC 2.0 transport** over HTTP/SSE
+- **Dynamic tool discovery** via `tools/list` — tools are wrapped as `ToolDefinition`s
+- **Error isolation** — one MCP server failing doesn't affect others
+- **LM Studio MCP** — LM Studio can be configured as an MCP host at `/api/v1/mcp`
+
 ### Normalized execution and Shadow-Clone diagnostics
 
 Standard and Python-backed agent work crosses a mandatory execution boundary:
@@ -172,6 +183,10 @@ Standard and Python-backed agent work crosses a mandatory execution boundary:
 - Locked or failed keyed routes retain local-first behavior through provider usability checks and circuit-breaker fallback.
 
 Run **Command Center: Run Shadow-Clone Diagnostics** from the command palette to verify credential-memory wiping, current slider/matrix routing, fail-safe local routing, and Python-output sanitization. The harness uses in-memory fixtures and prints a sanitized report to the developer console; it does not modify user notes.
+
+### OpenRouter web search
+
+When enabled in settings, Command Center includes a server-side web search tool in requests routed through OpenRouter. The model can invoke `web_search_call` to pull live information from the web, with results and citations returned directly in the response. Controlled by the `webSearchEnabled` setting toggle.
 
 ### Native chat and context
 
@@ -557,7 +572,7 @@ npm run dev
 |---|---|
 | `npm run typecheck` | Strict TypeScript check (including security, metacognition, execution, and diagnostic layers) |
 | `npm run lint` | Zero-warning ESLint gate |
-| `npm run test` | 103 core + 151 ReAct/workflow/UI/service tests |
+| `npm run test` | 108 core + 151 ReAct/workflow/UI/service tests |
 | `npm run benchmark` | Produce the standardized 10-metric report |
 | `npm run benchmark:check` | Enforce the 25% core regression threshold |
 | `npm run sanitize` | Scan public repository files for PII/secrets/runtime data |
@@ -580,7 +595,7 @@ License and attribution documents remain at repository level. Restricting the in
 
 ## Quality, security, and release controls
 
-The test suite currently contains **254 tests**:
+The test suite currently contains **281 tests**:
 
 - **44 core tests** — build integrity, parsers, byte-safe RPC framing, subprocess integration, task queue, recovery, and provider fallback
 - **151 ReAct and subsystem tests** — roles, evaluation, traces, workflows, Bases, chat context, action cards, audio, JIT lifecycle, RAG, memory, CLI, locks, and stress scenarios
@@ -596,7 +611,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.1.21`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.2.0`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**.
 
@@ -638,6 +653,31 @@ Check that:
 ### A destructive tool is paused
 
 Open the Command Center dashboard, inspect the Mutation Approval card's target list and diff preview, then choose **Approve & Apply** or **Reject**. Closing the dashboard rejects pending confirmations safely.
+
+## Future implementation
+
+The following features have infrastructure stubs and are ready for implementation when needed:
+
+### Video generation (OpenRouter)
+
+Command Center includes static URL builders for OpenRouter's video generation API:
+- `POST /api/v1/videos` — submit a video generation request
+- `GET /api/v1/videos/{id}` — poll generation status
+- `GET /api/v1/videos/{id}/download` — download generated video
+- Models are discovered dynamically through `/api/v1/models/user` when they become available
+- Vault media ingestion stubs (video MIME types, `isVideoFile()`) are ready in `image-utils.ts`
+
+### Image generation (OpenRouter)
+
+Image generation models are registered in the OpenRouter provider (openai/gpt-5-image, google/gemini-3.1-flash-image, etc.) and the `getImageGenerationUrl()` helper returns `POST /api/v1/images/generations`.
+
+### xAI Realtime API
+
+xAI's realtime API (`GET /v1/realtime` WebSocket) supports voice-in/voice-out and function calling. The `XAIProvider` class is ready for the WebSocket transport layer.
+
+### OpenRouter Responses API
+
+The newer `POST /api/v1/responses` format is available alongside the existing chat completions endpoint. Migration would enable streaming reasoning tokens, server-side tools (web search, code interpreter, MCP), and compaction.
 
 ## Community and support
 

@@ -4,6 +4,34 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-02
+
+### Added
+
+- **xAI (Grok) provider**: New provider with 4 chat models (grok-4.5, grok-4.3, grok-4.20-reasoning, grok-build-0.1), native STT (/v1/stt), and TTS support (/v1/tts with voice discovery).
+- **OpenRouterProvider**: Rich model metadata parsing from the live API — pricing, context window, modalities, supported parameters, and reasoning capabilities are extracted dynamically.
+- **OpenRouter personalized model discovery**: Model list now uses the /api/v1/models/user endpoint, respecting user provider preferences, privacy settings, and guardrails.
+- **OpenRouter web search tool**: Server-side web search via web_search_call. Controlled by a new webSearchEnabled setting toggle.
+- **OpenRouter video/image generation URL builders**: getVideoGenerationUrl(), getVideoStatusUrl(), getVideoDownloadUrl(), and getImageGenerationUrl() stubbed for future implementation.
+- **Vault media ingestion stubs**: Video MIME types (mp4, webm, mov, avi, mkv) and isVideoFile() helper added to image-utils.ts for future video generation features.
+- **Cohere STT**: Native speech-to-text via /v2/audio/transcriptions with the cohere-transcribe-03-2026 model. Cohere added to the transcription fallback chain.
+- **LM Studio model download**: JIT manager now auto-downloads missing models via POST /api/v1/models/download before loading. Download progress tracking via GET /api/v1/models/download/status.
+- **MCP (Model Context Protocol) integration**: MCPClient (JSON-RPC 2.0) and MCPToolManager for discovering and executing remote tools from MCP servers. Configurable via mcpServers setting.
+
+### Changed
+
+- **OpenRouter STT model**: Corrected default model from whisper-large-v3-turbo to openai/whisper-large-v3 (OpenRouter uses prefixed model names).
+- **OpenRouter registry**: Added TTS models (openai/tts-1, openai/tts-1-hd, mistralai/voxtral-mini-tts-2603, mistralai/voxtral-mini) and image generation models (openai/gpt-5-image, google/gemini-3.1-flash-image, etc.).
+- **Cohere registry**: Updated with command-a-03-2026 and cohere-transcribe-03-2026 models.
+- **Transcription infrastructure**: Added transcriptionPath option to TranscriberAdapter for non-standard STT endpoints (xAI /v1/stt, Cohere /v2/audio/transcriptions).
+- **DEFAULT_STT_MODELS**: New registry for provider-specific STT model names, used by the transcription fallback chain.
+- **ProviderId type**: Added 'xai' to the ProviderId union type.
+- **Model matrix**: Updated with xAI entries in text, speech, and transcription modalities. OpenRouter entries in video modality.
+
+### Fixed
+
+- **OpenRouter model name**: Corrected STT model name to use the prefixed format (openai/whisper-large-v3).
+
 ## [1.1.21] - 2026-08-02
 
 ### Fixed

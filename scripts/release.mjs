@@ -148,6 +148,20 @@ try {
 }
 
 const totalTests = coreTestCount + reactTestCount;
+
+console.log('\n─── 1g. Provider tests ───');
+let providerTestCount = 0;
+try {
+	const provOut = execSync('npx tsx test/provider-xai.mjs', { cwd: ROOT, encoding: 'utf8', timeout: 60_000 });
+	const provMatch = provOut.match(/(\d+) passed/);
+	providerTestCount = provMatch ? parseInt(provMatch[1], 10) : 0;
+	console.log(provOut.split('\n').slice(-3).join('\n'));
+} catch {
+	console.error('\u274c Provider tests failed.');
+	process.exit(1);
+}
+
+const totalTests = coreTestCount + reactTestCount + providerTestCount;
 console.log(`\n  ✅ Tests: ${coreTestCount} core + ${reactTestCount} react = ${totalTests} total`);
 
 /* ─── Step 2: Bump version files ────────────────────────── */
