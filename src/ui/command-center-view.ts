@@ -542,7 +542,7 @@ export class CommandCenterView extends ItemView {
 			const row = this.telemetryEl.createDiv({ cls: 'cc-telemetry-providers', attr: { 'aria-label': 'Enabled providers' } });
 			for (const { id, ready } of enabledProviders) {
 				const meta = PROVIDER_REGISTRY[id];
-				const dot = row.createEl('span', {
+				const dot = row.createSpan({
 					cls: `cc-provider-dot ${ready ? 'is-ready' : 'is-missing-key'}`,
 					attr: { title: `${meta.label} · ${ready ? 'ready' : 'missing API key'}`, 'aria-label': meta.label },
 				});

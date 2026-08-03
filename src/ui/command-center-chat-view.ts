@@ -6,14 +6,13 @@ import { loadWorkflowFromCanvas, loadWorkflowFromNote } from '../workflows/nativ
 import { workflowForBase } from '../commands';
 import { collectWorkflowInputs } from './workflow-modal';
 import { resolveChatContext, type ChatContextAttachment, type ResolvedChatContext } from './chat-context';
-import { createObsidianTools } from '../obsidian-tools';
+import { getCapabilityRegistry } from '../capabilities';
 import { DEFAULT_REACT_CONFIG } from '../react';
 import type { ReActTraceEvent } from '../react/react-trace';
 import { AudioRecorder } from '../audio/audio-recorder';
 import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MIN_TRANSCRIPTION_DURATION_MS, type TranscriptionCandidate } from '../audio/transcriber';
 import { LiveTranscriber } from '../audio/live-transcriber';
 import { processTranscriptionOutput, insertIntoActiveEditor } from '../audio/transcription-integrations';
-import { createVaultSearchTool } from '../rag/rag-tool';
 
 export const COMMAND_CENTER_CHAT_VIEW_TYPE = 'command-center-chat';
 export const COMMAND_CENTER_CHAT_DISPLAY_TEXT = 'Command Center Chat';
@@ -1111,7 +1110,7 @@ export class CommandCenterChatView extends ItemView {
 				this.plugin.daemon.executeReActSession(
 					prompt,
 					this.contextFile?.path,
-					[...createObsidianTools(this.plugin.app), createVaultSearchTool(this.plugin.hybridRetriever)],
+					getCapabilityRegistry().getEnabledToolDefinitions(true),
 					DEFAULT_REACT_CONFIG,
 					event => {
 						if (!this.isOpen) return;

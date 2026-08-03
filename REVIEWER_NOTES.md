@@ -67,6 +67,17 @@ Command Center also supports optional remote model providers. Those connections 
 - Non-streaming provider and catalog calls use Obsidian `requestUrl`. The single `fetch` call at `src/providers/base-http-provider.ts:322` is exclusively for SSE token streaming, which Obsidian's `requestUrl` cannot support because `RequestUrlResponse` exposes only `status`, `headers`, `text`, `json`, and `arrayBuffer` — no `ReadableStream body`. This is the documented exception per the [Obsidian network requests guide](https://docs.obsidian.md/Plugins/Guides/Network+requests).
 - Runtime memory, generated configuration, and audit data remain in the vault's documented Command Center locations and are excluded from published repository artifacts.
 
+### New vault-native features (1.5.0)
+
+- **Capability Registry** (`src/capabilities/`): A user-configurable tool-calling surface. All tools are registered in memory from existing ToolDefinitions; no new I/O paths are introduced.
+- **Projects** (`src/projects/`): Stores per-project configuration in `.command-center/projects/*.md` via Obsidian's Vault API — the same pattern as existing config and memory storage.
+- **System Prompts** (`src/system-prompts/`): Stores user-managed prompts in `.command-center/prompts/*.md` via Obsidian's Vault API.
+- **User Memory** (`src/memory/UserMemoryManager.ts`): Extends the existing `AgentMemoryStore` persistence layer; no new file paths or credentials.
+- **Composer** (`src/composer/`): Pure string manipulation with no vault I/O.
+- **@-Mentions** (`src/mentions/`): Reads from `MetadataCache` and `getAllTags` — no vault writes.
+
+None of these features introduce new permissions, network access, or filesystem access beyond what the existing plugin already uses.
+
 ## Requested Review Consideration
 
 These capabilities are broader than those of a conventional note-formatting plugin, but they are intrinsic to a local-first desktop agent orchestrator. Removing subprocess management would remove the local Pi execution architecture; removing vault enumeration would prevent retrieval and vault-wide workflow features; and removing the narrow filesystem/environment checks would make reliable local-runtime and multimodal support impractical across supported desktop platforms.

@@ -7,6 +7,7 @@ import { GENERATED_WORKFLOW_DIRECTORY, WorkflowGenerator, type WorkflowProposal 
 import { WorkflowBuilder } from '../workflows/WorkflowBuilder';
 import type { ConfigManager } from '../engine/ConfigManager';
 import { LOGIC_DISCOVERY_SYSTEM_PROMPT } from '../ingestion/LogicDiscovery';
+import { getCapabilityRegistry } from '../capabilities';
 
 export const INTERVIEW_COMPLETE_SIGNAL = 'COMMAND_CENTER_INTERVIEW_COMPLETE';
 export const SYNTHESIS_COMPLETE_SIGNAL = 'COMMAND_CENTER_SYNTHESIS_COMPLETE';
@@ -209,6 +210,9 @@ You are also responsible for turning the jointly negotiated logic into Command C
 SECURITY: Never request, accept, repeat, inspect, or store credentials, API keys, passwords, tokens, secrets, URLs, hosts, ports, or endpoint values. Direct credential and endpoint setup to the native Obsidian Settings → Command Center UI.
 CURRENT PHASE: ${this.getPhase()}
 VAULT TOPOLOGY DISCOVERED (context only; never select without consent): ${JSON.stringify(this.vaultTopology)}
+
+AVAILABLE CAPABILITIES (instruments you can propose the user adopt):
+${getCapabilityRegistry().describeEnabled() || 'No capabilities registered yet.'}
 
 PHASE ORDER — each phase is a reflective conversation, not a form field:
 1 topology: begin with the user's context and goals. Ask about their background, what the vault serves, and what success looks like to them. Only after establishing this baseline, explore their current organization — what folders they use, what works, what causes friction. Ask about intentionality: "Is this structure something you actively designed, or did it evolve?" Reflect back what you heard before proposing any changes. Never ask for credentials, URLs, hosts, ports, or endpoint values; compute transport is configured only in native Settings.

@@ -38,6 +38,12 @@ import { TOKEN_LIMITS } from './types';
 import type { Conversation, Turn } from './conversation';
 import { ConversationManager } from './conversation';
 import { createObsidianTools, createWebSearchTool } from './obsidian-tools';
+import { registerExtendedVaultTools } from './extended-vault-tools';
+import {
+	getCapabilityRegistry,
+	registerBuiltinCapabilities,
+	applyCapabilityPreferences,
+} from './capabilities';
 import { DEFAULT_REACT_CONFIG } from './react';
 import type { ReActContext, ReActTermination } from './react';
 import { ReActMemoryBank } from './react/react-memory';
@@ -286,19 +292,34 @@ export default class CommandCenterPlugin extends Plugin {
 			console.warn('[CC] Localized topography map unavailable:', error);
 		});
 
+		// ── Capability Registry ────────────────────────
+		// Initialize the unified tool-calling surface. Wraps existing
+		// obsidian-tools, vault search, extended tools, and web search
+		// into a discoverable, user-configurable capability system.
+		{
+			const registry = getCapabilityRegistry();
+			const webSearchTool = this.settings.webSearchEnabled
+				? createWebSearchTool()
+				: undefined;
+			registerBuiltinCapabilities(this.app, [...obsidianTools, vaultSearchTool], webSearchTool);
+			// Register extended vault tools (edit, delete, create/delete folder, rename, move)
+			// that are not part of the original obsidian-tools surface.
+			// The registry is idempotent — calling register again updates the tool definition.
+			registerExtendedVaultTools(this.app);
+			// Apply persisted user preferences on top of defaults
+			if (this.settings.capabilityPreferences?.length) {
+				applyCapabilityPreferences(this.settings.capabilityPreferences);
+			}
+			void registry;
+		}
+
 		this.router = new ModelRouter(
 			this.providerFactory,
 			() => this.settings.multiProvider,
 			() => {
-				const tools = [
-					...obsidianTools,
-					vaultSearchTool,
-				];
-				// Conditionally include web search tool when enabled
-				if (this.settings.webSearchEnabled) {
-					tools.push(createWebSearchTool());
-				}
-				return tools;
+				// Use the capability registry so user-configurable tool settings
+				// are honored across all model interactions.
+				return getCapabilityRegistry().getEnabledToolDefinitions(true);
 			},
 			{
 				vaultPath,
@@ -346,7 +367,9 @@ export default class CommandCenterPlugin extends Plugin {
 				) {
 					return executeReActTask(
 						this.daemon,
-						obsidianTools,
+						// Use the capability registry so user-configurable tools are honored
+						// (enabled/disabled capabilities filter the tool surface).
+						getCapabilityRegistry().getEnabledToolDefinitions(true),
 						task,
 						this.memoryBank,
 						this.router,
@@ -698,6 +721,9 @@ export default class CommandCenterPlugin extends Plugin {
 	onunload(): void {
 		this.credentialVault.lock();
 		this.accessibilityAudio?.dispose();
+		// Clear the capability registry so stale tool references are not
+		// retained across plugin reloads.
+		getCapabilityRegistry().clear();
 		void this.unloadAsync().catch((error: unknown) => {
 			console.error('[CC] Final unload flush failed:', error);
 		});

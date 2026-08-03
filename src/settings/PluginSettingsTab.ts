@@ -40,6 +40,7 @@ import {
 } from '../settings/settings-model';
 import { detectPiPath, clearPiDetectionCache } from '../daemon';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
+import { renderCapabilitySettings } from '../capabilities';
 
 /* ═══════════════════════════════════════════════════════════
    Constants
@@ -159,6 +160,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		}
 		if (this.selectedTab === 'all' || this.selectedTab === 'features') {
 			this.renderFeatureToggles(content);
+			this.renderCapabilitySettingsSection(content);
 		}
 		if (this.selectedTab === 'all' || this.selectedTab === 'providers') {
 			this.renderProviderCredentials(content);
@@ -226,7 +228,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		// Quick-start: one-click local-only setup (prominent in all modes)
 		new Setting(body)
 			.setName('Quick start — local setup')
-			.setDesc('Enable local providers (LM Studio / Ollama) and disable cloud routing. Great for trying Command Center without API keys. Change anytime in the Providers tab.')
+			.setDesc('Enable local providers (lm studio / ollama) and disable cloud routing. Great for trying command center without API keys. Change anytime in the providers tab.')
 			.addButton(button => button.setButtonText('Use local only').onClick(() => {
 				this.plugin.settings.multiProvider = {
 					credentials: {
@@ -241,7 +243,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 				this.plugin.providerFactory.invalidate('ollama');
 				void this.plugin.saveSettings().then(() => {
 					this.showSaved();
-					new Notice('Local-only mode enabled. LM Studio and Ollama are now active.');
+					new Notice('Local-only mode enabled. Lm studio and ollama are now active.');
 				});
 			}));
 
@@ -591,6 +593,20 @@ export class PluginSettingsTab extends PluginSettingTab {
 					new Notice('Local-only mode enabled. Configure endpoints in providers → lm studio / ollama.');
 				}));
 		}
+	}
+
+	private renderCapabilitySettingsSection(containerEl: HTMLElement): void {
+		// Only show capability settings in Normal and Advanced modes.
+		if (this.plugin.settings.uiMode === 'simple') return;
+
+		this.renderSectionHeader(
+			containerEl,
+			'capabilities',
+			'🔑 Agent Capabilities',
+			'Capabilities are the instruments your agents can use. Enable or disable them to control what the agent can do autonomously.',
+		);
+		const body = this.getSectionBody(containerEl, 'capabilities');
+		renderCapabilitySettings(body, this.plugin, this.app);
 	}
 
 	private renderSpeechSettings(containerEl: HTMLElement): void {

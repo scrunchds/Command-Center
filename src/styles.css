@@ -1193,3 +1193,12 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 	background: hsla(var(--interactive-accent-hsl), .12);
 	color: var(--text-normal);
 }
+
+/* ── @-Mention Popover ──────────────────────────────── */
+.cc-mention-popover-hidden { display: none; }
+/* ── Capability Settings ───────────────────────────── */
+.cc-capability-category { margin-bottom: 0.5em; }
+.cc-capability-category-summary { cursor: pointer; font-weight: 600; }
+.cc-settings-description { margin-bottom: 1em; color: var(--text-muted); }
+.cc-settings-empty { color: var(--text-muted); font-style: italic; }
+.cc-settings-separator { border-bottom: 1px solid var(--background-modifier-border); margin: 1em 0; }

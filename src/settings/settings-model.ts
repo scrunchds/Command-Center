@@ -6,6 +6,7 @@
  */
 
 import type { MultiProviderSettings, ProviderId } from '../providers/provider-types';
+import type { CapabilityUserPreference } from '../capabilities/CapabilityTypes';
 import { DEFAULT_FALLBACK_CONFIG } from '../providers/provider-types';
 import { DEFAULT_ROUTING } from '../routing/routing-table';
 
@@ -101,6 +102,12 @@ export interface CommandCenterSettings {
 	mcpServers: import('../mcp/MCPToolManager').MCPServerConfig[];
 	/** Per-vault dashboard widget order, visibility, collapse, and width. */
 	dashboardLayout: DashboardWidgetLayout[];
+	/** Capability system master toggle. */
+	capabilitySystemEnabled: boolean;
+	/** Per-capability user preferences. */
+	capabilityPreferences: CapabilityUserPreference[];
+	/** Max autonomous tool calls per ReAct cycle. */
+	capabilityMaxAutonomousCalls: number;
 }
 
 export const DEFAULT_MULTI_PROVIDER: MultiProviderSettings = {
@@ -142,6 +149,9 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	uiMode: 'normal',
 	mcpServers: [],
 	dashboardLayout: DEFAULT_DASHBOARD_LAYOUT.map(widget => ({ ...widget })),
+	capabilitySystemEnabled: true,
+	capabilityPreferences: [],
+	capabilityMaxAutonomousCalls: 8,
 };
 
 /** Bounds for the Metacognitive Depth slider (Directive 1.6). */

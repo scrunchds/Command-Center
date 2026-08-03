@@ -97,7 +97,7 @@ export class VoicePromptModal extends Modal {
 
 	private async beginRecording(): Promise<void> {
 		if (!this.candidates().length) {
-			this.statusEl.setText('Configure a transcription provider in Settings first.');
+			this.statusEl.setText('Configure a transcription provider in settings first.');
 			this.statusEl.addClass('is-error');
 			return;
 		}

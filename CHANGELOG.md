@@ -4,10 +4,53 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] - 2026-08-03
+## [1.5.0] - 2026-08-03
 
 ### Changed
 - Release ${targetVersion}.
+
+## [1.5.0] - 2026-08-03
+
+### Added
+
+- **Capability Registry**: Unified tool-calling surface that wraps vault tools, MCP tools, and worker profiles into a discoverable, user-configurable capability system. Each capability has a category, execution mode (always/autonomous/explicit), confirmation policy, and @-command aliases. Users can enable/disable capabilities from Settings, grouped by category.
+- **Project Mode**: Isolated AI workspaces with vault-native `.md` project files. Each project has its own model configuration, system prompt, file inclusion/exclusion rules, web/YouTube context sources, and isolated chat history.
+- **Inline Composer — Fuzzy Matching**: Three-stage text replacement engine (exact → fuzzy → trimmed) with line-ending normalization, BOM handling, LCS-based diff computation, and multi-operation editing support.
+- **@-Mention Typeahead**: Real-time inline suggestions for notes, folders, tags, and capabilities as you type @ in the editor. Categorized results with keyboard navigation and wikilink insertion.
+- **User-Managed System Prompts**: Vault-native system prompt storage with YAML frontmatter, variable substitution ({{vault}}, {{date}}, {{time}}, {{user}}, {{style}}, {{memory}}), custom resolvers, and category filtering.
+- **User Memory Manager**: Explicit "remember this" command processing, automatic fact extraction from conversation turns, profile building, contextual recall, and system prompt injection.
+- **Extended vault tools**: Added edit_note, delete_note, create_folder, delete_folder, rename_note, and move_note tools with confirmation gates for destructive operations.
+- **Capability Registry wiring**: Chat view, ModelRouter, and ReAct execution now use the Capability Registry for tool selection, honoring user enablement preferences.
+- **Socratic Triage awareness**: Interview system prompt includes capability inventory so the Socratic consultant knows what instruments to propose.
+- **39 new tests** across all new subsystems.
+- **Transcription pipeline fixes**: Applied `sanitizeDictation()` to AccessibilityAudio (dashboard/onboarding dictation) and LiveTranscriber (live transcription) paths to fix Whisper silence hallucination leaks.
+
+### Changed
+- Test suite expanded from 282 to 321 tests.
+- Settings UI now includes an Agent Capabilities section in the Features tab (Normal and Advanced modes).
+- Plugin settings model extended with capability preferences, max autonomous calls, and capability system master toggle.
+- README documentation updated with new feature sections.
+
+## [1.4.0] - 2026-08-03
+
+### Changed
+- Release 1.4.0.
+
+### Added
+
+- **Capability Registry**: Unified tool-calling surface that wraps vault tools, MCP tools, and worker profiles into a discoverable, user-configurable capability system. Each capability has a category, execution mode (always/autonomous/explicit), confirmation policy, and @-command aliases. Users can enable/disable capabilities from Settings, grouped by category.
+- **Project Mode**: Isolated AI workspaces with vault-native `.md` project files. Each project has its own model configuration, system prompt, file inclusion/exclusion rules, web/YouTube context sources, and isolated chat history.
+- **Inline Composer — Fuzzy Matching**: Three-stage text replacement engine (exact → fuzzy → trimmed) with line-ending normalization, BOM handling, LCS-based diff computation, and multi-operation editing support.
+- **@-Mention Typeahead**: Real-time inline suggestions for notes, folders, tags, and capabilities as you type @ in the editor. Categorized results with keyboard navigation and wikilink insertion.
+- **User-Managed System Prompts**: Vault-native system prompt storage with YAML frontmatter, variable substitution ({{vault}}, {{date}}, {{time}}, {{user}}, {{style}}, {{memory}}), custom resolvers, and category filtering.
+- **User Memory Manager**: Explicit "remember this" command processing, automatic fact extraction from conversation turns, profile building, contextual recall, and system prompt injection.
+- **39 new tests** across all new subsystems (capability registry, user memory, system prompts, project manager, composer fuzzy matching, @-mention engine).
+
+### Changed
+- Test suite expanded from 282 to 321 tests.
+- Settings UI now includes an Agent Capabilities section in the Features tab (Normal and Advanced modes).
+- Plugin settings model extended with capability preferences, max autonomous calls, and capability system master toggle.
+- README documentation updated with new feature sections.
 
 ## [1.3.0] - 2026-08-03
 

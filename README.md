@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.13%2B-7C3AED?logo=obsidian)](https://obsidian.md/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022%20%7C%2024-339933?logo=node.js&logoColor=white)](package.json)
-[![Tests](https://img.shields.io/badge/tests-282%20passing-brightgreen)](#quality-security-and-release-controls)
+[![Tests](https://img.shields.io/badge/tests-321%20passing-brightgreen)](#quality-security-and-release-controls)
 [![Attestations](https://img.shields.io/badge/attestations-Sigstore-blue?logo=sigstore)](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20development-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/DustinS)
@@ -206,6 +206,78 @@ The right-sidebar chat supports **Quick**, **ReAct**, and **Workflow** modes wit
 - **Hover-revealed action bar**: timestamp, copy, delete, and read-aloud fade in on bubble hover
 - **Scroll-to-bottom button**: appears when chat history is scrolled up
 - **New conversation** and **Markdown export** with tagged frontmatter
+
+### Capability Registry — unified agent tool-calling
+
+Command Center now includes a **Capability Registry** — a central, discoverable surface for every instrument the agent can invoke. Instead of the orchestrator pre-selecting which tools to use, the model can autonomously reason about which capability serves each task:
+
+- **Unified registry**: Vault tools (read, write, search, list), web search, MCP-discovered tools, and agent worker profiles all register in one place.
+- **User-configurable**: Each capability can be enabled or disabled from Settings, grouped by category (Search, File Operations, Media, Time, Memory, System, MCP, Agent).
+- **Autonomous mode**: The model can decide to call a tool on its own, or only when the user explicitly requests it via `@`-command aliases.
+- **Alias-aware**: Capabilities expose `@`-command aliases (e.g., `@vault`, `@websearch`, `@composer`, `@memory`) so users can invoke tools explicitly.
+- **Execution modes**: `always` (always included in context), `autonomous` (model may decide), `explicit` (only on user request).
+- **Confirmation policies**: `never`, `on-threshold`, or `always` for destructive operations.
+- **Event-driven UI**: The registry emits events when capabilities are registered, enabled, or disabled — the Settings UI and dashboard widgets react in real time.
+- **System prompt injection**: `describeEnabled()` produces a compact inventory of available capabilities for the model's context window.
+
+### Project Mode — isolated AI workspaces
+
+Projects are focused AI workspaces with isolated chat history, per-project model configuration, and scoped context sources:
+
+- **Vault-native storage**: Each project is a `.md` file under `.command-center/projects/` with YAML frontmatter — no hidden databases or external services.
+- **Per-project model**: Override the global provider/model for a specific project.
+- **Custom system prompt**: Assign a system prompt to shape the agent's behavior for that project.
+- **File scoping**: Inclusion and exclusion patterns control which notes are visible to the project's agent.
+- **Web and YouTube context**: Pre-load web page URLs and YouTube video transcripts as always-available context.
+- **Isolated chat history**: Conversations in one project never bleed into another.
+- **Archiving**: Archive projects to hide them from the active list while preserving data.
+- **Usage tracking**: Automatic last-used timestamps and conversation counts for sorting.
+
+### Inline Composer — surgical text editing with diff preview
+
+The composer provides a three-stage fuzzy matching engine for precise text replacement:
+
+1. **Exact match** — after line-ending normalization (CRLF → LF)
+2. **Fuzzy match** — NFKC normalization, smart quotes, special dashes, non-breaking spaces
+3. **Trimmed match** — retry after stripping trailing newlines
+
+Additional capabilities:
+
+- **BOM handling**: UTF-8 BOM is preserved through edit cycles.
+- **LCS-based diff**: Longest-common-subsequence diff computation with line-level granularity.
+- **Multi-operation editing**: `applyOperations()` applies a sequence of insert, update, replace, and delete operations in order.
+- **Diff statistics**: Additions, deletions, and unchanged line counts for progress reporting.
+
+### @-Mention Typeahead — inline vault references
+
+The typeahead engine provides real-time suggestions as you type `@` in the editor:
+
+- **Multi-source**: Searches notes, folders, tags, and capabilities simultaneously.
+- **Categorized results**: Results grouped by source type with clear labels and descriptions.
+- **Keyboard navigation**: Arrow keys, Enter/Tab to select, Escape to dismiss.
+- **Vault caching**: 30-second TTL cache prevents repeated vault scans.
+- **Capability aliases**: `@vault`, `@websearch`, `@composer`, `@memory` resolve to their corresponding capabilities.
+- **Wikilink insertion**: Selected notes are inserted as `[[wikilink]]` references.
+
+### User-Managed System Prompts
+
+System prompts are stored as vault-native Markdown files with YAML frontmatter:
+
+- **CRUD management**: Create, edit, delete, and browse prompts from the vault.
+- **Variable substitution**: `{{vault}}`, `{{date}}`, `{{time}}`, `{{user}}`, `{{style}}`, `{{memory}}` are resolved at render time.
+- **Custom resolvers**: Override variable resolution per-project or per-chat-mode.
+- **Default prompt**: A sensible default prompt is created on first launch.
+- **Category filtering**: Organize prompts by category for quick access.
+
+### User Memory Manager — explicit "remember this"
+
+Builds on the persistent agent memory store to provide user-facing memory operations:
+
+- **Explicit memory**: `remember()` processes natural-language "remember that" commands.
+- **Auto-extraction**: `extractFromTurn()` detects "I prefer", "I am", "remember that" patterns in conversation turns.
+- **Profile building**: `buildProfile()` aggregates stored facts into a structured `UserMemoryProfile` with name, style, expertise, and goals.
+- **Contextual recall**: `recall()` searches memories by relevance to a query and returns formatted Markdown.
+- **System prompt injection**: `injectMemoryPrompt()` produces a bounded memory context block for the model.
 
 ## Architecture
 
@@ -580,7 +652,7 @@ npm run dev
 |---|---|
 | `npm run typecheck` | Strict TypeScript check (including security, metacognition, execution, and diagnostic layers) |
 | `npm run lint` | Zero-warning ESLint gate |
-| `npm run test` | 109 core + 151 ReAct + 22 provider = 282 total |
+| `npm run test` | 148 core + 151 ReAct + 22 provider = 321 total |
 | `npm run benchmark` | Produce the standardized 10-metric report |
 | `npm run benchmark:check` | Enforce the 25% core regression threshold |
 | `npm run sanitize` | Scan public repository files for PII/secrets/runtime data |
@@ -628,10 +700,11 @@ The `OnboardingConfig` already has a `style.dailyNoteLayout` field, so a `style.
 
 ## Quality, security, and release controls
 
-The test suite currently contains **282 tests**:
+The test suite currently contains **321 tests**:
 
-- **109 core tests** — build integrity, parsers, byte-safe RPC framing, subprocess integration, task queue, recovery, and provider fallback
+- **148 core tests** — build integrity, parsers, byte-safe RPC framing, subprocess integration, task queue, recovery, provider fallback, capability registry, user memory, system prompts, project manager, composer fuzzy matching, and @-mention engine
 - **151 ReAct and subsystem tests** — roles, evaluation, traces, workflows, Bases, chat context, action cards, audio, JIT lifecycle, RAG, memory, CLI, locks, and stress scenarios
+- **22 provider tests** — XAI provider, OpenRouter model metadata, transcription candidates, and model matrix integration
 
 CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 
@@ -644,7 +717,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.4.0`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.5.0`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**.
 

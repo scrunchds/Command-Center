@@ -242,9 +242,9 @@ export class DashboardOnboarding {
 		const steps = this.approval.createDiv({ cls: 'cc-onboarding-next-steps' });
 		steps.createEl('h4', { text: 'Next steps' });
 		const list = steps.createEl('ol');
-		list.createEl('li', { text: 'Configure providers: Settings → Command Center → Providers.' });
-		list.createEl('li', { text: 'Add API keys via the "Set API key" button on each provider card.' });
-		list.createEl('li', { text: 'Open the chat panel (Command Center: Open Chat Panel) to start working.' });
+		list.createEl('li', { text: 'Configure providers: Settings → command center → providers.' });
+		list.createEl('li', { text: 'Add API keys via the "set API key" button on each provider card.' });
+		list.createEl('li', { text: 'Open the chat panel (command center: Open chat panel) to start working.' });
 		list.createEl('li', { text: 'Run your first morning cycle from the dashboard when ready.' });
 		steps.createDiv({ cls: 'cc-onboarding-next-steps-hint', text: 'You can also use local-only mode (LM Studio / Ollama) with no API keys — see Settings → Command Center → Quick start.' });
 	}

@@ -1,5 +1,5 @@
 import type CommandCenterPlugin from '../main';
-import { buildTranscriptionCandidates, TranscriberAdapter, type TranscriptionCandidate } from './transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, type TranscriptionCandidate } from './transcriber';
 import { AudioRecorder } from './audio-recorder';
 
 export type AudioCue = 'start' | 'stop' | 'complete' | 'attention';
@@ -61,9 +61,16 @@ export class AccessibilityAudio {
 					}
 				}
 				onStatus?.('transcribing', `${label} — processing audio...`);
-				const text = (await adapter.transcribe(audio, candidate.model)).trim();
-				onStatus?.('done', label);
-				return text;
+				const raw = (await adapter.transcribe(audio, candidate.model)).trim();
+				// Strip Whisper silence-hallucination artifacts before returning.
+				const text = sanitizeDictation(raw);
+				if (text) {
+					onStatus?.('done', label);
+					return text;
+				}
+				// Sanitized to empty (silence hallucination) — try the next provider.
+				errors.push(`${candidate.label}: no speech detected`);
+				onStatus?.('error', `${candidate.label}: no speech detected`);
 			} catch (error) {
 				const msg = (error as Error).message;
 				errors.push(`${candidate.label}: ${msg}`);

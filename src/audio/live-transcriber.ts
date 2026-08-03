@@ -16,7 +16,7 @@ import type CommandCenterPlugin from '../main';
 import type { ProviderId } from '../providers/provider-types';
 
 import { AudioRecorder } from './audio-recorder';
-import { TranscriberAdapter } from './transcriber';
+import { TranscriberAdapter, sanitizeDictation } from './transcriber';
 
 export type LiveTranscriberState = 'idle' | 'starting' | 'recording' | 'transcribing' | 'stopped' | 'error';
 
@@ -136,20 +136,24 @@ export class LiveTranscriber {
 		if (this.recorder) {
 			try {
 				// The recorder's stop() call will fire onChunk(..., true) for the
-				// final accumulated blob, which gets queued.  We keep the recorder
-				// reference so the stop event can still fire, but we don't wait for
-				// the stop promise since we handle the final chunk via onChunk.
+				// final accumulated blob, which gets queued.
 				await this.recorder.stop().catch(() => undefined);
 			} catch { /* Final chunk is handled via onChunk(isLast=true). */ }
 			this.recorder = null;
 		}
 
-		// If a transcription is still in flight, wait for it.
+		// If a transcription is still in flight, wait for it to complete.
+		// The processQueue() method will check pendingStop after finishing
+		// and resolve the stop promise with the accumulated text.
 		if (this.transcribing) {
 			await new Promise<string>((resolve, reject) => {
 				this.stopResolve = resolve;
 				this.stopReject = reject;
 			});
+		} else {
+			// If processQueue was idle, run it one more time to drain any
+			// chunks that were queued by the final onChunk call.
+			await this.processQueue();
 		}
 
 		this.setState('stopped');
@@ -266,12 +270,16 @@ export class LiveTranscriber {
 				if (candidate.local) {
 					try { await adapter.fetchLiveAudioModels(); } catch { /* Try implicit model. */ }
 				}
-				const text = await adapter.transcribe(chunk, candidate.model);
+				const raw = await adapter.transcribe(chunk, candidate.model);
+				// Strip Whisper silence-hallucination artifacts before appending.
+				const text = sanitizeDictation(raw);
 				if (text) {
 					// Remember the working candidate for the next chunk.
 					this.candidateIndex = idx;
 					return text.trim();
 				}
+				// Sanitized to empty (silence hallucination) — try the next provider.
+				errors.push(`${candidate.label}: no speech detected`);
 			} catch (error) {
 				errors.push(`${candidate.label}: ${(error as Error).message}`);
 			}
