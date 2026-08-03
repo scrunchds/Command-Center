@@ -65,6 +65,8 @@ export interface CommandCenterSettings {
 	speechToTextProviderId: 'auto' | ProviderId;
 	/** Preferred transcription model; empty string lets the provider choose automatically. */
 	speechToTextModel: string;
+	/** Where voice transcription output goes by default. */
+	voiceOutputTarget: 'chat' | 'note' | 'canvas' | 'note+audio' | 'canvas+audio' | 'all';
 	/** Automatically read completed AI responses aloud. */
 	autoReadAiResponses: boolean;
 	/** Enable web search tool for models that support it (OpenRouter, xAI, etc.). */
@@ -100,6 +102,7 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	audioInputDeviceId: '',
 	speechToTextProviderId: 'auto',
 	speechToTextModel: '',
+	voiceOutputTarget: 'chat',
 	autoReadAiResponses: false,
 	webSearchEnabled: false,
 	mcpServers: [],

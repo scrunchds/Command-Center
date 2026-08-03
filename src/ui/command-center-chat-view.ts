@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
+import { ItemView, MarkdownRenderer, Notice, TFile, TFolder, WorkspaceLeaf, setIcon, App, normalizePath } from 'obsidian';
 import type CommandCenterPlugin from '../main';
 import type { TaskType } from '../providers/provider-types';
 import { PROVIDER_REGISTRY } from '../providers/provider-registry';
@@ -62,6 +62,9 @@ export class CommandCenterChatView extends ItemView {
 	private audioRecorder: AudioRecorder | null = null;
 	private transcriptionAbort: AbortController | null = null;
 	private isTranscribing = false;
+	private liveBadgeEl!: HTMLElement;
+	private levelMeterEl!: HTMLElement;
+	private levelMeterFillEl!: HTMLElement;
 	private isLiveMode = false;
 	private liveTranscriber: LiveTranscriber | null = null;
 	private readonly animationFrames = new Set<number>();
@@ -96,9 +99,38 @@ export class CommandCenterChatView extends ItemView {
 			['quick', 'Quick'], ['react', 'ReAct Agent'], ['workflow', 'Workflow'],
 		] as const) this.modeSelectEl.createEl('option', { value, text: label });
 
+		const exportBtn = header.createEl('button', {
+			cls: 'cc-chat-export',
+			text: '📥',
+			attr: { 'aria-label': 'Export conversation as Markdown', title: 'Export conversation' },
+		});
+		this.registerDomEvent(exportBtn, 'click', () => void this.exportChatAsMarkdown());
+		const newBtn = header.createEl('button', {
+			cls: 'cc-chat-new',
+			text: '＋',
+			attr: { 'aria-label': 'New conversation', title: 'New conversation' },
+		});
+		this.registerDomEvent(newBtn, 'click', () => {
+			this.plugin.conversations.create('default', 'New conversation');
+			this.historyEl.empty();
+			this.addMessage('assistant', 'How can I help with your vault?');
+			new Notice('Started a new conversation.');
+		});
+
 		this.historyEl = container.createDiv({
 			cls: 'cc-chat-history',
 			attr: { role: 'log', 'aria-live': 'polite', 'aria-label': 'Chat history' },
+		});
+		const scrollBtn = container.createDiv({ cls: 'cc-chat-scroll-bottom', text: '↓ Scroll to bottom', attr: { 'aria-label': 'Scroll to bottom' } });
+		scrollBtn.addEventListener('click', () => {
+			this.pinnedToBottom = true;
+			this.scrollToBottom(true);
+			scrollBtn.removeClass('is-visible');
+		});
+		this.registerDomEvent(this.historyEl, 'scroll', () => {
+			const distance = this.historyEl.scrollHeight - this.historyEl.scrollTop - this.historyEl.clientHeight;
+			this.pinnedToBottom = distance <= 24;
+			scrollBtn.toggleClass('is-visible', distance > 24);
 		});
 		this.addMessage('assistant', 'How can I help with your vault?');
 
@@ -122,14 +154,28 @@ export class CommandCenterChatView extends ItemView {
 		] as const) {
 			this.voiceTargetEl.createEl('option', { value, text: label });
 		}
+		this.voiceOutputTarget = this.plugin.settings.voiceOutputTarget || 'chat';
+		this.voiceTargetEl.value = this.voiceOutputTarget;
 		this.registerDomEvent(this.voiceTargetEl, 'change', () => {
 			this.voiceOutputTarget = this.voiceTargetEl.value as typeof this.voiceOutputTarget;
+			this.plugin.settings.voiceOutputTarget = this.voiceOutputTarget;
+			void this.plugin.saveSettings();
 		});
 		this.recordingTimerEl = composer.createDiv({
 			cls: 'cc-chat-recording-timer',
 			text: '00:00',
 			attr: { role: 'timer', 'aria-live': 'off', 'aria-label': 'Recording duration' },
 		});
+		this.liveBadgeEl = composer.createDiv({
+			cls: 'cc-chat-live-badge',
+			text: 'LIVE',
+			attr: { 'aria-label': 'Live transcription active' },
+		});
+		this.levelMeterEl = composer.createDiv({
+			cls: 'cc-chat-level-meter',
+			attr: { role: 'meter', 'aria-label': 'Microphone audio level', 'aria-valuemin': '0', 'aria-valuemax': '100' },
+		});
+		this.levelMeterFillEl = this.levelMeterEl.createDiv({ cls: 'cc-chat-level-meter-fill' });
 		this.composerNoticeEl = composer.createDiv({
 			cls: 'cc-chat-composer-notice',
 			attr: { role: 'status', 'aria-live': 'polite' },
@@ -145,19 +191,15 @@ export class CommandCenterChatView extends ItemView {
 		});
 		this.microphoneEl = inputRow.createEl('button', {
 			cls: 'cc-chat-microphone',
-			text: '🎙️',
 			attr: { type: 'button', 'aria-label': 'Start voice recording', title: 'Record voice message' },
 		});
+		setIcon(this.microphoneEl, 'mic');
 		this.submitEl = inputRow.createEl('button', {
 			cls: 'cc-chat-submit mod-cta',
 			attr: { type: 'button', 'aria-label': 'Send message', title: 'Send (enter)' },
 		});
 		setIcon(this.submitEl, 'send');
 
-		this.registerDomEvent(this.historyEl, 'scroll', () => {
-			const distance = this.historyEl.scrollHeight - this.historyEl.scrollTop - this.historyEl.clientHeight;
-			this.pinnedToBottom = distance <= 24;
-		});
 		this.registerDomEvent(this.modeSelectEl, 'change', () => {
 			this.mode = this.modeSelectEl.value as ChatMode;
 			this.updateHeader();
@@ -178,12 +220,98 @@ export class CommandCenterChatView extends ItemView {
 
 		this.contextFile = this.plugin.app.workspace.getActiveFile();
 		await this.refreshDetectedContext();
+		this.replayChatHistory();
 		this.updateHeader();
 		void this.refreshSttStatus();
 		// The daemon can start or stop outside this view (settings, dashboard,
 		// command palette), so keep the native header indicator current.
 		this.statusRefreshTimer = this.registerInterval(window.setInterval(() => this.updateHeader(), 1_000));
 		this.textareaEl.focus();
+	}
+
+	/** Replay saved conversation turns into the chat view. */
+	private replayChatHistory(): void {
+		// Clear the default welcome message if we have saved turns.
+		const active = this.plugin.conversations.getActive();
+		if (!active || active.turns.length === 0) return;
+		this.historyEl.empty();
+		for (const turn of active.turns) {
+			if (turn.role === 'user' || turn.role === 'assistant') {
+				this.addMessage(turn.role as MessageRole, turn.content);
+			}
+		}
+		this.scrollToBottom(true);
+	}
+
+	/** Export the current conversation as a Markdown file with frontmatter metadata. */
+	private async exportChatAsMarkdown(): Promise<void> {
+		const active = this.plugin.conversations.getActive();
+		if (!active || active.turns.length === 0) {
+			new Notice('No conversation to export.');
+			return;
+		}
+		const now = new Date();
+		const iso = now.toISOString();
+		const route = this.plugin.settings.multiProvider.routing[this.mode === 'react' ? 'reasoning' : 'fast'];
+		const provider = PROVIDER_REGISTRY[route.providerId]?.label ?? route.providerId;
+		const turnCount = active.turns.filter(t => t.role === 'user' || t.role === 'assistant').length;
+
+		// Vault-native metadata: tagged frontmatter so exports are discoverable
+		// and filterable in Bases, Dataview, and global search.
+		const frontmatter = [
+			'---',
+			`title: Chat — ${now.toLocaleString()}`,  // SANITIZE_ALLOW: local timestamp only
+			`type: command-center-chat`,
+			`mode: ${this.mode}`,
+			`provider: ${provider}`,
+			`model: ${route.modelId}`,
+			`created: ${iso}`,
+			`updated: ${iso}`,
+			'tags:',
+			'  - command-center/chat',
+			'  - command-center/transcript',
+			`turns: ${turnCount}`,
+			'---',
+			'',
+		].join('\n');
+
+		const lines: string[] = [frontmatter];
+		lines.push(`# Chat: ${active.name}`);
+		lines.push(`> ${turnCount} turns · ${provider} · ${route.modelId} · Exported ${now.toLocaleString()}`);
+		lines.push('');
+		for (const turn of active.turns) {
+			if (turn.role !== 'user' && turn.role !== 'assistant') continue;
+			const label = turn.role === 'user' ? '**You**' : '**Assistant**';
+			lines.push('---');
+			lines.push(`${label} (${new Date(turn.timestamp).toLocaleTimeString()}):`);
+			lines.push('');
+			lines.push(turn.content);
+			lines.push('');
+		}
+		const content = lines.join('\n');
+
+		// Save under command-center/chats/ with a stable, date-scoped name.
+		const folder = normalizePath('command-center/chats');
+		await this.ensureFolder(this.plugin.app, folder);
+		const safeTitle = active.name.replace(/[\\/:*?"<>|]/g, '-').slice(0, 60);
+		const name = `${folder}/${safeTitle || 'Chat'} ${now.toISOString().slice(0, 10)}.md`;
+		try {
+			const file = await this.plugin.app.vault.create(name, content);
+			await this.plugin.app.workspace.getLeaf(false).openFile(file);
+			new Notice(`Chat exported to ${name}`);
+		} catch (error) {
+			new Notice(`Export failed: ${(error as Error).message}`);
+		}
+	}
+
+	/** Recursively ensure a vault folder exists. */
+	private async ensureFolder(app: App, path: string): Promise<TFolder> {
+		const normalized = normalizePath(path);
+		const existing = app.vault.getAbstractFileByPath(normalized);
+		if (existing instanceof TFolder) return existing;
+		const parent = normalizePath(normalized.split('/').slice(0, -1).join('/') || '/');
+		await this.ensureFolder(app, parent);
+		return await app.vault.createFolder(normalized);
 	}
 
 	async onClose(): Promise<void> {
@@ -318,7 +446,16 @@ export class CommandCenterChatView extends ItemView {
 			return;
 		}
 		this.hideComposerNotice();
-		const recorder = new AudioRecorder({ mimeType: 'audio/webm', deviceId: this.plugin.settings.audioInputDeviceId || undefined });
+		const recorder = new AudioRecorder({
+			mimeType: 'audio/webm',
+			deviceId: this.plugin.settings.audioInputDeviceId || undefined,
+			onAudioLevel: level => {
+				if (!this.isOpen) return;
+				const percent = Math.round(level * 100);
+				this.levelMeterFillEl.style.width = `${percent}%`;
+				this.levelMeterEl.setAttribute('aria-valuenow', String(percent));
+			},
+		});
 		this.audioRecorder = recorder;
 		try {
 			await recorder.start();
@@ -330,6 +467,7 @@ export class CommandCenterChatView extends ItemView {
 			this.updateRecordingTimer();
 			this.recordingTimer = this.registerInterval(window.setInterval(() => this.updateRecordingTimer(), 1_000));
 			this.microphoneEl.addClass('cc-mic-recording');
+			setIcon(this.microphoneEl, 'square');
 			this.microphoneEl.setAttribute('aria-label', 'Stop voice recording');
 			this.microphoneEl.setAttribute('aria-pressed', 'true');
 			this.microphoneEl.setAttribute('title', 'Stop and transcribe');
@@ -353,6 +491,7 @@ export class CommandCenterChatView extends ItemView {
 		this.microphoneEl.removeClass('cc-mic-recording');
 		this.microphoneEl.addClass('is-transcribing');
 		this.microphoneEl.disabled = true;
+		setIcon(this.microphoneEl, 'loader');
 		this.microphoneEl.setAttribute('aria-label', 'Transcribing voice recording');
 		this.microphoneEl.setAttribute('aria-pressed', 'false');
 		this.microphoneEl.setAttribute('title', 'Transcribing...');
@@ -445,9 +584,12 @@ export class CommandCenterChatView extends ItemView {
 					if (!this.isOpen) return;
 					if (state === 'recording') {
 						this.microphoneEl.addClass('cc-mic-recording', 'cc-mic-live');
+						setIcon(this.microphoneEl, 'radio');
 						this.microphoneEl.setAttribute('aria-label', 'Stop live transcription');
 						this.microphoneEl.setAttribute('title', 'Stop live transcription (Shift+click)');
 						this.recordingTimerEl.addClass('is-visible');
+						this.liveBadgeEl.addClass('is-visible');
+						this.levelMeterEl.addClass('is-visible');
 						this.showComposerNotice('Live transcription... (Shift+click to stop)');
 					} else if (state === 'transcribing') {
 						this.microphoneEl.addClass('is-transcribing');
@@ -653,20 +795,59 @@ export class CommandCenterChatView extends ItemView {
 		const row = this.historyEl.createDiv({ cls: `cc-chat-message cc-chat-message-${role}` });
 		const bubble = row.createDiv({ cls: 'cc-chat-bubble' });
 		const content = bubble.createDiv({ cls: 'cc-chat-message-content' });
-		bubble.createDiv({
+		const message = { role, bubble, content, markdown: text, renderVersion: 0 };
+		const actions = bubble.createDiv({ cls: 'cc-chat-message-actions' });
+		actions.createDiv({
 			cls: 'cc-chat-message-time',
 			text: new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date()),
 			attr: { title: new Date().toLocaleString() },
 		});
-		const message = { role, bubble, content, markdown: text, renderVersion: 0 };
 		if (role === 'assistant') {
-			const read = bubble.createEl('button', { text: '🔊 Read aloud', cls: 'cc-read-aloud', attr: { 'aria-label': 'Read AI response aloud' } });
+			const read = actions.createEl('button', { text: '🔊 Read aloud', cls: 'cc-read-aloud', attr: { 'aria-label': 'Read AI response aloud' } });
 			this.registerDomEvent(read, 'click', () => this.plugin.accessibilityAudio.speak(message.markdown));
 		}
+		const copy = actions.createEl('button', { text: 'Copy', cls: 'cc-copy-button', attr: { 'aria-label': 'Copy message text' } });
+		this.registerDomEvent(copy, 'click', () => void this.copyText(message.markdown, copy));
+		const del = actions.createEl('button', { text: '✕', cls: 'cc-delete-button', attr: { 'aria-label': 'Delete message' } });
+		this.registerDomEvent(del, 'click', () => {
+			row.remove();
+		});
 		void this.renderMessage(message);
 		this.pinnedToBottom = true;
 		this.scrollToBottom(true);
 		return message;
+	}
+
+	/** Copy text to the clipboard with transient button feedback. */
+	private async copyText(text: string, button?: HTMLElement): Promise<void> {
+		try {
+			await navigator.clipboard.writeText(text);
+		} catch {
+			// Fallback for restricted clipboard contexts (e.g. some Electron builds).
+			try {
+				const area = document.createElement('textarea');
+				area.value = text;
+				area.style.position = 'fixed';
+				area.style.opacity = '0';
+				document.body.appendChild(area);
+				area.select();
+				document.execCommand('copy');
+				document.body.removeChild(area);
+			} catch {
+				new Notice('Copy failed — select the text and press Ctrl+C.');
+				return;
+			}
+		}
+		if (button && this.isOpen) {
+			const original = button.textContent;
+			button.textContent = 'Copied ✓';
+			button.addClass('is-copied');
+			window.setTimeout(() => {
+				if (!this.isOpen) return;
+				button.textContent = original;
+				button.removeClass('is-copied');
+			}, 1500);
+		}
 	}
 
 	private async renderMessage(message: ChatMessageElements): Promise<void> {
@@ -682,7 +863,29 @@ export class CommandCenterChatView extends ItemView {
 		// Check again after the async render, in case the selection started during the await.
 		if (this.isSelectionInside(message.content)) return;
 		message.content.replaceChildren(...Array.from(staging.childNodes));
+		// Attach copy buttons to code blocks in rendered messages.
+		this.attachCodeCopyButtons(message.content);
 		this.scrollToBottom();
+	}
+
+	/** Add copy buttons to <pre> code blocks inside the rendered element. */
+	private attachCodeCopyButtons(container: HTMLElement): void {
+		for (const pre of Array.from(container.querySelectorAll('pre'))) {
+			// Skip if a copy button already exists.
+			if (pre.parentElement?.querySelector('.cc-copy-code')) continue;
+			if (pre.classList.contains('cc-code-with-copy')) continue;
+			pre.classList.add('cc-code-with-copy');
+			const btn = pre.createEl('button', {
+				cls: 'cc-copy-code',
+				text: '📋',
+				attr: { 'aria-label': 'Copy code block' },
+			});
+			this.registerDomEvent(btn, 'click', async (event) => {
+				event.stopPropagation();
+				const code = pre.textContent ?? '';
+				await this.copyText(code, btn);
+			});
+		}
 	}
 
 	/** True when the active DOM selection is anchored inside the given element. */
@@ -762,6 +965,7 @@ export class CommandCenterChatView extends ItemView {
 		this.addMessage('user', input);
 		const assistant = this.addMessage('assistant', '');
 		assistant.bubble.addClass('is-pending');
+		assistant.content.addClass('is-streaming');
 		this.setSending(true);
 
 		try {
@@ -772,6 +976,7 @@ export class CommandCenterChatView extends ItemView {
 			new Notice(`Command Center chat failed: ${(error as Error).message}`);
 		} finally {
 			assistant.bubble.removeClass('is-pending');
+			assistant.content.removeClass('is-streaming');
 			if (assistant.markdown.trim()) {
 				this.plugin.accessibilityAudio.cue('complete');
 				if (this.plugin.settings.autoReadAiResponses) this.plugin.accessibilityAudio.speak(assistant.markdown);

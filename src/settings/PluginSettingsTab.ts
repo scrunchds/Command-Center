@@ -494,7 +494,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.setDesc('Allow voice recording and transcription for chat, workflow voice prompts, and dictation.')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.speechToTextEnabled).onChange(value => this.saveSetting('speechToTextEnabled', value)));
 
-		const sttProviders: Array<'auto' | ProviderId> = ['auto', 'lmstudio', 'ollama', 'groq', 'openai', 'deepinfra', 'openrouter', 'custom'];
+		const sttProviders: Array<'auto' | ProviderId> = ['auto', 'lmstudio', 'ollama', 'groq', 'openai', 'deepinfra', 'openrouter', 'xai', 'cohere', 'custom'];
 		new Setting(body)
 			.setName('Speech-to-text provider')
 			.setDesc('Auto uses the normal fallback order; pick a provider to prefer it first.')
