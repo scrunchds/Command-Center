@@ -44,6 +44,16 @@ function hasAudio(inputModalities: string[] | undefined): boolean {
 
 export class OpenRouterProvider extends OpenAICompatibleProvider {
 	/**
+	 * Use the personalized model list endpoint that respects the user's
+	 * provider preferences, privacy settings, and guardrails.
+	 * Falls back to the generic list if the user endpoint is unavailable.
+	 */
+	protected getModelListEndpoint(): string {
+		const base = this.getBaseUrl().replace(/\/+$/, '');
+		return `${base}/models/user`;
+	}
+
+	/**
 	 * Override model list parsing to extract OpenRouter's rich metadata.
 	 *
 	 * OpenRouter's GET /v1/models response shape:
@@ -95,12 +105,11 @@ export class OpenRouterProvider extends OpenAICompatibleProvider {
 			|| (supportedParams?.includes('vision') ?? false)
 			|| /vision|image|multimodal/i.test(description);
 
-		const supportsTools = supportedParams?.includes('tools')
-			?? supportedParams?.includes('tool_choice')
-			?? !/instruct/i.test(id);
+		const supportsTools = (supportedParams?.includes('tools') ?? false)
+			|| (supportedParams?.includes('tool_choice') ?? false)
+			|| !/instruct/i.test(id);
 
-		const supportsCaching = supportedParams?.includes('prompt_caching')
-			?? false;
+		const supportsCaching = supportedParams?.includes('prompt_caching') ?? false;
 
 		// Determine cost tier from pricing
 		const costTier = pricingToCostTier(pricing?.prompt);
