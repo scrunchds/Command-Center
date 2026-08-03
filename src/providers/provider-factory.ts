@@ -14,6 +14,7 @@ import { sanitizeBaseUrl } from './provider-types';
 import { PROVIDER_REGISTRY } from './provider-registry';
 import { OpenAICompatibleProvider } from './openai-compatible';
 import { LMStudioProvider } from './lm-studio';
+import { XAIProvider } from './xai';
 import { AnthropicProvider } from './anthropic';
 import { GeminiProvider } from './google-gemini';
 import { CohereProvider } from './cohere';
@@ -186,6 +187,8 @@ export class ProviderFactory {
 				return new GeminiProvider(this.httpOpts('google-gemini'));
 			case 'cohere':
 				return new CohereProvider(this.httpOpts('cohere'));
+			case 'xai':
+				return new XAIProvider(this.httpOpts('xai'));
 		}
 	}
 

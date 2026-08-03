@@ -148,6 +148,20 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 			m('local-model', 'Local Model (auto-detect)', 128_000, 4096, { cost: 'free', strengths: ['reasoning', 'coding', 'fast', 'reading'] }),
 		],
 	},
+	'xai': {
+		id: 'xai', label: 'xAI (Grok)', icon: '🛸',
+		description: 'Grok models with vision, tools, and native STT/TTS.',
+		requiresKey: true, defaultBaseUrl: 'https://api.x.ai/v1',
+		capabilities: caps({ vision: true, embeddings: false, maxContextWindow: 1_000_000 }),
+		models: [
+			m('grok-4.5', 'Grok 4.5', 500_000, 32_000, { vision: true, cost: 'expensive', strengths: ['reasoning', 'coding', 'vision', 'reading'] }),
+			m('grok-4.3', 'Grok 4.3', 1_000_000, 32_000, { vision: true, cost: 'moderate', strengths: ['reasoning', 'reading', 'fast', 'coding'] }),
+			m('grok-4.20-reasoning', 'Grok 4.20 Reasoning', 1_000_000, 32_000, { vision: true, cost: 'expensive', strengths: ['reasoning', 'coding', 'reading'] }),
+			m('grok-build-0.1', 'Grok Build', 256_000, 16_384, { cost: 'cheap', strengths: ['coding', 'fast'] }),
+			m('grok-stt', 'Grok STT', 0, 0, { cost: 'moderate', strengths: [] }),
+			m('grok-tts', 'Grok TTS', 0, 0, { cost: 'moderate', strengths: [] }),
+		],
+	},
 	'custom': {
 		id: 'custom', label: 'Custom Endpoint', icon: '🔌',
 		description: 'Custom OpenAI-compatible endpoint with optional bearer authentication.',
@@ -167,6 +181,18 @@ export const DEFAULT_ROUTE_MODELS: Record<TaskType, { provider: ProviderId; mode
 	reading:   { provider: 'google-gemini', model: 'gemini-1.5-pro' },
 	reasoning: { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022' },
 	fast:      { provider: 'groq', model: 'llama-3.1-8b-instant' },
+};
+
+/**
+ * Default models for providers with dedicated STT models.
+ * Used by the transcription fallback chain to pick the right model ID.
+ */
+export const DEFAULT_STT_MODELS: Partial<Record<ProviderId, string>> = {
+	'xai': 'grok-stt',
+	'groq': 'whisper-large-v3',
+	'openai': 'whisper-large-v3-turbo',
+	'deepinfra': 'whisper-large-v3-turbo',
+	'openrouter': 'whisper-large-v3-turbo',
 };
 
 /** Best default model for each provider, per task type. */

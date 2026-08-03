@@ -12,7 +12,8 @@ import type { ToolDefinition } from '../types';
 export type ProviderId =
 	| 'pi-daemon' | 'openai' | 'anthropic' | 'google-gemini'
 	| 'openrouter' | 'ollama' | 'groq' | 'deepinfra'
-	| 'mistral' | 'cohere' | 'lmstudio' | 'custom';
+	| 'mistral' | 'cohere' | 'lmstudio' | 'custom'
+	| 'xai';
 
 export type ProviderAuthentication = 'none' | 'optional' | 'required';
 

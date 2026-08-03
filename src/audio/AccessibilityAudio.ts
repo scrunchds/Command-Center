@@ -49,6 +49,7 @@ export class AccessibilityAudio {
 					defaultModel: candidate.model,
 					maxAttempts: candidate.local ? 1 : 2,
 					signal,
+					transcriptionPath: candidate.transcriptionPath,
 				});
 				// Warm up local models before transcription
 				if (candidate.local) {

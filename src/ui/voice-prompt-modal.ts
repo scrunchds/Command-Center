@@ -6,7 +6,7 @@ import type { TranscriptionStatusCallback } from '../audio/AccessibilityAudio';
 import { resolveChatContext } from './chat-context';
 
 export type VoicePromptMode = 'quick' | 'react' | 'workflow';
-interface SttCandidate { providerId: import('../providers/provider-types').ProviderId; model?: string; label: string; local: boolean }
+interface SttCandidate { providerId: import('../providers/provider-types').ProviderId; model?: string; label: string; local: boolean; transcriptionPath?: string }
 
 /** Floating, auto-starting voice capture used by the global palette command. */
 export class VoicePromptModal extends Modal {
@@ -82,7 +82,7 @@ export class VoicePromptModal extends Modal {
 		if (!candidate?.local || !this.plugin.settings.speechToTextEnabled) return;
 		try {
 			const models = await this.withTimeout(
-				new TranscriberAdapter({ providerId: candidate.providerId, getSettings: () => this.plugin.settings }).fetchLiveAudioModels(),
+				new TranscriberAdapter({ providerId: candidate.providerId, getSettings: () => this.plugin.settings, transcriptionPath: candidate.transcriptionPath }).fetchLiveAudioModels(),
 				5_000,
 				'Local model discovery timed out',
 			);
@@ -195,6 +195,7 @@ export class VoicePromptModal extends Modal {
 				maxAttempts: candidate.local ? 1 : 2,
 				getApiKey: providerId => this.plugin.credentialVault.get(providerId),
 				signal,
+				transcriptionPath: candidate.transcriptionPath,
 			});
 			try {
 				if (candidate.local) {

@@ -31,6 +31,12 @@ export interface TranscriberAdapterOptions {
 	getApiKey?: (providerId: ProviderId) => string;
 	/** Cancels model discovery, transcription fetches, retries, and backoff waits. */
 	signal?: AbortSignal;
+	/**
+	 * Override the transcription URL path for providers with non-standard endpoints.
+	 * Default: /v1/audio/transcriptions
+	 * Example: xAI uses /v1/stt
+	 */
+	transcriptionPath?: string;
 }
 
 export interface TranscriptionCandidate {
@@ -38,6 +44,8 @@ export interface TranscriptionCandidate {
 	model?: string;
 	label: string;
 	local: boolean;
+	/** Optional custom transcription URL path (e.g. xAI uses /v1/stt). */
+	transcriptionPath?: string;
 }
 
 const TRANSCRIPTION_PROVIDER_ORDER: ProviderId[] = [
@@ -47,6 +55,7 @@ const TRANSCRIPTION_PROVIDER_ORDER: ProviderId[] = [
 	'openai',
 	'deepinfra',
 	'openrouter',
+	'xai',
 	'custom',
 ];
 
@@ -86,9 +95,11 @@ export function buildTranscriptionCandidates(
 		if (meta.requiresKey && options.hasApiKey && !options.hasApiKey(providerId)) return [];
 		const local = providerId === 'lmstudio' || providerId === 'ollama';
 		const persisted = mp.liveModels?.[providerId]?.find(model => /(whisper|speech[-_ ]?to[-_ ]?text|transcri|\bstt\b)/i.test(model.id));
-		const model = persisted?.id ?? configuredModel ?? (providerId === 'groq' ? 'whisper-large-v3' : local ? undefined : 'whisper-large-v3-turbo');
+		const model = persisted?.id ?? configuredModel ?? (providerId === 'groq' ? 'whisper-large-v3' : providerId === 'xai' ? 'grok-stt' : local ? undefined : 'whisper-large-v3-turbo');
 		const providerLabel = providerId === 'lmstudio' ? 'Local LM Studio' : providerId === 'ollama' ? 'Local Ollama' : meta.label;
-		return [{ providerId, model, label: `${providerLabel} (${model ?? 'automatic Whisper'})`, local }];
+		// xAI uses a non-standard STT endpoint (/v1/stt instead of /v1/audio/transcriptions).
+		const transcriptionPath = providerId === 'xai' ? '/v1/stt' : undefined;
+		return [{ providerId, model, label: `${providerLabel} (${model ?? 'automatic Whisper'})`, local, transcriptionPath }];
 	});
 }
 
@@ -308,6 +319,15 @@ export class TranscriberAdapter {
 
 	private transcriptionUrl(baseUrl: string): string {
 		const base = baseUrl.replace(/\/+$/, '');
+		// Provider-specific path override (e.g. xAI uses /v1/stt instead of OpenAI's
+		// /v1/audio/transcriptions).
+		if (this.options.transcriptionPath) {
+			const path = this.options.transcriptionPath.startsWith('/')
+				? this.options.transcriptionPath
+				: `/${this.options.transcriptionPath}`;
+			if (/\/v1$/i.test(base)) return `${base}${path.replace(/^\/v1/, '') || ''}`;
+			return `${base}${path}`;
+		}
 		if (/\/audio\/transcriptions$/i.test(base)) return base;
 		return /\/v1$/i.test(base) ? `${base}/audio/transcriptions` : `${base}/v1/audio/transcriptions`;
 	}

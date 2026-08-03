@@ -34,6 +34,8 @@ export interface SttCandidate {
 	model?: string;
 	label: string;
 	local: boolean;
+	/** Optional custom transcription URL path (e.g. xAI uses /v1/stt). */
+	transcriptionPath?: string;
 }
 
 export interface LiveTranscriberOptions {
@@ -258,6 +260,7 @@ export class LiveTranscriber {
 					defaultModel: candidate.model,
 					maxAttempts: candidate.local ? 1 : 2,
 					signal: this.signal,
+					transcriptionPath: candidate.transcriptionPath,
 				});
 				// For local providers, discover models first.
 				if (candidate.local) {

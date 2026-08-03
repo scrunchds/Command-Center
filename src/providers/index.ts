@@ -17,11 +17,12 @@ export {
 	TASK_TYPE_LABELS, TASK_TYPE_ICONS, DEFAULT_PROVIDER_CONFIG, DEFAULT_FALLBACK_CONFIG,
 	ProviderError, classifyHttpError, classifyThrowError, isLocalBaseUrl, detectLocalRuntime,
 } from './provider-types';
-export { PROVIDER_REGISTRY, getDefaultModelForProvider, DEFAULT_ROUTE_MODELS } from './provider-registry';
+export { PROVIDER_REGISTRY, getDefaultModelForProvider, DEFAULT_ROUTE_MODELS, DEFAULT_STT_MODELS } from './provider-registry';
 export { BaseHttpProvider } from './base-http-provider';
 export type { BaseHttpProviderOptions } from './base-http-provider';
 export { OpenAICompatibleProvider, toOpenAITools } from './openai-compatible';
 export { LMStudioProvider } from './lm-studio';
+export { XAIProvider, XAI_STT_URL_PATH, XAI_TTS_URL_PATH, XAI_VOICES_URL_PATH } from './xai';
 export { AnthropicProvider } from './anthropic';
 export { GeminiProvider } from './google-gemini';
 export { CohereProvider } from './cohere';

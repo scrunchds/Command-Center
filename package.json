@@ -14,7 +14,7 @@
 		"hooks:install": "node scripts/install-hooks.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint .",
-		"test": "npx tsx test/verify.mjs && npx tsx test/react-suite.mjs",
+		"test": "npx tsx test/verify.mjs && npx tsx test/react-suite.mjs && npx tsx test/provider-xai.mjs",
 		"test:core": "npx tsx test/verify.mjs",
 		"test:react": "npx tsx test/react-suite.mjs",
 		"benchmark": "npx tsx test/benchmark.mjs",
