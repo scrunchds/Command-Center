@@ -482,11 +482,14 @@ export class CommandCenterChatView extends ItemView {
 			if (!this.isOpen) return;
 
 			if (text) {
-				const existing = this.textareaEl.value;
 				const target = this.voiceOutputTarget;
 
 				if (target === 'chat' || target === 'all') {
-					this.textareaEl.value = existing && !/\s$/.test(existing) ? `${existing} ${text}` : `${existing}${text}`;
+					// During live transcription, onInterim already fills the textarea
+					// with the accumulated text.  stop() returns the same text, so
+					// appending would duplicate it.  Ensure the textarea has the
+					// final text without duplication.
+					this.textareaEl.value = text;
 					this.resizeTextarea();
 					this.textareaEl.focus();
 					this.textareaEl.setSelectionRange(this.textareaEl.value.length, this.textareaEl.value.length);
@@ -538,6 +541,7 @@ export class CommandCenterChatView extends ItemView {
 				new TranscriberAdapter({
 					providerId: candidate.providerId,
 					getSettings: () => this.plugin.settings,
+					getApiKey: id => this.plugin.credentialVault.get(id),
 				}).fetchLiveAudioModels(),
 				5_000,
 				'Local model discovery timed out',
