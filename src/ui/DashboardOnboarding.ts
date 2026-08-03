@@ -68,7 +68,7 @@ export class DashboardOnboarding {
 			}
 		});
 		const actions = this.composer.createDiv({ cls: 'cc-onboarding-actions' });
-		const back = actions.createEl('button', { text: '← Back', attr: { 'aria-label': 'Go back to the previous question', title: 'Go back to the previous question' } });
+		const back = actions.createEl('button', { text: '← back', attr: { 'aria-label': 'Go back to the previous question', title: 'Go back to the previous question' } });
 		this.renderer.registerDomEvent(back, 'click', () => void this.goBack());
 		const skip = actions.createEl('button', { text: 'Skip optional question' });
 		this.renderer.registerDomEvent(skip, 'click', () => void this.submit('Skip this optional question; record no invented value and continue.'));
@@ -145,7 +145,7 @@ export class DashboardOnboarding {
 	private async goBack(): Promise<void> {
 		if (this.busy) return;
 		try {
-			const message = this.engine.rewind();
+			this.engine.rewind();
 			// Re-render the last assistant message state by showing the previous
 			// question text.
 			this.setStatus('You can now correct or extend your previous answer.');
@@ -191,7 +191,7 @@ export class DashboardOnboarding {
 					// Replay persisted turns into the history.
 					for (const turn of this.engine.getTurns()) {
 						if (turn.role === 'user' || turn.role === 'assistant') {
-							await this.render(turn.role as 'user' | 'assistant', turn.content);
+							await this.render(turn.role, turn.content);
 						}
 					}
 					this.updatePhase();

@@ -68,6 +68,8 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 const IMAGE_EXTENSIONS = 'png|jpg|jpeg|gif|webp|bmp|svg|tiff|tif';
+// Reserved for future video generation feature — see isVideoFile() and OpenRouter video URL builders.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- planned for video generation
 const VIDEO_EXTENSIONS = 'mp4|webm|mov|avi|mkv';
 export const DEFAULT_MAX_IMAGE_PAYLOAD_BYTES = 20 * 1024 * 1024;
 const DATA_URI_OVERHEAD_BYTES = 128;

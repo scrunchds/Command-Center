@@ -209,15 +209,15 @@ export class PluginSettingsTab extends PluginSettingTab {
 		// essential toggles; Advanced adds debug, MCP, and tuning options.
 		new Setting(body)
 			.setName('UI mode')
-			.setDesc('Simple: minimal toggles, auto-detection. Normal: full feature controls. Advanced: debug, MCP, custom endpoints, tuning.')
+			.setDesc('Simple: minimal toggles, auto-detection. Normal: full feature controls. Advanced: debug, mcp, custom endpoints, tuning.')
 			.addDropdown(d => {
 				d.addOption('simple', 'Simple');
 				d.addOption('normal', 'Normal');
 				d.addOption('advanced', 'Advanced');
 				d.setValue(this.plugin.settings.uiMode);
 				d.onChange(value => {
-					this.saveSetting('uiMode', value as 'simple' | 'normal' | 'advanced');
-					this.display();
+					void this.saveSetting('uiMode', value as 'simple' | 'normal' | 'advanced');
+					void this.update();
 				});
 				return d;
 			});
@@ -552,7 +552,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		if (this.plugin.settings.uiMode === 'simple') {
 			new Setting(body)
 				.setName('One-click local setup')
-				.setDesc('Prefer local providers (LM Studio / Ollama) and disable cloud routing. You can change this anytime in the Providers tab.')
+				.setDesc('Prefer local providers (lm studio / ollama) and disable cloud routing. You can change this anytime in the providers tab.')
 				.addButton(button => button.setButtonText('Use local only').onClick(() => {
 					this.plugin.settings.multiProvider = {
 						credentials: {
@@ -565,7 +565,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 					};
 					this.plugin.persist.setSettings({ ...this.plugin.settings });
 					void this.plugin.persist.forceFlush();
-					new Notice('Local-only mode enabled. Configure endpoints in Providers → LM Studio / Ollama.');
+					new Notice('Local-only mode enabled. Configure endpoints in providers → lm studio / ollama.');
 				}));
 		}
 	}
@@ -636,25 +636,24 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.addSlider(slider => slider
 				.setLimits(1000, 6000, 500)
 				.setValue(this.plugin.settings.liveTranscriptionChunkMs)
-				.setDynamicTooltip()
 				.onChange(value => this.saveSetting('liveTranscriptionChunkMs', value)));
 
 		new Setting(body)
 			.setName('Test speech-to-text')
 			.setDesc('Verify that the configured provider is reachable and can transcribe audio. Requires a working microphone.')
 			.addButton(button => button
-				.setButtonText('Test STT')
+				.setButtonText('Test stt')
 				.onClick(() => {
 					const candidates = buildTranscriptionCandidates(this.plugin.settings, {
 						hasApiKey: id => this.plugin.credentialVault.has(id),
 					});
 					if (!candidates.length) {
-						new Notice('No STT providers configured. Enable one in the provider settings.', 5000);
+						new Notice('No stt providers configured. Enable one in the provider settings.', 5000);
 						return;
 					}
 					button.setButtonText('Testing…');
 					button.setDisabled(true);
-					(async () => {
+					void (async () => {
 						for (const candidate of candidates) {
 							try {
 								const adapter = new TranscriberAdapter({
@@ -678,7 +677,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 								// Continue to next fallback candidate
 							}
 						}
-						button.setButtonText('Test STT');
+						button.setButtonText('Test stt');
 						button.setDisabled(false);
 					})();
 				}));

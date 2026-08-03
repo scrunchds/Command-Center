@@ -4,6 +4,43 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-03
+
+### Added
+
+- **Metacognitive interview enhancements**: The Socratic Triage consultant now reflects back understanding before advancing, surfaces assumptions behind the user's decisions, connects patterns across phases, explores tradeoffs, evaluates satisfaction with current approaches, future-proofs against changing needs, and proposes capabilities as testable hypotheses — all while preserving the consent-led, agnostic persona.
+- **Interview navigation**: Back button to revisit and correct a previous answer, per-topic skip, and save/resume — progress persists to a vault note so closing the dashboard does not lose the conversation.
+- **UI mode (Simple / Normal / Advanced)**: Progressive disclosure in Settings. Simple hides the routing matrix, fallback pipeline, and health dashboard and adds a one-click "Use local only" setup. Advanced adds the health dashboard and debug tools.
+- **Feature subsystem toggles**: Independently enable/disable Vault RAG, persistent agent memory, the ReAct multi-agent engine, native workflows, the daily operations engine, chat history persistence, MCP tools, and web search — Command Center stays agnostic and never imposes any subsystem on a user's workflow.
+- **Chat history persistence**: The chat view replays saved conversation turns on open, so conversations survive view close and plugin reload.
+- **Chat export**: Conversations export to a tagged Markdown file under command-center/chats/ with frontmatter (type: command-center-chat, provider, mode, model, tags command-center/chat + command-center/transcript).
+- **New conversation button** in the chat header.
+- **Message actions**: Copy button (with "Copied ✓" feedback), delete button, and hover-revealed action bar on every chat message.
+- **Code block copy buttons** on rendered messages.
+- **Streaming cursor** (blinking ▊) on pending assistant messages.
+- **Scroll-to-bottom button** appears when the chat history is scrolled up.
+- **Voice output target persistence**: The chat voice destination (Chat / Note / Canvas / …) is now saved in settings.
+- **Live transcription chunk duration** setting (1–6s slider) — smaller values give faster interim results, larger values reduce API cost.
+- **Speech-to-text test button** in Settings that verifies provider reachability.
+- **xAI and Cohere** added to the Speech-to-text provider dropdown.
+- **Mic icon states**: The chat microphone uses SVG icons that change with state (mic → square → loader → radio) instead of a static emoji.
+- **Audio level meter** in the chat composer during recording, and a **LIVE badge** during live transcription.
+
+### Fixed
+
+- **Cohere STT URL malformed**: transcriptionUrl now strips the version prefix from the server root, fixing `/v2/v2/audio/transcriptions` → `/v2/audio/transcriptions`.
+- **Chat surface ignored provider transcriptionPath**: transcribeWithFallback in the chat view now passes candidate.transcriptionPath, so xAI (`/v1/stt`) and Cohere (`/v2/audio/transcriptions`) custom endpoints work from the chat surface.
+- **Live transcription duplicated text on stop**: the textarea already held interim text from onInterim; stop() no longer appends the same text again.
+- **buildTranscriptionCandidates silently included key-requiring providers** when no hasApiKey callback was provided — it now falls back to checking credentials.apiKey directly.
+- **refreshSttStatus / refreshSttBadge** now pass getApiKey so local model discovery works when the credential vault holds the key.
+- **Release script**: fixed duplicate `const totalTests` declaration that would fail the pre-flight gate; the final count now includes provider tests.
+
+### Changed
+
+- Speech-to-text section of Settings now includes the live chunk duration slider, an STT test button, and xAI/Cohere in the provider dropdown.
+- Feature toggles moved behind a dedicated Features tab in Settings.
+- Chat message layout: timestamp moved into a hover-revealed action bar with Copy and Read-aloud controls.
+
 ## [1.2.0] - 2026-08-02
 
 ### Added

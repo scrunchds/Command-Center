@@ -147,7 +147,7 @@ try {
 	process.exit(1);
 }
 
-const totalTests = coreTestCount + reactTestCount;
+let totalTests = coreTestCount + reactTestCount;
 
 console.log('\n─── 1g. Provider tests ───');
 let providerTestCount = 0;
@@ -161,8 +161,10 @@ try {
 	process.exit(1);
 }
 
-const totalTests = coreTestCount + reactTestCount + providerTestCount;
-console.log(`\n  ✅ Tests: ${coreTestCount} core + ${reactTestCount} react = ${totalTests} total`);
+// Reassign to include provider tests — the definitive total.
+// eslint-disable-next-line prefer-const
+totalTests = coreTestCount + reactTestCount + providerTestCount;
+console.log(`\n  ✅ Tests: ${coreTestCount} core + ${reactTestCount} react + ${providerTestCount} provider = ${totalTests} total`);
 
 /* ─── Step 2: Bump version files ────────────────────────── */
 

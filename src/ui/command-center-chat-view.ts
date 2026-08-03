@@ -237,7 +237,7 @@ export class CommandCenterChatView extends ItemView {
 		this.historyEl.empty();
 		for (const turn of active.turns) {
 			if (turn.role === 'user' || turn.role === 'assistant') {
-				this.addMessage(turn.role as MessageRole, turn.content);
+				this.addMessage(turn.role, turn.content);
 			}
 		}
 		this.scrollToBottom(true);
@@ -825,11 +825,9 @@ export class CommandCenterChatView extends ItemView {
 		} catch {
 			// Fallback for restricted clipboard contexts (e.g. some Electron builds).
 			try {
-				const area = document.createElement('textarea');
+				const area = document.body.createEl('textarea');
 				area.value = text;
-				area.style.position = 'fixed';
-				area.style.opacity = '0';
-				document.body.appendChild(area);
+				area.className = 'cc-clipboard-fallback';
 				area.select();
 				document.execCommand('copy');
 				document.body.removeChild(area);
