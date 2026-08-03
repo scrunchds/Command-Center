@@ -12,6 +12,14 @@ import { DEFAULT_ROUTING } from '../routing/routing-table';
 /* ─── Settings Interface ────────────────────────────────── */
 
 export type DashboardWidgetSize = 'compact' | 'standard' | 'expanded';
+
+/**
+ * UI complexity mode — progressively discloses settings and features.
+ * - simple:  minimal configuration, auto-detection, basic toggles only
+ * - normal:  full feature toggles, provider routing, standard settings
+ * - advanced: debug options, MCP, custom endpoints, performance tuning
+ */
+export type UiMode = 'simple' | 'normal' | 'advanced';
 export interface DashboardWidgetLayout {
 	id: string;
 	hidden: boolean;
@@ -67,10 +75,28 @@ export interface CommandCenterSettings {
 	speechToTextModel: string;
 	/** Where voice transcription output goes by default. */
 	voiceOutputTarget: 'chat' | 'note' | 'canvas' | 'note+audio' | 'canvas+audio' | 'all';
+	/** Chunk duration (ms) for live transcription; smaller = faster interim results, larger = cheaper. */
+	liveTranscriptionChunkMs: number;
 	/** Automatically read completed AI responses aloud. */
 	autoReadAiResponses: boolean;
 	/** Enable web search tool for models that support it (OpenRouter, xAI, etc.). */
 	webSearchEnabled: boolean;
+	/** Enable vault-grounded RAG (hybrid retrieval). Disable for strict privacy. */
+	ragEnabled: boolean;
+	/** Enable persistent agent memory across sessions. */
+	memoryEnabled: boolean;
+	/** Enable the ReAct multi-agent engine for complex tasks. */
+	reactAgentEnabled: boolean;
+	/** Enable native Markdown/Canvas workflow execution. */
+	workflowsEnabled: boolean;
+	/** Enable daily operations engine (morning check-in, evening review). */
+	dailyOperationsEnabled: boolean;
+	/** Enable MCP (Model Context Protocol) tool discovery. */
+	mcpEnabled: boolean;
+	/** Enable chat history persistence across sessions. */
+	chatHistoryEnabled: boolean;
+	/** UI complexity mode. */
+	uiMode: UiMode;
 	/** MCP server configurations for dynamic tool discovery. */
 	mcpServers: import('../mcp/MCPToolManager').MCPServerConfig[];
 	/** Per-vault dashboard widget order, visibility, collapse, and width. */
@@ -103,8 +129,17 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	speechToTextProviderId: 'auto',
 	speechToTextModel: '',
 	voiceOutputTarget: 'chat',
+	liveTranscriptionChunkMs: 3000,
 	autoReadAiResponses: false,
 	webSearchEnabled: false,
+	ragEnabled: true,
+	memoryEnabled: true,
+	reactAgentEnabled: true,
+	workflowsEnabled: true,
+	dailyOperationsEnabled: true,
+	mcpEnabled: true,
+	chatHistoryEnabled: true,
+	uiMode: 'normal',
 	mcpServers: [],
 	dashboardLayout: DEFAULT_DASHBOARD_LAYOUT.map(widget => ({ ...widget })),
 };

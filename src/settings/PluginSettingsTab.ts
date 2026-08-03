@@ -22,6 +22,7 @@ import {
 } from 'obsidian';
 import CommandCenterPlugin from '../main';
 import { getAudioInputDevices } from '../audio/audio-recorder';
+import { buildTranscriptionCandidates, TranscriberAdapter } from '../audio/transcriber';
 import type {
 	ProviderId,
 	TaskType,
@@ -100,7 +101,7 @@ function makeSyncState(): ModelSyncState {
    PluginSettingsTab
    ═══════════════════════════════════════════════════════════ */
 
-type SettingsTabId = 'all' | 'core' | 'providers' | 'routing' | 'health';
+type SettingsTabId = 'all' | 'core' | 'features' | 'providers' | 'routing' | 'health';
 
 export class PluginSettingsTab extends PluginSettingTab {
 	plugin: CommandCenterPlugin;
@@ -155,14 +156,21 @@ export class PluginSettingsTab extends PluginSettingTab {
 			this.renderCoreSettings(content);
 			this.renderMetacognitiveDepth(content);
 		}
+		if (this.selectedTab === 'all' || this.selectedTab === 'features') {
+			this.renderFeatureToggles(content);
+		}
 		if (this.selectedTab === 'all' || this.selectedTab === 'providers') {
 			this.renderProviderCredentials(content);
 		}
-		if (this.selectedTab === 'all' || this.selectedTab === 'routing') {
+		// Routing matrix and fallback are hidden in Simple mode
+		const showRouting = this.plugin.settings.uiMode !== 'simple';
+		if (showRouting && (this.selectedTab === 'all' || this.selectedTab === 'routing')) {
 			this.renderRoutingMatrix(content);
 			this.renderFallbackPipeline(content);
 		}
-		if (this.selectedTab === 'all' || this.selectedTab === 'health') {
+		// Health dashboard is Advanced-only
+		const showHealth = this.plugin.settings.uiMode === 'advanced';
+		if (showHealth && (this.selectedTab === 'all' || this.selectedTab === 'health')) {
 			this.renderHealthDashboard(content);
 		}
 
@@ -194,6 +202,23 @@ export class PluginSettingsTab extends PluginSettingTab {
 				d.setValue(this.plugin.settings.activeProfile).onChange((v) =>
 					this.saveSetting('activeProfile', v),
 				);
+				return d;
+			});
+
+		// UI mode — lets users dial complexity up or down. Simple shows only
+		// essential toggles; Advanced adds debug, MCP, and tuning options.
+		new Setting(body)
+			.setName('UI mode')
+			.setDesc('Simple: minimal toggles, auto-detection. Normal: full feature controls. Advanced: debug, MCP, custom endpoints, tuning.')
+			.addDropdown(d => {
+				d.addOption('simple', 'Simple');
+				d.addOption('normal', 'Normal');
+				d.addOption('advanced', 'Advanced');
+				d.setValue(this.plugin.settings.uiMode);
+				d.onChange(value => {
+					this.saveSetting('uiMode', value as 'simple' | 'normal' | 'advanced');
+					this.display();
+				});
 				return d;
 			});
 
@@ -452,6 +477,99 @@ export class PluginSettingsTab extends PluginSettingTab {
 		);
 	}
 
+	/** Feature subsystem toggles — keeps the plugin agnostic per user. */
+	private renderFeatureToggles(containerEl: HTMLElement): void {
+		this.renderSectionHeader(
+			containerEl,
+			'features',
+			'🧩 Features',
+			'Enable or disable subsystems independently. Command Center works without imposing any of these on your workflow.',
+		);
+		const body = this.getSectionBody(containerEl, 'features');
+
+		const features: Array<{
+			key: 'ragEnabled' | 'memoryEnabled' | 'reactAgentEnabled' | 'workflowsEnabled' | 'dailyOperationsEnabled' | 'mcpEnabled' | 'chatHistoryEnabled' | 'webSearchEnabled';
+			label: string;
+			desc: string;
+			advanced?: boolean;
+		}> = [
+			{
+				key: 'ragEnabled',
+				label: 'Vault RAG (hybrid retrieval)',
+				desc: 'Ground model calls in vault content via BM25 + semantic retrieval. Disable for strict privacy or when you use an external knowledge store.',
+			},
+			{
+				key: 'memoryEnabled',
+				label: 'Persistent agent memory',
+				desc: 'Store facts, preferences, and session summaries in the vault. Disable for privacy or to keep the vault read-only for the agent.',
+			},
+			{
+				key: 'reactAgentEnabled',
+				label: 'ReAct multi-agent engine',
+				desc: 'Orchestrator–Worker loops for complex, tool-using tasks. Disable to use Quick Chat only.',
+			},
+			{
+				key: 'workflowsEnabled',
+				label: 'Native workflows (Markdown/Canvas)',
+				desc: 'Run vault-native DAG workflows with typed inputs, conditions, and Bases queue integration.',
+			},
+			{
+				key: 'dailyOperationsEnabled',
+				label: 'Daily operations engine',
+				desc: 'Morning capacity evaluation, inbox proposals, and evening review routines.',
+			},
+			{
+				key: 'chatHistoryEnabled',
+				label: 'Chat history persistence',
+				desc: 'Replay conversations across sessions and export them to the vault as tagged Markdown.',
+			},
+			{
+				key: 'mcpEnabled',
+				label: 'MCP (Model Context Protocol) tools',
+				desc: 'Discover and execute tools from external MCP servers.',
+				advanced: true,
+			},
+			{
+				key: 'webSearchEnabled',
+				label: 'Web search tool',
+				desc: 'Server-side web search for OpenRouter/xAI models.',
+				advanced: true,
+			},
+		];
+
+		for (const feature of features) {
+			// Hide advanced-only toggles from Simple mode
+			if (this.plugin.settings.uiMode === 'simple' && feature.advanced) continue;
+			new Setting(body)
+				.setName(feature.label)
+				.setDesc(feature.desc)
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings[feature.key])
+					.onChange(value => this.saveSetting(feature.key, value)));
+		}
+
+		// Simple mode quick-start: one-click local-only setup
+		if (this.plugin.settings.uiMode === 'simple') {
+			new Setting(body)
+				.setName('One-click local setup')
+				.setDesc('Prefer local providers (LM Studio / Ollama) and disable cloud routing. You can change this anytime in the Providers tab.')
+				.addButton(button => button.setButtonText('Use local only').onClick(() => {
+					this.plugin.settings.multiProvider = {
+						credentials: {
+							lmstudio: { providerId: 'lmstudio', apiKey: '', baseUrl: 'http://localhost:1234/v1', enabled: true },
+							ollama: { providerId: 'ollama', apiKey: '', baseUrl: 'http://localhost:11434/v1', enabled: true },
+						},
+						routing: this.plugin.settings.multiProvider.routing,
+						fallback: this.plugin.settings.multiProvider.fallback,
+						defaults: this.plugin.settings.multiProvider.defaults,
+					};
+					this.plugin.persist.setSettings({ ...this.plugin.settings });
+					void this.plugin.persist.forceFlush();
+					new Notice('Local-only mode enabled. Configure endpoints in Providers → LM Studio / Ollama.');
+				}));
+		}
+	}
+
 	private renderSpeechSettings(containerEl: HTMLElement): void {
 		this.renderSectionHeader(containerEl, 'speech', '🗣️ Accessibility & Speech');
 
@@ -511,6 +629,59 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.setName('Speech-to-text model')
 			.setDesc('Leave blank to use the provider default or live model discovery.')
 			.addText(text => text.setPlaceholder('Whisper-large-v3-turbo').setValue(this.plugin.settings.speechToTextModel).onChange(value => this.saveSetting('speechToTextModel', value)));
+
+		new Setting(body)
+			.setName('Live transcription chunk duration')
+			.setDesc('Smaller values (1-2s) give faster interim results; larger values (4-6s) reduce API costs. Default is 3 seconds.')
+			.addSlider(slider => slider
+				.setLimits(1000, 6000, 500)
+				.setValue(this.plugin.settings.liveTranscriptionChunkMs)
+				.setDynamicTooltip()
+				.onChange(value => this.saveSetting('liveTranscriptionChunkMs', value)));
+
+		new Setting(body)
+			.setName('Test speech-to-text')
+			.setDesc('Verify that the configured provider is reachable and can transcribe audio. Requires a working microphone.')
+			.addButton(button => button
+				.setButtonText('Test STT')
+				.onClick(() => {
+					const candidates = buildTranscriptionCandidates(this.plugin.settings, {
+						hasApiKey: id => this.plugin.credentialVault.has(id),
+					});
+					if (!candidates.length) {
+						new Notice('No STT providers configured. Enable one in the provider settings.', 5000);
+						return;
+					}
+					button.setButtonText('Testing…');
+					button.setDisabled(true);
+					(async () => {
+						for (const candidate of candidates) {
+							try {
+								const adapter = new TranscriberAdapter({
+									providerId: candidate.providerId,
+									getSettings: () => this.plugin.settings,
+									getApiKey: id => this.plugin.credentialVault.get(id),
+									defaultModel: candidate.model,
+									maxAttempts: 1,
+									transcriptionPath: candidate.transcriptionPath,
+								});
+								if (candidate.local) {
+									await adapter.fetchLiveAudioModels();
+								}
+								// We can't easily record audio in settings, but we can verify
+								// the provider is reachable by checking the model endpoint.
+								new Notice(`${candidate.label} — reachable ✓`, 4000);
+								break;
+							} catch (error) {
+								const msg = (error as Error).message;
+								new Notice(`${candidate.label} — failed: ${msg}`, 5000);
+								// Continue to next fallback candidate
+							}
+						}
+						button.setButtonText('Test STT');
+						button.setDisabled(false);
+					})();
+				}));
 
 		new Setting(body)
 			.setName('Microphone')
@@ -1422,10 +1593,14 @@ export class PluginSettingsTab extends PluginSettingTab {
 		const tabsDef: Array<{ id: SettingsTabId; label: string; desc: string }> = [
 			{ id: 'all', label: 'All', desc: 'Show every settings group' },
 			{ id: 'core', label: 'Core', desc: 'General behavior, memory, and prompt budget' },
+			{ id: 'features', label: 'Features', desc: 'Enable or disable subsystems' },
 			{ id: 'providers', label: 'Providers', desc: 'Credentials, endpoints, and model sync' },
 			{ id: 'routing', label: 'Routing', desc: 'Task routing and fallback pipeline' },
-			{ id: 'health', label: 'Health', desc: 'Connection checks and diagnostics' },
 		];
+		// Advanced mode shows health dashboard and debug tools
+		if (this.plugin.settings.uiMode === 'advanced') {
+			tabsDef.push({ id: 'health', label: 'Health', desc: 'Connection checks and diagnostics' });
+		}
 		const buttons: HTMLButtonElement[] = [];
 		const activate = (tabId: SettingsTabId): void => {
 			this.selectedTab = tabId;

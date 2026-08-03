@@ -107,6 +107,57 @@ export class InterviewEngine {
 	getTurns(): InterviewTurn[] { return this.turns.map(turn => ({ ...turn })); }
 	getPendingSynthesis(): InterviewSynthesis | null { return this.pendingSynthesis ? { ...this.pendingSynthesis, templates: [...this.pendingSynthesis.templates], workflows: [...this.pendingSynthesis.workflows] } : null; }
 
+	/** Revert to the previous turn — lets the user correct a mistake. */
+	rewind(): string {
+		if (this.turns.length < 2 || this.phaseIndex <= 0) throw new Error('No previous question to return to.');
+		// Remove the last assistant response and user answer
+		this.turns.pop(); // last assistant response
+		this.turns.pop(); // last user answer
+		this.phaseIndex--;
+		const previous = this.turns[this.turns.length - 1];
+		return previous?.content ?? 'Let us revisit the previous topic.';
+	}
+
+	/** Skip to the next phase (user explicitly declines to answer). */
+	skipPhase(): void {
+		if (this.phaseIndex < PHASES.length - 2) this.phaseIndex++;
+	}
+
+	/** Serialize the interview state for persistence. */
+	serialize(): string {
+		return JSON.stringify({ turns: this.turns, phaseIndex: this.phaseIndex });
+	}
+
+	/** Restore a previously persisted interview state. */
+	deserialize(data: string): void {
+		try {
+			const parsed = JSON.parse(data) as { turns: InterviewTurn[]; phaseIndex: number };
+			if (Array.isArray(parsed.turns) && typeof parsed.phaseIndex === 'number' && parsed.phaseIndex >= 0 && parsed.phaseIndex < PHASES.length) {
+				this.turns = parsed.turns;
+				this.phaseIndex = parsed.phaseIndex;
+			}
+		} catch { /* Invalid state; start fresh. */ }
+	}
+
+	/** Build a human-readable summary of the collected configuration. */
+	buildSummary(): string {
+		const lines: string[] = [];
+		lines.push('# Command Center — Interview Summary');
+		lines.push(`> Completed on ${new Date().toLocaleString()}`);
+		lines.push('');
+		lines.push('## Configuration Overview');
+		lines.push('');
+		for (const turn of this.turns) {
+			if (turn.role === 'user') {
+				const preview = turn.content.length > 200 ? turn.content.slice(0, 200) + '…' : turn.content;
+				lines.push(`- **You said:** ${preview}`);
+			}
+		}
+		lines.push('');
+		lines.push('> The interview has been completed. Review the configuration in the plugin settings if needed.');
+		return lines.join('\n');
+	}
+
 	private advancePhase(output: string): void {
 		const marker = /\[PHASE_COMPLETE(?::\s*([a-z-]+))?]/i.exec(output);
 		if (marker && this.phaseIndex < PHASES.length - 2) this.phaseIndex++;
@@ -159,14 +210,14 @@ SECURITY: Never request, accept, repeat, inspect, or store credentials, API keys
 CURRENT PHASE: ${this.getPhase()}
 VAULT TOPOLOGY DISCOVERED (context only; never select without consent): ${JSON.stringify(this.vaultTopology)}
 
-PHASE ORDER:
-1 topology: discover current/desired organization and user-approved managed folders, each purpose and scope, every inbox/drop-point folder, move/archive destinations when desired, Daily Notes folder, Daily Note filename template, and which managed roots should receive _index.md. Never ask for credentials, URLs, hosts, ports, or endpoint values; compute transport is configured only in native Settings.
-2 life-map: discover life/work domains and active 30–90 day projects with done conditions.
-3 capacity: discover only metrics the user tracks, input style, and their own scoring bounds (min/max, weight, direction) and threshold/action rules. Never invent numbers.
-4 triage: discover capture handling, default proposal action, explicit move/archive destinations, destructive opt-ins, task syntax/status property, user-defined frogRolloverThreshold, and delayed-task response policy.
-5 focus: discover whether Quick Wins are wanted and, if so, user-defined count/duration; discover defaultPriorityCap.
-6 style: discover writing style, interview/challenge persona, and vocabulary to use or avoid.
-7 confirmation: show a concise complete summary and ask for explicit confirmation.
+PHASE ORDER — each phase is a reflective conversation, not a form field:
+1 topology: begin with the user's context and goals. Ask about their background, what the vault serves, and what success looks like to them. Only after establishing this baseline, explore their current organization — what folders they use, what works, what causes friction. Ask about intentionality: "Is this structure something you actively designed, or did it evolve?" Reflect back what you heard before proposing any changes. Never ask for credentials, URLs, hosts, ports, or endpoint values; compute transport is configured only in native Settings.
+2 life-map: discover life/work domains and active 30–90 day projects. Ask about the user's definition of completion, not just deadlines. "What tells you a project is done?" Connect domains to the organizational structure discussed earlier.
+3 capacity: discover only metrics the user tracks, input style, and their own scoring bounds (min/max, weight, direction) and threshold/action rules. Never invent numbers. If the user is unsure, offer 2-3 examples of what others track and let them adapt. Ask about their satisfaction with their current tracking approach.
+4 triage: discover capture handling, default proposal action, explicit move/archive destinations, destructive opt-ins, task syntax/status property, user-defined frogRolloverThreshold, and delayed-task response policy. Ask about what currently causes friction in their capture workflow. "What happens to a note or task when it arrives and you don't have time to process it?"
+5 focus: discover whether Quick Wins are wanted and, if so, user-defined count/duration; discover defaultPriorityCap. Ask how they define a "good day" to calibrate focus rules. "If you had to pick one thing that makes a day feel productive, what would it be?"
+6 style: discover writing style, interview/challenge persona, and vocabulary to use or avoid. Offer to adapt the system's language to match theirs. Ask about how they prefer to receive feedback or challenge.
+7 confirmation: show a concise complete summary using the user's own terms. Before asking for confirmation, ask: "Does this configuration feel like it represents how you actually work?" Let them refine before finalizing.
 
 If the user is unsure or requests suggestions, offer 2–3 context-specific options with tradeoffs, but do not select one. Mark an internally complete phase with [PHASE_COMPLETE: phase-name].
 

@@ -572,7 +572,7 @@ export class CommandCenterChatView extends ItemView {
 		this.liveTranscriber = new LiveTranscriber({
 			plugin: this.plugin,
 			candidates,
-			chunkDurationMs: 3000,
+			chunkDurationMs: this.plugin.settings.liveTranscriptionChunkMs || 3000,
 			signal: controller.signal,
 			callbacks: {
 				onInterim: text => {

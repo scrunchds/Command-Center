@@ -1,4 +1,4 @@
-import { App, Component, MarkdownRenderer, Notice } from 'obsidian';
+import { App, Component, MarkdownRenderer, Notice, TFile } from 'obsidian';
 import type CommandCenterPlugin from '../main';
 import type { OnboardingConfig } from '../onboarding/OnboardingTypes';
 import {
@@ -68,8 +68,12 @@ export class DashboardOnboarding {
 			}
 		});
 		const actions = this.composer.createDiv({ cls: 'cc-onboarding-actions' });
+		const back = actions.createEl('button', { text: '← Back', attr: { 'aria-label': 'Go back to the previous question', title: 'Go back to the previous question' } });
+		this.renderer.registerDomEvent(back, 'click', () => void this.goBack());
 		const skip = actions.createEl('button', { text: 'Skip optional question' });
 		this.renderer.registerDomEvent(skip, 'click', () => void this.submit('Skip this optional question; record no invented value and continue.'));
+		const skipPhase = actions.createEl('button', { text: 'Skip this topic', attr: { 'aria-label': 'Skip this entire topic', title: 'Skip this entire topic' } });
+		this.renderer.registerDomEvent(skipPhase, 'click', () => void this.skipCurrentPhase());
 		const dictate = actions.createEl('button', { text: '🎙 Dictate', attr: { 'aria-label': 'Start dictation' } });
 		this.renderer.registerDomEvent(dictate, 'click', () => void this.toggleDictation(dictate));
 		this.send = actions.createEl('button', { text: 'Send', cls: 'mod-cta' });
@@ -136,6 +140,64 @@ export class DashboardOnboarding {
 			this.setBusy(false);
 			this.input.focus();
 		}
+	}
+
+	private async goBack(): Promise<void> {
+		if (this.busy) return;
+		try {
+			const message = this.engine.rewind();
+			// Re-render the last assistant message state by showing the previous
+			// question text.
+			this.setStatus('You can now correct or extend your previous answer.');
+			this.input.focus();
+			this.updatePhase();
+			// Keep the turn history visible; just clear the input for a fresh answer.
+			this.input.placeholder = 'Revise your previous answer…';
+			new Notice('Returned to the previous question.');
+		} catch (error) {
+			this.setStatus((error as Error).message, true);
+		}
+	}
+
+	private async skipCurrentPhase(): Promise<void> {
+		if (this.busy) return;
+		this.engine.skipPhase();
+		this.updatePhase();
+		await this.submit('Skip this topic entirely; record no invented values for this section and continue.');
+	}
+
+	/** Persist interview progress so closing the dashboard does not lose it. */
+	private persistProgress(): void {
+		// Persist to a vault note under .command-center/ so the interview
+		// survives dashboard close without using vault.adapter directly.
+		const path = '.command-center/interview-progress.json';
+		const content = this.engine.serialize();
+		const existing = this.plugin.app.vault.getAbstractFileByPath(path);
+		if (existing instanceof TFile) {
+			void this.plugin.app.vault.process(existing, () => content).catch(() => undefined);
+		} else {
+			void this.plugin.app.vault.create(path, content).catch(() => undefined);
+		}
+	}
+
+	/** Restore a previously persisted interview session. */
+	private async restoreProgress(): Promise<void> {
+		try {
+			const file = this.plugin.app.vault.getAbstractFileByPath('.command-center/interview-progress.json');
+			if (file instanceof TFile) {
+				const data = await this.plugin.app.vault.read(file);
+				if (data) {
+					this.engine.deserialize(data);
+					// Replay persisted turns into the history.
+					for (const turn of this.engine.getTurns()) {
+						if (turn.role === 'user' || turn.role === 'assistant') {
+							await this.render(turn.role as 'user' | 'assistant', turn.content);
+						}
+					}
+					this.updatePhase();
+				}
+			}
+		} catch { /* No saved interview yet. */ }
 	}
 
 	private renderApproval(synthesis: InterviewSynthesis): void {
