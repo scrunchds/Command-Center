@@ -95,7 +95,7 @@ export function buildTranscriptionCandidates(
 		if (meta.requiresKey && options.hasApiKey && !options.hasApiKey(providerId)) return [];
 		const local = providerId === 'lmstudio' || providerId === 'ollama';
 		const persisted = mp.liveModels?.[providerId]?.find(model => /(whisper|speech[-_ ]?to[-_ ]?text|transcri|\bstt\b)/i.test(model.id));
-		const model = persisted?.id ?? configuredModel ?? (providerId === 'groq' ? 'whisper-large-v3' : providerId === 'xai' ? 'grok-stt' : local ? undefined : 'whisper-large-v3-turbo');
+		const model = persisted?.id ?? configuredModel ?? (providerId === 'groq' ? 'whisper-large-v3' : providerId === 'xai' ? 'grok-stt' : providerId === 'openrouter' ? 'openai/whisper-large-v3' : local ? undefined : 'whisper-large-v3-turbo');
 		const providerLabel = providerId === 'lmstudio' ? 'Local LM Studio' : providerId === 'ollama' ? 'Local Ollama' : meta.label;
 		// xAI uses a non-standard STT endpoint (/v1/stt instead of /v1/audio/transcriptions).
 		const transcriptionPath = providerId === 'xai' ? '/v1/stt' : undefined;

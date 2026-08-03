@@ -83,6 +83,7 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 			m('anthropic/claude-3.5-sonnet', 'Claude 3.5 Sonnet (OpenRouter)', 200_000, 8192, { vision: true, strengths: ['coding', 'reasoning', 'reading'] }),
 			m('google/gemini-pro-1.5', 'Gemini 1.5 Pro (OpenRouter)', 2_097_152, 8192, { vision: true, strengths: ['reading', 'reasoning'] }),
 			m('deepseek/deepseek-coder', 'DeepSeek-Coder (OpenRouter)', 128_000, 8192, { cost: 'cheap', strengths: ['coding', 'fast'] }),
+			m('openai/whisper-large-v3', 'Whisper Large v3 (OpenRouter)', 0, 0, { cost: 'cheap', strengths: [] }),
 		],
 	},
 	'ollama': {
@@ -192,7 +193,7 @@ export const DEFAULT_STT_MODELS: Partial<Record<ProviderId, string>> = {
 	'groq': 'whisper-large-v3',
 	'openai': 'whisper-large-v3-turbo',
 	'deepinfra': 'whisper-large-v3-turbo',
-	'openrouter': 'whisper-large-v3-turbo',
+	'openrouter': 'openai/whisper-large-v3',
 };
 
 /** Best default model for each provider, per task type. */

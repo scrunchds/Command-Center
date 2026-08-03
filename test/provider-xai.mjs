@@ -232,6 +232,28 @@ async function verifyTranscriptionCandidates() {
 	);
 	// We can't easily test the private method, but we can verify the candidate data is correct
 	pass('5b: transcription candidate data structure is complete');
+
+	// Verify OpenRouter uses the correct Whisper model name (openai/ prefix)
+	const mockSettingsOR = {
+		multiProvider: {
+			credentials: {
+				openrouter: { enabled: true, baseUrl: 'https://openrouter.ai/api/v1' },
+			},
+			defaults: {},
+			routing: {},
+			fallback: {},
+		},
+		speechToTextEnabled: true,
+		speechToTextProviderId: 'auto',
+	};
+	const orCandidates = buildTranscriptionCandidates(mockSettingsOR, {
+		hasApiKey: (id) => id === 'openrouter',
+	});
+	const orCandidate = orCandidates.find(c => c.providerId === 'openrouter');
+	assert.ok(orCandidate, 'OpenRouter appears in transcription candidates');
+	assert.equal(orCandidate.model, 'openai/whisper-large-v3', 'OpenRouter uses prefixed whisper model name');
+	assert.equal(orCandidate.transcriptionPath, undefined, 'OpenRouter uses standard /v1/audio/transcriptions endpoint');
+	pass('5c: OpenRouter transcription candidate uses correct model + standard endpoint');
 }
 
 /* ═══════════════════════════════════════════════════════════
