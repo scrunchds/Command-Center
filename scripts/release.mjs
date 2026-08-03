@@ -81,7 +81,7 @@ function writeJSON(p, data) {
 const [,, targetVersion, pushFlag] = process.argv;
 if (!targetVersion || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(targetVersion)) {
 	console.error('Usage: node scripts/release.mjs <version> [--push]');
-	console.error('  <version>  Strict semver (e.g. 1.2.0, no "v" prefix)');
+	console.error('  <version>  Strict semver (e.g. 1.2.0). No "v" prefix, no pre-release labels.');
 	console.error('  --push     Push commit and tag to origin');
 	process.exit(1);
 }

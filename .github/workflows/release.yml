@@ -55,6 +55,9 @@ jobs:
           if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== expected) {
             throw new Error(`release tag ${process.env.GITHUB_REF_NAME} must equal ${expected}`);
           }
+          if (process.env.GITHUB_REF_TYPE === 'tag' && /^v/i.test(process.env.GITHUB_REF_NAME)) {
+            throw new Error(`release tag ${process.env.GITHUB_REF_NAME} must not have a 'v' prefix — use bare semver (e.g. ${expected})`);
+          }
           console.log(`Release metadata synchronized at ${expected}.`);
 
       - name: PII and secret leak audit

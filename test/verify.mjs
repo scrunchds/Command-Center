@@ -1098,11 +1098,13 @@ async function verifyReleaseTag() {
 	assert.equal(manifest.isDesktopOnly, true, 'manifest.isDesktopOnly must be true');
 	pass('13a: manifest.json has all required fields');
 
-	// Version must be valid semver (x.y.z)
+	// Version must be valid semver (x.y.z) and must never carry a 'v' prefix —
+	// release tags are bare semver (e.g. 1.2.0, never v1.2.0).
 	const version = manifest.version;
 	const semverRe = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 	assert.ok(semverRe.test(version), `version "${version}" must be valid semver`);
-	pass('13b: manifest version is valid semver');
+	assert.ok(!/^v/i.test(version), `version "${version}" must not have a 'v' prefix`);
+	pass('13b: manifest version is valid bare semver without v prefix');
 
 	// minAppVersion must be >= 1.13.0 (plugin requirement)
 	const [major, minor] = manifest.minAppVersion.split('.').map(Number);
@@ -1116,9 +1118,11 @@ async function verifyReleaseTag() {
 	pass('13d: versions.json contains current version mapping');
 
 	// Simulate the release workflow's tag gate: tag must equal manifest version
+	// and must be bare semver (no 'v' prefix).
 	const simulatedTag = version;
 	assert.equal(simulatedTag, version, 'release tag must equal manifest version');
-	pass('13e: release tag matches manifest version (release workflow gate)');
+	assert.ok(/^\d+\.\d+\.\d+$/.test(simulatedTag), 'release tag must be bare semver without v prefix');
+	pass('13e: release tag matches manifest version and has no v prefix (release workflow gate)');
 
 	// fundingUrl must be present (good practice for community plugins)
 	assert.ok(typeof manifest.fundingUrl === 'string' && manifest.fundingUrl.length > 0, 'fundingUrl is recommended');
@@ -1337,6 +1341,18 @@ async function verifyObsidianGuidelines() {
 	const reviewer = readFileSync(join(ROOT, 'REVIEWER_NOTES.md'), 'utf8');
 	assert.ok(reviewer.length > 500, 'REVIEWER_NOTES.md must be substantial');
 	pass('14y: REVIEWER_NOTES.md is present and substantial');
+
+	// Release workflow tag pattern explicitly rejects 'v' prefix.
+	// The pattern is a glob, not a regex — it must not contain 'v' as a literal.
+	const releaseYml = readFileSync(join(ROOT, '.github', 'workflows', 'release.yml'), 'utf8');
+	const tagPattern = releaseYml.match(/tags:\s*\n\s*-\s+'([^']+)'/);
+	assert.ok(tagPattern, 'release.yml must define a tag trigger pattern');
+	const pattern = tagPattern[1];
+	assert.ok(/^\[0-9\]\+\.\[0-9\]\+\.\[0-9\]\+$/.test(pattern),
+		`release tag pattern "${pattern}" must be bare semver glob (no v prefix)`);
+	assert.ok(!pattern.includes('v'),
+		`release tag pattern "${pattern}" must not contain 'v'`);
+	pass('14z: release.yml tag pattern rejects v-prefixed tags');
 }
 
 /* ═══════════════════════════════════════════════════════════
