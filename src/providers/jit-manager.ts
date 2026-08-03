@@ -54,12 +54,18 @@ export class JitModelManager {
 			return this.post(this.lmStudioEndpoint(baseURL, 'load'), { model: modelId, ttl: ttlSeconds }, bearerToken);
 		}
 
-		// Model doesn't exist locally — try to download it first
+		// Model doesn't exist locally — try to download it first, then load directly
 		if (state === 'missing') {
 			const downloaded = await this.downloadModel(baseURL, modelId, bearerToken);
 			if (!downloaded) return false;
-			// Now load the newly downloaded model
-			return this.ensureModelLoaded(baseURL, modelId, ttlSeconds, bearerToken);
+			// Download initiated — load directly without re-checking state, since the
+			// model may not appear in the list until the download completes.
+			if (ollama) {
+				return this.post(this.ollamaEndpoint(baseURL), {
+					model: modelId, prompt: '', stream: false, options: { num_predict: 0 }, keep_alive: ttlSeconds,
+				}, bearerToken);
+			}
+			return this.post(this.lmStudioEndpoint(baseURL, 'load'), { model: modelId, ttl: ttlSeconds }, bearerToken);
 		}
 
 		// State unknown — try loading directly (Ollama auto-downloads, LM Studio may fail)

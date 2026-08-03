@@ -1520,7 +1520,13 @@ const { ModelRouter } = await import(pathToFileURL(SRC + '/routing/ModelRouter.t
 {
 const requests = [];
 const manager = new JitModelManager({ fetch: async (url, init) => {
-  requests.push({ url, init, body: JSON.parse(init.body) });
+  // Record lifecycle POSTs only; state-check GETs are an internal detail.
+  if (init.method === 'POST') requests.push({ url, init, body: JSON.parse(init.body) });
+  // Return model state data for state-check GET requests so the model is
+  // found as 'exists but unloaded' and the load/unload POST paths are exercised.
+  if (init.method === 'GET' && (/\/api\/v1\/models$/.test(url) || /\/v1\/models$/.test(url))) {
+    return new Response(JSON.stringify({ data: [{ id: 'qwen-react', loaded: false }] }), { status: 200 });
+  }
   return new Response('{}', { status: 200 });
 } });
 assert.equal(await manager.loadModel('http://localhost:1234/v1/', 'qwen-react', 420), true);
@@ -1536,7 +1542,12 @@ pass('27a: LM Studio pre-warm and unload payloads normalize local API URLs');
 {
 const requests = [];
 const ollama = new JitModelManager({ fetch: async (url, init) => {
-  requests.push({ url, body: JSON.parse(init.body) });
+  // Record lifecycle POSTs only; state-check GETs are an internal detail.
+  if (init.method === 'POST') requests.push({ url, body: JSON.parse(init.body) });
+  // Return model state data for Ollama state-check GET requests
+  if (init.method === 'GET' && (/\/api\/tags$/.test(url) || /\/v1\/models$/.test(url))) {
+    return new Response(JSON.stringify({ models: [{ name: 'qwen-local', loaded: false }] }), { status: 200 });
+  }
   return new Response('{}', { status: 200 });
 } });
 assert.equal(await ollama.loadModel('http://localhost:11434/v1', 'qwen-local', 300), true);
