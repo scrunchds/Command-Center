@@ -19,6 +19,7 @@ import {
 	Notice,
 	ButtonComponent,
 	type TextComponent,
+	type SettingDefinitionItem,
 } from 'obsidian';
 import CommandCenterPlugin from '../main';
 import { getAudioInputDevices } from '../audio/audio-recorder';
@@ -129,31 +130,48 @@ export class PluginSettingsTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Imperative render entry point called by Obsidian when the user navigates
-	 * to this settings tab. The base class getSettingDefinitions() returns an
-	 * empty array (no declarative definitions), so Obsidian falls back to
-	 * calling display(). Without this override, the tab renders blank, or
-	 * may appear to route to a different plugin's settings.
+	 * Declarative settings definitions (Obsidian 1.13.0+).
+	 *
+	 * This tab is a richly custom imperative UI — collapsible provider cards
+	 * with live health dots, a routing matrix, a fallback pipeline, a live
+	 * health dashboard, and a sub-tab navigator — none of which map cleanly
+	 * onto the primitive declarative control types. Rather than flattening
+	 * that UI into hundreds of controls (a large, risky UX restructure), we
+	 * expose a single render-typed definition whose render() callback paints
+	 * the entire existing imperative panel into the setting row. The
+	 * definition's name/desc/aliases make the tab discoverable via Obsidian's
+	 * settings search; the rendered content is unchanged.
+	 *
+	 * On 1.13.0+ Obsidian renders getSettingDefinitions() declaratively and
+	 * no longer calls display(); update() re-runs this method to refresh.
 	 */
-	override display(): void {
-		this.renderImperativeSettings();
+	override getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				name: 'Command Center',
+				desc: 'Configure providers, API keys, the Pi daemon, task routing, the fallback pipeline, voice/speech, and the health dashboard.',
+				aliases: ['provider', 'api key', 'model', 'routing', 'fallback', 'daemon', 'pi', 'voice', 'speech', 'health', 'capability', 'metacognitive'],
+				render: (setting: Setting) => {
+					this.renderImperativeSettings(setting.settingEl);
+				},
+			},
+		];
 	}
 
-	/** Refresh the imperative settings UI after an interaction. */
+	/** Refresh the settings UI after an interaction (re-renders declaratively). */
 	override update(): void {
-		this.renderImperativeSettings();
+		super.update();
 	}
 
-	private renderImperativeSettings(): void {
-		const { containerEl } = this;
-		containerEl.empty();
-		containerEl.addClass('cc-settings');
+	private renderImperativeSettings(el: HTMLElement): void {
+		el.empty();
+		el.addClass('cc-settings');
 
-		const header = containerEl.createDiv({ cls: 'cc-settings-header' });
+		const header = el.createDiv({ cls: 'cc-settings-header' });
 		this.saveIndicator = header.createDiv({ cls: 'cc-save-indicator' });
-		this.renderTabBar(containerEl);
+		this.renderTabBar(el);
 
-		const content = containerEl.createDiv({ cls: 'cc-settings-content', attr: { role: 'tabpanel', 'aria-label': 'Command Center settings content' } });
+		const content = el.createDiv({ cls: 'cc-settings-content', attr: { role: 'tabpanel', 'aria-label': 'Command Center settings content' } });
 		if (this.selectedTab === 'all' || this.selectedTab === 'core') {
 			this.renderCoreSettings(content);
 			this.renderMetacognitiveDepth(content);
@@ -177,7 +195,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			this.renderHealthDashboard(content);
 		}
 
-		this.renderFooter(containerEl);
+		this.renderFooter(el);
 		this.startBackgroundSync();
 	}
 
