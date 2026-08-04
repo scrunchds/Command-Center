@@ -1240,6 +1240,16 @@ async function verifyObsidianGuidelines() {
 	}
 	pass('14k: no settings in settings section headings');
 
+	// Settings tab adopts the declarative settings API (Obsidian 1.13.0+) so its
+	// settings are discoverable via Obsidian's settings search. minAppVersion is
+	// 1.13.0, so the declarative path is the render path — the tab must provide a
+	// non-empty getSettingDefinitions() and must NOT keep a bypassed display().
+	assert.ok(/override\s+getSettingDefinitions\(\)/.test(settingsTab), 'settings tab must override getSettingDefinitions()');
+	assert.ok(!/override\s+display\(\)/.test(settingsTab), 'settings tab must not override display() once getSettingDefinitions() is implemented (bypassed on 1.13+)');
+	assert.ok(/render:\s*\(setting: Setting\)/.test(settingsTab), 'getSettingDefinitions must expose a render-typed definition carrying the imperative UI');
+	assert.ok(/aliases:/.test(settingsTab), 'getSettingDefinitions entry must provide aliases for settings search');
+	pass('14k.1: settings tab adopts declarative getSettingDefinitions() and drops bypassed display()');
+
 	// No default hotkeys on commands
 	for (const cmd of commands) {
 		assert.ok(!cmd.match(/hotkeys?:\s*\[/), 'commands must not set default hotkeys');
