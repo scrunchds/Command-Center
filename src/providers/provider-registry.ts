@@ -203,10 +203,36 @@ export const DEFAULT_ROUTE_MODELS: Record<TaskType, { provider: ProviderId; mode
 export const DEFAULT_STT_MODELS: Partial<Record<ProviderId, string>> = {
 	'xai': 'grok-stt',
 	'groq': 'whisper-large-v3',
-	'openai': 'whisper-large-v3-turbo',
+	'openai': 'whisper-1',
 	'deepinfra': 'openai/whisper-large-v3-turbo',
 	'openrouter': 'openai/whisper-large-v3',
+	'mistral': 'voxtral-mini-latest',
 	'cohere': 'cohere-transcribe-03-2026',
+};
+
+/**
+ * Default models for providers with dedicated TTS (text-to-speech) models.
+ * Used by the TTS adapter to pick the right model ID per provider.
+ * xAI uses a native /v1/tts endpoint; the rest use the OpenAI-compatible
+ * POST /audio/speech (or /v1/audio/speech) endpoint.
+ */
+export const DEFAULT_TTS_MODELS: Partial<Record<ProviderId, string>> = {
+	'openai': 'gpt-4o-mini-tts',
+	'openrouter': 'openai/tts-1',
+	'xai': 'grok-tts',
+	'mistral': 'voxtral-mini-tts-latest',
+};
+
+/** Providers whose TTS endpoint is OpenAI-compatible (POST /audio/speech). */
+export const OPENAI_COMPATIBLE_TTS_PROVIDERS: ReadonlySet<ProviderId> = new Set([
+	'openai', 'openrouter', 'mistral', 'deepinfra', 'groq', 'custom', 'lmstudio', 'ollama',
+]);
+
+/** Default voice for OpenAI-compatible TTS providers (varies by provider). */
+export const DEFAULT_TTS_VOICES: Partial<Record<ProviderId, string>> = {
+	'openai': 'alloy',
+	'openrouter': 'alloy',
+	'mistral': 'alloy',
 };
 
 /** Best default model for each provider, per task type. */

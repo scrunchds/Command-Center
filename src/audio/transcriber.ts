@@ -56,13 +56,27 @@ export const TRANSCRIPTION_PROVIDER_ORDER: ProviderId[] = [
 	'groq',
 	'openai',
 	'deepinfra',
+	'mistral',
 	'openrouter',
 	'xai',
 	'cohere',
 	'custom',
 ];
 
-function getConfiguredTranscriptionModel(settings: MultiProviderSettings | CommandCenterSettings): string | undefined {
+function getConfiguredTranscriptionModel(
+	settings: MultiProviderSettings | CommandCenterSettings,
+	providerId?: ProviderId,
+): string | undefined {
+	// Per-provider override takes precedence (STT model IDs are not portable across providers).
+	if (providerId && 'speechToTextModels' in settings) {
+		const perProvider = (settings.speechToTextModels as Partial<Record<ProviderId, string>> | undefined)?.[providerId];
+		if (perProvider && perProvider.trim()) return perProvider.trim();
+	}
+	// Global fallback (kept for backward compatibility). Only applies when the
+	// provider has NO built-in default — a foreign slug in speechToTextModel must
+	// not override a provider's safe default (e.g. an OpenRouter routing slug must
+	// not leak to xAI, which would reject it as 'model does not exist').
+	if (providerId && DEFAULT_STT_MODELS[providerId]) return undefined;
 	if ('speechToTextModel' in settings && typeof settings.speechToTextModel === 'string') {
 		const configured = settings.speechToTextModel.trim();
 		if (configured) return configured;
@@ -89,9 +103,9 @@ export function buildTranscriptionCandidates(
 ): TranscriptionCandidate[] {
 	if ('speechToTextEnabled' in settings && settings.speechToTextEnabled === false) return [];
 	const mp = 'multiProvider' in settings ? settings.multiProvider : settings;
-	const configuredModel = getConfiguredTranscriptionModel(settings);
 	const preferred = getPreferredTranscriptionProvider(settings);
 	return providerOrder(preferred).flatMap(providerId => {
+		const configuredModel = getConfiguredTranscriptionModel(settings, providerId);
 		const credentials = mp.credentials[providerId];
 		const meta = PROVIDER_REGISTRY[providerId];
 		if (!credentials?.enabled || (!credentials.baseUrl && !meta.defaultBaseUrl)) return [];
@@ -101,7 +115,7 @@ export function buildTranscriptionCandidates(
 		}
 		const local = providerId === 'lmstudio' || providerId === 'ollama';
 		const persisted = mp.liveModels?.[providerId]?.find(model => /(whisper|speech[-_ ]?to[-_ ]?text|transcri|\bstt\b)/i.test(model.id));
-		const model = persisted?.id ?? configuredModel ?? DEFAULT_STT_MODELS[providerId] ?? (local ? undefined : 'whisper-large-v3-turbo');
+		const model = persisted?.id ?? configuredModel ?? DEFAULT_STT_MODELS[providerId] ?? (local ? undefined : 'whisper-1');
 		const providerLabel = providerId === 'lmstudio' ? 'Local LM Studio' : providerId === 'ollama' ? 'Local Ollama' : meta.label;
 		// xAI uses a non-standard STT endpoint (/v1/stt instead of /v1/audio/transcriptions).
 		const transcriptionPath = providerId === 'xai' ? XAI_STT_URL_PATH : providerId === 'cohere' ? COHERE_STT_URL_PATH : undefined;
@@ -304,7 +318,7 @@ export class TranscriberAdapter {
 			// field so endpoints with an implicit model can select their own fallback.
 			return this.discoveredAudioModels[0];
 		}
-		return requested || DEFAULT_STT_MODELS[this.options.providerId] || 'whisper-large-v3-turbo';
+		return requested || DEFAULT_STT_MODELS[this.options.providerId] || 'whisper-1';
 	}
 
 	private resolveConnection(): { apiKey: string; baseUrl: string; meta: typeof PROVIDER_REGISTRY[ProviderId] } {

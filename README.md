@@ -58,7 +58,7 @@ Command Center exposes one dispatch layer across **13 providers**:
 | Ollama | Local | Local chat, keep-alive lifecycle controls, and optional bearer authentication |
 | Groq | Cloud | Low-latency inference and transcription-compatible routing |
 | DeepInfra | Cloud | Hosted open-weight models |
-| Mistral AI | Cloud | Mistral and Codestral families |
+| Mistral AI | Cloud | Mistral, Codestral, and Voxtral families with native STT/TTS (/v1/audio/transcriptions, /v1/audio/speech). |
 | Cohere | Cloud | Command models for RAG with native STT (/v2/audio/transcriptions). |
 | LM Studio | Local | Dynamic native model resolution, resource-aware JIT loading, OpenAI-compatible inference, and optional bearer authentication |
 | xAI (Grok) | Cloud | Grok models with vision, tools, native STT (/v1/stt), and TTS (/v1/tts). |
@@ -426,6 +426,10 @@ Configure the active profile, token limits, Pi path, daemon startup, memory limi
 
 Configure text-to-speech enablement, speaking voice, speaking rate, speech-to-text enablement, transcription provider preferences, and automatic read-aloud behavior here. Chat and voice recording use the same speech settings.
 
+**Speech-to-text models** are per-provider (STT model IDs are not portable across providers — `openai/gpt-4o-mini-transcribe` is an OpenRouter routing slug, `grok-stt` is xAI, `whisper-1` is OpenAI). Set the slug each provider accepts in the per-provider model fields; a blank entry uses the provider's built-in default.
+
+**Text-to-speech** can use the browser's built-in speech engine (default) or route through a provider's `/audio/speech` (or xAI `/v1/tts`) endpoint for higher-quality voices. Pick the engine in **Text-to-speech engine**; set a per-provider TTS model and voice id when using a provider engine.
+
 ### 3. Provider Credentials
 
 Each provider has a collapsible card for enablement, endpoint configuration, health checks, and model refresh. API keys are not exposed through ordinary settings fields.
@@ -548,13 +552,26 @@ The chat microphone and **Command Center: Quick Voice Prompt** use browser-nativ
 - In-memory audio assembly
 - Live timer and level meter
 - Deterministic microphone-track cleanup
-- OpenAI-compatible multipart transcription
+- OpenAI-compatible multipart transcription (per-provider model resolution — see below)
 - Retry only for transient network/408/429/5xx failures
 - **Mic button disabled** when no STT provider is configured, with tooltip feedback
 - Spoken `@` mentions and active-selection context resolution
 - **Contextual delivery** — the Quick Voice Prompt routes transcribed text by focus: into the active note at the cursor when a note is in focus, or into the chat input field (for review before send) when the chat panel is in focus or no note editor is active
 
+The transcription fallback chain tries each enabled STT-capable provider in order (LM Studio, Ollama, Groq, OpenAI, DeepInfra, Mistral, OpenRouter, xAI, Cohere, Custom). Each provider uses its **own** model slug — set per-provider in **Settings → Accessibility & Speech**, or leave blank for the built-in default (`whisper-1` for OpenAI, `grok-stt` for xAI, `whisper-large-v3` for Groq, `openai/whisper-large-v3-turbo` for DeepInfra, `voxtral-mini-latest` for Mistral, `openai/whisper-large-v3` for OpenRouter, `cohere-transcribe-03-2026` for Cohere). A global model is no longer broadcast to every provider, so a foreign slug can no longer break a provider it wasn't meant for.
+
 Audio is sent only to the transcription endpoint configured in your local settings. Review that provider's privacy policy before use.
+
+### Text-to-speech
+
+Spoken output defaults to the browser's built-in `speechSynthesis` engine. When **Text-to-speech engine** is set to a provider (or **Auto**), Command Center routes the text through that provider's TTS endpoint instead:
+
+- **xAI**: `POST /v1/tts` (native, model `grok-tts`)
+- **OpenAI**: `POST /v1/audio/speech` (model `gpt-4o-mini-tts`)
+- **OpenRouter**: `POST /api/v1/audio/speech` (routed slugs like `openai/tts-1`)
+- **Mistral**: `POST /v1/audio/speech` (Voxtral TTS)
+
+The returned audio plays through a hidden `<audio>` element. If the provider request fails, Command Center falls back to the browser engine so spoken output is never silently dropped. Set a per-provider TTS model and voice id (e.g. `alloy`, `nova`, `coral`) in **Settings → Accessibility & Speech**.
 
 ### Native Obsidian CLI
 
@@ -665,7 +682,7 @@ npm run dev
 |---|---|
 | `npm run typecheck` | Strict TypeScript check (including security, metacognition, execution, and diagnostic layers) |
 | `npm run lint` | Zero-warning ESLint gate |
-| `npm run test` | 148 core + 151 ReAct + 22 provider = 321 total |
+| `npm run test` | 167 core + 153 ReAct + 22 provider = 342 total |
 | `npm run benchmark` | Produce the standardized 10-metric report |
 | `npm run benchmark:check` | Enforce the 25% core regression threshold |
 | `npm run sanitize` | Scan public repository files for PII/secrets/runtime data |
@@ -713,10 +730,10 @@ The `OnboardingConfig` already has a `style.dailyNoteLayout` field, so a `style.
 
 ## Quality, security, and release controls
 
-The test suite currently contains **321 tests**:
+The test suite currently contains **342 tests**:
 
-- **148 core tests** — build integrity, parsers, byte-safe RPC framing, subprocess integration, task queue, recovery, provider fallback, capability registry, user memory, system prompts, project manager, composer fuzzy matching, and @-mention engine
-- **151 ReAct and subsystem tests** — roles, evaluation, traces, workflows, Bases, chat context, action cards, audio, JIT lifecycle, RAG, memory, CLI, locks, and stress scenarios
+- **167 core tests** — build integrity, parsers, byte-safe RPC framing, subprocess integration, task queue, recovery, provider fallback, capability registry, user memory, system prompts, project manager, composer fuzzy matching, @-mention engine, fallback pipeline, and STT/TTS adapters
+- **153 ReAct and subsystem tests** — roles, evaluation, traces, workflows, Bases, chat context, action cards, audio, JIT lifecycle, RAG, memory, CLI, locks, and stress scenarios
 - **22 provider tests** — XAI provider, OpenRouter model metadata, transcription candidates, and model matrix integration
 
 CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
@@ -773,6 +790,14 @@ Check that:
 
 Open the Command Center dashboard, inspect the Mutation approvals card's target list and diff preview, then choose **Approve & apply** or **Reject**. Closing the dashboard rejects pending confirmations safely.
 
+### “All transcription providers failed … model does not exist”
+
+STT model IDs are **per-provider**. The error `The model 'openai/gpt-4o-mini-transcribe' does not exist` means a slug meant for one provider (here, OpenRouter routing) was sent to another (e.g. xAI). Fix it in **Settings → Accessibility & Speech → Per-provider speech-to-text models**: set the slug each provider actually accepts, or leave the field blank to use that provider's built-in default (`grok-stt` for xAI, `whisper-1` for OpenAI, etc.). The global **Speech-to-text model** field is no longer broadcast to every provider — it only applies to providers that have no built-in default.
+
+### “All transcription providers failed … no speech detected”
+
+The provider processed the audio successfully but returned an empty transcript (near-silent input, background noise, or a Whisper silence-hallucination artifact that was stripped). Speak closer to the microphone, or switch the **Speech-to-text provider** to one with a higher-quality STT model. Recording shorter than 500 ms is treated as an accidental mic tap and never sent.
+
 ## Future implementation
 
 The following features have infrastructure stubs and are ready for implementation when needed:
@@ -792,7 +817,7 @@ Image generation models are registered in the OpenRouter provider (openai/gpt-5-
 
 ### xAI Realtime API
 
-xAI's realtime API (`GET /v1/realtime` WebSocket) supports voice-in/voice-out and function calling. The `XAIProvider` class (`src/providers/xai.ts`) currently implements chat completions plus native **STT** (`POST /v1/stt`) and **TTS** (`POST /v1/tts`, `GET /v1/tts/voices`); the WebSocket realtime transport remains a future addition.
+xAI's realtime API (`GET /v1/realtime` WebSocket) supports voice-in/voice-out and function calling. The `XAIProvider` class (`src/providers/xai.ts`) implements chat completions plus native **STT** (`POST /v1/stt`) and **TTS** (`POST /v1/tts`, `GET /v1/tts/voices`). TTS is now wired into the spoken-output pipeline via `TtsAdapter` (see **Text-to-speech** above); the WebSocket realtime transport remains a future addition.
 
 ### OpenRouter Responses API
 

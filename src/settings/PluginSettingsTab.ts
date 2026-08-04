@@ -24,6 +24,7 @@ import {
 import CommandCenterPlugin from '../main';
 import { getAudioInputDevices } from '../audio/audio-recorder';
 import { buildTranscriptionCandidates, TranscriberAdapter, TRANSCRIPTION_PROVIDER_ORDER } from '../audio/transcriber';
+import { TtsAdapter } from '../audio/tts-adapter';
 import type {
 	ProviderId,
 	TaskType,
@@ -32,6 +33,8 @@ import type {
 import { TASK_TYPE_LABELS, TASK_TYPE_ICONS, DEFAULT_FALLBACK_CONFIG } from '../providers/provider-types';
 import {
 	PROVIDER_REGISTRY,
+	DEFAULT_STT_MODELS,
+	DEFAULT_TTS_MODELS,
 	getDefaultModelForProvider,
 } from '../providers/provider-registry';
 import { DEFAULT_ROUTING } from '../routing/routing-table';
@@ -656,8 +659,30 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		new Setting(body)
 			.setName('Text-to-speech rate')
-			.setDesc('Control how fast spoken responses are read.')
+			.setDesc('Control how fast spoken responses are read. Also applied to provider tts when supported.')
 			.addSlider(slider => slider.setLimits(0.5, 2.0, 0.1).setValue(this.plugin.settings.textToSpeechRate).onChange(value => this.saveSetting('textToSpeechRate', value)));
+
+		// ── TTS provider routing (browser vs. provider API) ──
+		const ttsProviders: Array<'browser' | 'auto' | ProviderId> = ['browser', 'auto', ...TRANSCRIPTION_PROVIDER_ORDER.filter(id => TtsAdapter.supportsProvider(id))];
+		new Setting(body)
+			.setName('Text-to-speech engine')
+			.setDesc('Browser uses the built-in speech engine. A provider routes spoken output through its /audio/speech (or xai /v1/tts) endpoint for higher-quality voices. Auto picks the first enabled tts-capable provider.')
+			.addDropdown(dropdown => {
+				for (const providerId of ttsProviders) {
+					const label = providerId === 'browser' ? 'Browser (built-in)' : providerId === 'auto' ? 'Auto (provider)' : this.sttProviderLabel(providerId);
+					dropdown.addOption(providerId, label);
+				}
+				dropdown.setValue(this.plugin.settings.textToSpeechProviderId);
+				dropdown.onChange(value => this.saveSetting('textToSpeechProviderId', value as 'browser' | 'auto' | ProviderId));
+				return dropdown;
+			});
+
+		new Setting(body)
+			.setName('Text-to-speech API voice')
+			.setDesc('Voice ID for provider text-to-speech (e.g. “alloy”, “nova”, “coral”). Ignored for the browser engine. Leave blank to use the provider default.')
+			.addText(text => text.setPlaceholder('Alloy').setValue(this.plugin.settings.textToSpeechApiVoice).onChange(value => this.saveSetting('textToSpeechApiVoice', value)));
+
+		this.renderPerProviderTtsModels(body);
 
 		new Setting(body)
 			.setName('Automatically read AI responses')
@@ -684,9 +709,11 @@ export class PluginSettingsTab extends PluginSettingTab {
 			});
 
 		new Setting(body)
-			.setName('Speech-to-text model')
-			.setDesc('Leave blank to use the provider default or live model discovery.')
-			.addText(text => text.setPlaceholder('Whisper-large-v3-turbo').setValue(this.plugin.settings.speechToTextModel).onChange(value => this.saveSetting('speechToTextModel', value)));
+			.setName('Speech-to-text model (global fallback)')
+			.setDesc('Model slug used when no per-provider model is set below. Leave blank to use the provider default or live model discovery.')
+			.addText(text => text.setPlaceholder('Whisper-1').setValue(this.plugin.settings.speechToTextModel).onChange(value => this.saveSetting('speechToTextModel', value)));
+
+		this.renderPerProviderSttModels(body);
 
 		new Setting(body)
 			.setName('Live transcription chunk duration')
@@ -819,6 +846,60 @@ export class PluginSettingsTab extends PluginSettingTab {
 		if (!cred?.enabled) return `${base} ⚪`;
 		if (meta.requiresKey && !this.plugin.credentialVault.has(providerId)) return `${base} 🔴`;
 		return `${base} 🟢`;
+	}
+
+	/** Render one text field per STT-capable provider for per-provider model overrides. */
+	private renderPerProviderSttModels(body: HTMLElement): void {
+		body.createDiv({ cls: 'cc-subsetting-label', text: 'Per-provider speech-to-text models' });
+		body.createDiv({ cls: 'cc-setting-hint', text: 'Speech-to-text model ids are not portable across providers (e.g. openai/gpt-4o-mini-transcribe is openrouter, grok-stt is xAI). Set the slug each provider accepts; blank uses the default above.' });
+		for (const providerId of TRANSCRIPTION_PROVIDER_ORDER) {
+			const meta = PROVIDER_REGISTRY[providerId];
+			if (!meta) continue;
+			const mp = this.plugin.settings.multiProvider;
+			const cred = mp.credentials[providerId];
+			const enabled = cred?.enabled && (!meta.requiresKey || this.plugin.credentialVault.has(providerId));
+			const defaultModel = DEFAULT_STT_MODELS[providerId];
+			if (!enabled && !defaultModel) continue;
+			new Setting(body)
+				.setName(`${meta.label} speech-to-text model`)
+				.setDesc(`Default: ${defaultModel ?? 'provider-chosen'}. Leave blank to use the default.`)
+				.addText(text => text
+					.setPlaceholder(defaultModel ?? 'automatic')
+					.setValue(this.plugin.settings.speechToTextModels[providerId] ?? '')
+					.onChange(value => {
+						const map = { ...this.plugin.settings.speechToTextModels };
+						if (value.trim()) map[providerId] = value.trim();
+						else delete map[providerId];
+						void this.saveSetting('speechToTextModels', map);
+					}));
+		}
+	}
+
+	/** Render one text field per TTS-capable provider for per-provider TTS model overrides. */
+	private renderPerProviderTtsModels(body: HTMLElement): void {
+		body.createDiv({ cls: 'cc-subsetting-label', text: 'Per-provider text-to-speech models' });
+		body.createDiv({ cls: 'cc-setting-hint', text: 'Text-to-speech model ids are not portable across providers. Set the slug each provider accepts; blank uses the engine default.' });
+		for (const providerId of TRANSCRIPTION_PROVIDER_ORDER) {
+			const meta = PROVIDER_REGISTRY[providerId];
+			if (!meta || !TtsAdapter.supportsProvider(providerId)) continue;
+			const mp = this.plugin.settings.multiProvider;
+			const cred = mp.credentials[providerId];
+			const enabled = cred?.enabled && (!meta.requiresKey || this.plugin.credentialVault.has(providerId));
+			const defaultModel = DEFAULT_TTS_MODELS[providerId];
+			if (!enabled && !defaultModel) continue;
+			new Setting(body)
+				.setName(`${meta.label} text-to-speech model`)
+				.setDesc(`Default: ${defaultModel ?? 'none'}. Leave blank to use the default.`)
+				.addText(text => text
+					.setPlaceholder(defaultModel ?? 'none')
+					.setValue(this.plugin.settings.textToSpeechModels[providerId] ?? '')
+					.onChange(value => {
+						const map = { ...this.plugin.settings.textToSpeechModels };
+						if (value.trim()) map[providerId] = value.trim();
+						else delete map[providerId];
+						void this.saveSetting('textToSpeechModels', map);
+					}));
+		}
 	}
 
 	private renderProviderCard(container: HTMLElement, pid: ProviderId): void {

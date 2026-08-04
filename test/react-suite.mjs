@@ -1753,7 +1753,7 @@ const configured = new TranscriberAdapter({ providerId: 'custom', getSettings: (
 assert.equal(configured.buildFormData(new Blob(['audio'], { type: 'audio/webm' })).get('model'), 'configured-whisper');
 const defaultAdapter = new TranscriberAdapter({ providerId: 'custom', getSettings: () => settings });
 const defaultForm = defaultAdapter.buildFormData(new Blob(['audio'], { type: 'audio/webm' }));
-assert.equal(defaultForm.get('model'), 'whisper-large-v3-turbo');
+assert.equal(defaultForm.get('model'), 'whisper-1');
 assert.equal(defaultForm.get('file').name, 'recording.webm');
 pass('27e: transient errors retry with fresh settings while permanent errors fail fast');
 }

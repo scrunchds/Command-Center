@@ -1,6 +1,7 @@
 import type CommandCenterPlugin from '../main';
 import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, type TranscriptionCandidate } from './transcriber';
 import { AudioRecorder } from './audio-recorder';
+import { TtsAdapter, playTtsBlob } from './tts-adapter';
 
 export type AudioCue = 'start' | 'stop' | 'complete' | 'attention';
 
@@ -11,6 +12,8 @@ export type TranscriptionStatusCallback = (phase: 'connecting' | 'transcribing' 
 export class AccessibilityAudio {
 	private utterance: SpeechSynthesisUtterance | null = null;
 	private context: AudioContext | null = null;
+	/** AbortController for an in-flight provider TTS request/playback. */
+	private ttsAbort: AbortController | null = null;
 
 	constructor(private readonly plugin: CommandCenterPlugin) {}
 
@@ -80,13 +83,75 @@ export class AccessibilityAudio {
 		throw new Error(`All transcription providers failed. ${errors.join(' | ')}`);
 	}
 
+	/**
+	 * Speak `text`. When a provider TTS is configured (textToSpeechProviderId !=
+	 * 'browser'), routes through the provider's /audio/speech (or xAI /v1/tts)
+	 * endpoint and plays the returned audio. Falls back to the browser's
+	 * speechSynthesis when 'browser' is selected, no provider is available, or the
+	 * provider request fails — never silently dropping spoken output.
+	 *
+	 * Returns true if speech was initiated (provider path is async and may still
+	 * fail later; the fallback is invoked on error).
+	 */
 	speak(text: string): boolean {
 		if (!this.plugin.settings.textToSpeechEnabled) return false;
-		if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') return false;
 		const clean = text.replace(/```[\s\S]*?```/g, ' code block ').replace(/[*_#>`~[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
 		if (!clean) return false;
+		const truncated = clean.slice(0, 20_000);
 		this.stopSpeaking();
-		const utterance = new SpeechSynthesisUtterance(clean.slice(0, 20_000));
+
+		const providerId = this.plugin.settings.textToSpeechProviderId;
+		if (providerId && providerId !== 'browser' && this.canUseProviderTts(providerId === 'auto' ? undefined : providerId)) {
+			void this.speakViaProvider(truncated, providerId === 'auto' ? undefined : providerId)
+				.catch(error => {
+					console.warn('[Command Center] Provider TTS failed, falling back to browser speechSynthesis:', error);
+					this.speakViaBrowser(truncated);
+				});
+			return true;
+		}
+		return this.speakViaBrowser(truncated);
+	}
+
+	private canUseProviderTts(providerId?: import('../providers/provider-types').ProviderId): boolean {
+		const settings = this.plugin.settings;
+		// Resolve an enabled, TTS-capable provider.
+		const candidates = providerId
+			? [providerId]
+			: (['openai', 'openrouter', 'xai', 'mistral'] as const).filter(id => settings.multiProvider.credentials[id]?.enabled);
+		return candidates.some(id => TtsAdapter.supportsProvider(id));
+	}
+
+	private async speakViaProvider(text: string, preferred?: import('../providers/provider-types').ProviderId): Promise<void> {
+		const providerId = this.resolveTtsProvider(preferred);
+		if (!providerId) throw new Error('No TTS-capable provider enabled.');
+		this.ttsAbort = new AbortController();
+		const adapter = new TtsAdapter({
+			providerId,
+			getSettings: () => this.plugin.settings,
+			getApiKey: id => this.plugin.credentialVault.get(id),
+			signal: this.ttsAbort.signal,
+		});
+		const blob = await adapter.synthesize(text, { speed: this.resolveRate() });
+		if (this.ttsAbort.signal.aborted) return;
+		await playTtsBlob(blob, this.ttsAbort.signal);
+	}
+
+	private resolveTtsProvider(preferred?: import('../providers/provider-types').ProviderId): import('../providers/provider-types').ProviderId | undefined {
+		const settings = this.plugin.settings;
+		const order: import('../providers/provider-types').ProviderId[] = preferred
+			? [preferred, ...(['openai', 'openrouter', 'xai', 'mistral'] as const).filter(id => id !== preferred)]
+			: ['openai', 'openrouter', 'xai', 'mistral'];
+		for (const id of order) {
+			if (settings.multiProvider.credentials[id]?.enabled && TtsAdapter.supportsProvider(id)) {
+				return id;
+			}
+		}
+		return undefined;
+	}
+
+	private speakViaBrowser(text: string): boolean {
+		if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') return false;
+		const utterance = new SpeechSynthesisUtterance(text);
 		utterance.rate = this.resolveRate();
 		const voice = this.resolveVoice();
 		if (voice) {
@@ -101,6 +166,8 @@ export class AccessibilityAudio {
 	}
 
 	stopSpeaking(): void {
+		this.ttsAbort?.abort();
+		this.ttsAbort = null;
 		if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 		this.utterance = null;
 	}
