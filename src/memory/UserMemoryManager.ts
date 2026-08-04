@@ -168,7 +168,7 @@ export class UserMemoryManager {
 	 * Extract memorable facts from a conversation turn.
 	 * Returns an array of RememberCommand candidates for review.
 	 */
-	extractFromTurn(userMessage: string, assistantResponse: string): RememberCommand[] {
+	extractFromTurn(userMessage: string, _assistantResponse: string): RememberCommand[] {
 		const commands: RememberCommand[] = [];
 
 		// Look for explicit "remember that" patterns

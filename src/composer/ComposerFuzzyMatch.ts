@@ -10,7 +10,7 @@
  * Vault interaction: pure string manipulation — no vault I/O.
  */
 
-import type { DiffLine, DiffResult, EditOperation, FuzzyMatchResult } from './ComposerTypes';
+import type { DiffLine, DiffResult, EditOperation } from './ComposerTypes';
 
 /* ─── Normalization ─────────────────────────────────────── */
 

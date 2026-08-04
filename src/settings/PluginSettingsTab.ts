@@ -606,7 +606,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			'Capabilities are the instruments your agents can use. Enable or disable them to control what the agent can do autonomously.',
 		);
 		const body = this.getSectionBody(containerEl, 'capabilities');
-		renderCapabilitySettings(body, this.plugin, this.app);
+		renderCapabilitySettings(body, this.plugin);
 	}
 
 	private renderSpeechSettings(containerEl: HTMLElement): void {
@@ -2022,6 +2022,14 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		// Set up periodic background sync
 		this.backgroundSyncTimer = window.setInterval( () => { void (async () => {
+			// SettingTab exposes no lifecycle hook, so self-clean: if the settings
+			// container is no longer in the DOM (pane closed/navigated away), stop
+			// the interval to avoid leaking it for the app's lifetime. display()
+			// re-arms it on the next show.
+			if (!this.containerEl.isConnected) {
+				this.stopBackgroundSync();
+				return;
+			}
 			const mp = this.plugin.settings.multiProvider;
 			const toSync = PROVIDER_ORDER.filter((pid) => {
 				if (pid === 'pi-daemon') return false;
