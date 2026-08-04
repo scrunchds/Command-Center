@@ -10,7 +10,7 @@ import { getCapabilityRegistry } from '../capabilities';
 import { DEFAULT_REACT_CONFIG } from '../react';
 import type { ReActTraceEvent } from '../react/react-trace';
 import { AudioRecorder } from '../audio/audio-recorder';
-import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MIN_TRANSCRIPTION_DURATION_MS, type TranscriptionCandidate } from '../audio/transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MIN_TRANSCRIPTION_DURATION_MS, SILENCE_LEVEL_THRESHOLD, type TranscriptionCandidate } from '../audio/transcriber';
 import { LiveTranscriber } from '../audio/live-transcriber';
 import { processTranscriptionOutput, insertIntoActiveEditor } from '../audio/transcription-integrations';
 
@@ -570,7 +570,7 @@ export class CommandCenterChatView extends ItemView {
 		const durationMs = lockedRecorder.getDurationMs();
 		const peakLevel = lockedRecorder.getPeakLevel();
 		console.debug(`[CC] Chat recording stats: ${durationMs}ms, peakLevel=${peakLevel.toFixed(4)}`);
-		if (durationMs < MIN_TRANSCRIPTION_DURATION_MS || peakLevel < 0.02) {
+		if (durationMs < MIN_TRANSCRIPTION_DURATION_MS || peakLevel < SILENCE_LEVEL_THRESHOLD) {
 			console.debug('[CC] Chat audio too short or silent — discarding');
 			this.hideComposerNotice();
 			this.isTranscribing = false;

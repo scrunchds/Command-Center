@@ -23,7 +23,10 @@ export class AccessibilityAudio {
 		}
 		const recorder = new AudioRecorder({ mimeType: 'audio/webm', deviceId: this.plugin.settings.audioInputDeviceId || undefined });
 		await recorder.start();
-		this.cue('start');
+		// Delay the start cue 200 ms so any speaker output finishes before the
+		// microphone captures it. Even with AEC disabled, an active speaker
+		// tone can bleed into the first frames of the recording on Windows.
+		window.setTimeout(() => this.cue('start'), 200);
 		return {
 			recorder,
 			stop: async () => {

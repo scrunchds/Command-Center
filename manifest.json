@@ -1,7 +1,7 @@
 {
 	"id": "command-center",
 	"name": "Command Center",
-	"version": "1.7.1",
+	"version": "1.7.2",
 	"minAppVersion": "1.13.0",
 	"description": "Orchestrate AI agents, workflows, retrieval, memory, and daily operations across your vault. Supports 13 providers (xAI, OpenAI, Anthropic, Gemini, OpenRouter, and more), MCP tool discovery, web search, ReAct loops, and voice/dictation.",
 	"author": "Dustin Stringer",

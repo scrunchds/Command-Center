@@ -85,6 +85,11 @@ export class AudioRecorder {
 
 	onAudioLevel(callback: AudioRecorderLevelCallback): () => void {
 		this.levelListeners.add(callback);
+		// If recording is already active but level monitoring was deferred because
+		// no listeners existed at start() time, bootstrap it now.
+		if (this.state === 'recording' && !this.analyser && !this.levelFrame) {
+			this.bootstrapLevelMonitoring();
+		}
 		return () => this.levelListeners.delete(callback);
 	}
 
@@ -100,10 +105,16 @@ export class AudioRecorder {
 		const generation = ++this.startGeneration;
 		this.setState('requesting-permission');
 		try {
-			// Select a specific input device when configured; otherwise use the system default.
+			// Audio constraints for dictation / transcription capture.
+			// Echo cancellation, noise suppression, and auto gain control are
+			// disabled because they are optimised for two-way calls — not
+			// recording. On Windows (Chromium / WASAPI) the built-in AEC is
+			// so aggressive that it suppresses the user's actual speech,
+			// especially right after any audio playback (e.g. cue tones),
+			// producing recordings that sound like silence to Whisper.
 			const constraints: MediaStreamConstraints = this.options.deviceId
-				? { audio: { deviceId: { exact: this.options.deviceId } } }
-				: { audio: true };
+				? { audio: { deviceId: { exact: this.options.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } }
+				: { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } };
 			const stream = await navigator.mediaDevices.getUserMedia(constraints);
 			if (generation !== this.startGeneration) {
 				for (const track of stream.getTracks()) {
@@ -113,13 +124,19 @@ export class AudioRecorder {
 			}
 			this.stream = stream;
 			const recorderOptions: MediaRecorderOptions = {};
-			// Try the preferred MIME type first; fall back to the browser default if unsupported.
-			// This is critical because some browsers (e.g., Firefox on desktop) do not support
-			// 'audio/webm' but work with 'audio/ogg; codecs=opus'.
+			// ── MIME type selection ───────────────────────────────
+			// Try codec-qualified types first: they pin the Opus encoder
+			// and avoid Chromium's internal fallback, which on some
+			// Windows builds produces a WebM container with a silent or
+			// corrupt Opus track. If no qualified type is supported,
+			// fall back to the user's preferred type, then the browser
+			// default.
+			const codecQualified = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus'];
 			const preferred = this.options.mimeType;
-			if (preferred && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(preferred)) {
-				recorderOptions.mimeType = preferred;
-			}
+			const chosen =
+				codecQualified.find(t => typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(t))
+				?? (preferred && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(preferred) ? preferred : undefined);
+			if (chosen) recorderOptions.mimeType = chosen;
 			if (this.options.audioBitsPerSecond) recorderOptions.audioBitsPerSecond = this.options.audioBitsPerSecond;
 
 			this.chunks = [];
@@ -128,10 +145,16 @@ export class AudioRecorder {
 			this.recorder = new MediaRecorder(this.stream, recorderOptions);
 			this.recorder.addEventListener('dataavailable', this.handleData);
 			this.recorder.addEventListener('error', this.handleRecorderError);
-			this.recorder.start(this.options.timesliceMs);
+			// Default timeslice of 1 s ensures the recorder flushes audio data
+			// periodically on all platforms. On Windows / Chromium, a recording
+			// started with no timeslice can silently drop chunks when the
+			// recorder's internal buffer overflows before stop() is called,
+			// resulting in a blob that contains only silence.
+			this.recorder.start(this.options.timesliceMs ?? 1000);
 			this.startedAt = Date.now();
 			this.setState('recording');
 			this.startProgressMonitoring();
+			console.debug(`[CC] AudioRecorder started: mimeType=${this.recorder.mimeType}, timeslice=${this.options.timesliceMs ?? 1000}ms, device=${this.options.deviceId || 'default'}`);
 		} catch (error) {
 			this.releaseStream();
 			this.recorder = null;
@@ -178,8 +201,16 @@ export class AudioRecorder {
 			rejectStop(mediaError ?? new Error('Audio recording failed.'));
 		};
 		const handleStop = (): void => {
-			const type = recorder.mimeType || this.options.mimeType || this.chunks[0]?.type || 'audio/webm';
+			// Use the recorder's actual MIME type (which may differ from the
+			// requested type when the browser fell back to a different codec).
+			// Drop the options.mimeType fallback — it can disagree with the
+			// actual encoded data (e.g. 'audio/webm' requested but recorder
+			// fell back to 'audio/ogg;codecs=opus'), producing a Blob whose
+			// declared type doesn't match its content. That mismatched Blob
+			// is decoded as silence by Whisper and its hosted derivatives.
+			const type = recorder.mimeType || this.chunks[0]?.type || 'audio/webm';
 			const blob = new Blob(this.chunks, { type });
+			console.debug(`[CC] AudioRecorder stopped: ${this.chunks.length} chunks, blob ${blob.size} bytes, type=${type}, peakLevel=${this.peakLevel.toFixed(4)}`);
 			this.chunks = [];
 			this.options.onChunk?.(blob, true);
 			cleanup();
@@ -248,9 +279,29 @@ export class AudioRecorder {
 	private startProgressMonitoring(): void {
 		this.emitDuration(0);
 		this.durationTimer = window.setInterval(() => this.emitDuration(Date.now() - this.startedAt), 250);
-		if (this.levelListeners.size === 0 || typeof AudioContext === 'undefined' || typeof window.requestAnimationFrame === 'undefined' || !this.stream) return;
+		// Always bootstrap level monitoring so peakLevel is available for the
+		// silence guard — even when no UI listeners are registered yet.
+		this.bootstrapLevelMonitoring();
+	}
+
+	/**
+	 * Bootstrap Web Audio analyser + rAF loop for real-time peak-level tracking.
+	 * Called when recording starts with pre-registered listeners, or lazily when
+	 * the first listener is added via onAudioLevel() during an active recording.
+	 */
+	private bootstrapLevelMonitoring(): void {
+		if (this.analyser || this.levelFrame || this.state !== 'recording' || !this.stream) return;
+		if (typeof AudioContext === 'undefined' || typeof window.requestAnimationFrame === 'undefined') return;
 		try {
 			this.audioContext = new AudioContext();
+			// On Windows/Electron the AudioContext may start in a 'suspended'
+			// state (Chromium defers audio rendering until a user gesture or
+			// explicit resume). Without this call the analyser never processes
+			// samples, leaving peakLevel at 0 and causing the silence guard
+			// to reject every recording.
+			if (this.audioContext.state === 'suspended') {
+				void this.audioContext.resume().catch(() => undefined);
+			}
 			this.analyser = this.audioContext.createAnalyser();
 			this.analyser.fftSize = 256;
 			this.audioContext.createMediaStreamSource(this.stream).connect(this.analyser);

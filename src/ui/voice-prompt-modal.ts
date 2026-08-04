@@ -1,7 +1,7 @@
 import { Modal } from 'obsidian';
 import type CommandCenterPlugin from '../main';
 import { AudioRecorder } from '../audio/audio-recorder';
-import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MIN_TRANSCRIPTION_DURATION_MS } from '../audio/transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MIN_TRANSCRIPTION_DURATION_MS, SILENCE_LEVEL_THRESHOLD } from '../audio/transcriber';
 import type { TranscriptionStatusCallback } from '../audio/AccessibilityAudio';
 import { resolveChatContext } from './chat-context';
 
@@ -158,7 +158,7 @@ export class VoicePromptModal extends Modal {
 		const durationMs = recorder.getDurationMs();
 		const peakLevel = recorder.getPeakLevel();
 		console.debug(`[CC] VoiceModal recording stats: ${durationMs}ms, peakLevel=${peakLevel.toFixed(4)}`);
-		if (durationMs < MIN_TRANSCRIPTION_DURATION_MS || peakLevel < 0.02) {
+		if (durationMs < MIN_TRANSCRIPTION_DURATION_MS || peakLevel < SILENCE_LEVEL_THRESHOLD) {
 			console.debug('[CC] VoiceModal audio too short or silent — discarding');
 			this.statusEl.removeClass('is-loading');
 			this.statusEl.setText('No speech detected — try again.');

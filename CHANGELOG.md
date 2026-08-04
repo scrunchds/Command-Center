@@ -4,6 +4,18 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-08-05
+
+### Fixed
+- Windows audio silence: disabled aggressive echo cancellation / noise suppression / auto gain control in `getUserMedia` constraints that suppressed speech during dictation recordings on Windows (Chromium/WASAPI).
+- Peak-level tracking now always bootstraps the Web Audio analyser at recording start (previously skipped when no `onAudioLevel` listener was registered yet, leaving `peakLevel` at 0 and causing the silence guard to discard every recording).
+- AudioContext `resume()` on Windows/Electron when the context starts in a `suspended` state (Chromium defers rendering until a user gesture).
+- Codec-qualified MIME type selection (`audio/webm;codecs=opus`, `audio/ogg;codecs=opus`) pins the Opus encoder and avoids Chromium's internal fallback to a silent or corrupt codec on some Windows builds.
+- Default 1-second timeslice for dictation recordings prevents silent buffer overflow on Windows/Chromium when no timeslice is specified.
+- Blob MIME type now derived from `recorder.mimeType` only (removed `options.mimeType` fallback that could mismatch the actual encoded content, causing Whisper to decode silence).
+- Start-cue tone delayed 200 ms after recording begins to prevent speaker bleed into the first audio frames.
+- Silence guard threshold `SILENCE_LEVEL_THRESHOLD` now used consistently across chat view and voice prompt modal (replaced hardcoded `0.02`).
+
 ## [1.7.1] - 2026-08-04
 
 ### Changed
