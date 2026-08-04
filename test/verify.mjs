@@ -25,6 +25,10 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PassThrough } from 'node:stream';
 
+// Obsidian modules reference `window.setTimeout`; mirror react-suite.mjs so
+// the fallback-pipeline backoff path is exercisable in this Node harness.
+global.window = global;
+
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SRC = join(ROOT, 'src');
 const results = { pass: 0, fail: 0, skip: 0 };
@@ -763,11 +767,8 @@ async function verifyProviderFallback() {
 		resolveModelForTask: (id, tt) => adapters[id]?.getDefaultModel(tt) ?? 'unknown',
 	};
 	const dispatcher = new ProviderDispatcher(mockFactory, () => settings);
-	let delayed = 0;
-	dispatcher._delay = async () => { delayed++; };
 	const authResult = await dispatcher.dispatch({ systemPrompt: '', userPrompt: 'test' }, 'reasoning');
 	assert.equal(authResult.output, 'fallback-ok');
-	assert.equal(delayed, 0, '401 fallback must not sleep');
 	assert.equal(dispatcher.circuitBreaker.getFailureCount('openai'), 0);
 
 	primaryError = new ProviderError('invalid_request', 'invalid schema', 'openai', 400);
@@ -775,9 +776,75 @@ async function verifyProviderFallback() {
 	const schemaResult = await dispatcher.dispatch({ systemPrompt: '', userPrompt: 'test' }, 'reasoning');
 	assert.equal(schemaResult.success, false);
 	assert.equal(calls.anthropic, 0, '400 must fail before fallback adapter');
-	assert.equal(delayed, 0, '400 must not sleep');
 	assert.equal(dispatcher.circuitBreaker.getFailureCount('openai'), 0);
 	pass('7d: dispatcher routes 401 immediately and fails 400 without backoff or circuit pollution');
+
+	// 7e/7f exercise the shared fallback-pipeline module directly. This is the
+	// single loop both ProviderDispatcher (chat) and ModelRouter (dashboard)
+	// delegate to after the dispatch unification; it must fall back on transient
+	// failures and short-circuit on request-level (fail) failures without backoff.
+	const { executeFallbackChain, defaultBackoff } = await import(
+		pathToFileURL(join(SRC, 'providers/fallback-pipeline.ts')).href
+	);
+	const transientErr = new ProviderError('rate_limited', '429', 'openai', 429);
+	const e2eAdapters = {
+		openai: { id: 'openai', complete: async () => ({ output: '', success: false, error: '429', typedError: transientErr, providerId: 'openai', latencyMs: 0 }) },
+		anthropic: { id: 'anthropic', complete: async () => ({ output: 'ok', success: true, providerId: 'anthropic', latencyMs: 5 }) },
+	};
+	const e2eFactory = {
+		get: (id) => e2eAdapters[id],
+		isUsable: (id) => !!e2eAdapters[id],
+		resolveModelForTask: () => 'fallback-model',
+	};
+	const e2eCircuit = new ProviderCircuitBreaker();
+	let backoffs = 0;
+	const route = { providerId: 'openai', modelId: 'gpt-x', config: { temperature: 0, maxTokens: 100 }, taskType: 'reasoning' };
+	const { response, attempts } = await executeFallbackChain(
+		{ systemPrompt: '', userPrompt: 'hi' }, route,
+		['openai', 'anthropic'], { primary: 'openai', fallbacks: ['anthropic'], fallbackOnRateLimit: true, fallbackOnTimeout: true, maxAttempts: 5, backoffMs: 1 },
+		e2eCircuit, e2eFactory,
+		{ backoff: async () => { backoffs++; } },
+	);
+	assert.equal(response.success, true, '7e: transient primary falls back to a successful secondary');
+	assert.equal(response.output, 'ok', '7e: fallback provider output returned');
+	assert.equal(backoffs, 1, '7e: backoff awaited exactly once between primary and fallback');
+	assert.equal(attempts.length, 2, '7e: two attempts recorded (primary fail + fallback success)');
+	assert.equal(e2eCircuit.getFailureCount('openai'), 1, '7e: primary transient recorded on its circuit');
+	pass('7e: executeFallbackChain falls back on transient failure with one backoff');
+
+	// 7f: a request-level (fail) error short-circuits — the fallback provider is
+	// never called and no backoff is awaited.
+	const failErr = new ProviderError('invalid_request', 'bad schema', 'openai', 400);
+	const failAdapters = {
+		openai: { id: 'openai', complete: async () => ({ output: '', success: false, error: 'bad schema', typedError: failErr, providerId: 'openai', latencyMs: 0 }) },
+		anthropic: { id: 'anthropic', complete: async () => { throw new Error('7f: fallback must not be called on a fail-action'); } },
+	};
+	const failFactory = { get: (id) => failAdapters[id], isUsable: () => true, resolveModelForTask: () => 'm' };
+	let failBackoffs = 0;
+	const { response: failResp, attempts: failAttempts } = await executeFallbackChain(
+		{ systemPrompt: '', userPrompt: 'hi' }, route,
+		['openai', 'anthropic'], { primary: 'openai', fallbacks: ['anthropic'], fallbackOnRateLimit: true, fallbackOnTimeout: true, maxAttempts: 5, backoffMs: 1 },
+		new ProviderCircuitBreaker(), failFactory,
+		{ backoff: async () => { failBackoffs++; } },
+	);
+	assert.equal(failResp.success, false, '7f: fail-action returns unsuccessful response');
+	assert.equal(failBackoffs, 0, '7f: no backoff awaited on a request-level failure');
+	assert.equal(failAttempts.length, 1, '7f: only the primary was attempted (fallback skipped)');
+	pass('7f: executeFallbackChain short-circuits on request-level failures without backoff');
+
+	// 7g: defaultBackoff waits only for fallback-backoff and only mid-chain.
+	// Timing-based (no global monkey-patch): a mid-chain wait must sleep ~backoffMs;
+	// the last attempt and non-backoff actions must return near-instantly.
+	let t = Date.now();
+	await defaultBackoff('fallback-backoff', { backoffMs: 40 } , 0, 3);
+	assert.ok(Date.now() - t >= 30, '7g: defaultBackoff waits mid-chain on fallback-backoff');
+	t = Date.now();
+	await defaultBackoff('fallback-backoff', { backoffMs: 40 } , 2, 3);
+	assert.ok(Date.now() - t < 30, '7g: defaultBackoff skips the wait on the last attempt');
+	t = Date.now();
+	await defaultBackoff('fallback-immediate', { backoffMs: 40 } , 0, 3);
+	assert.ok(Date.now() - t < 30, '7g: defaultBackoff skips the wait on non-backoff actions');
+	pass('7g: defaultBackoff waits only for fallback-backoff and only mid-chain');
 }
 
 /* ═══════════════════════════════════════════════════════════

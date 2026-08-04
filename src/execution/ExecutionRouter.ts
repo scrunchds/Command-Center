@@ -32,6 +32,14 @@ export interface ExecutionRouteRequest {
 	signal?: AbortSignal;
 }
 
+/**
+ * Execution-modality worker profiles. A strict superset of `WorkerProfileName`
+ * (types.ts): the base four plus the two ReAct-capable profiles that have no
+ * static `workers/` prompt entry but DO declare an execution modality.
+ * `PROFILE_MODALITY` maps each to the single OpenRouter modality its requests
+ * cross. The `pi-daemon` sentinel is intentionally excluded — it routes via
+ * `router.routeDirect('pi-daemon', …)`, not the execution boundary.
+ */
 export type AgentWorkerProfile = 'orchestrator' | 'summarizer' | 'editor' | 'retriever' | 'react-orchestrator' | 'react-analyst';
 
 const PROFILE_MODALITY: Readonly<Record<AgentWorkerProfile, Modality>> = {

@@ -88,7 +88,19 @@ The ReAct runtime follows an **Orchestrator → Worker → Observation → Corre
 4. Validation detects incomplete, circular, hedged, conflicting, or error-heavy output.
 5. The loop corrects, re-routes, or synthesizes a final answer.
 
-Built-in worker profiles cover orchestration, retrieval, summarization, and structural editing. Six reusable roles—Researcher, Analyst, Writer, Reviewer, Planner, and Fact-Checker—apply least-privilege tool policies. The runtime can create constrained custom roles for operational responsibilities such as **Triage**, **Indexer**, **Health**, or **System Architect** without granting tools outside the parent worker's ceiling.
+Built-in worker profiles cover orchestration, retrieval, summarization, and structural editing. ReAct-capable profiles (`react-orchestrator`, `react-analyst`) extend these with iterative reason-act-observe loops. Five standard agent roles—**Orchestrator**, **Triage**, **Indexer**, **Health**, and **System Architect**—bind each operational responsibility to a compute tier and least-privilege tool ceiling, and the runtime can create constrained custom roles without granting tools outside the parent worker's ceiling.
+
+<details><summary>Role vocabulary (three layers)</summary>
+
+The codebase uses three distinct, layered vocabularies — they are intentionally not collapsed, because each keys a different table:
+
+- **`WorkerProfileName`** (`src/types.ts`) — the 4 static prompt+token configs in `src/workers/`: `orchestrator`, `retriever`, `summarizer`, `editor`. Smallest and most stable.
+- **`AgentWorkerProfile`** (`src/execution/ExecutionRouter.ts`) — a superset adding `react-orchestrator` and `react-analyst`, the ReAct-capable profiles that have no static prompt entry but declare an execution modality (text/embeddings/…).
+- **`StandardAgentRole`** (`src/engine/AgentTypes.ts`) — the 5 operational roles above; each maps to a compute tier + a worker profile + a `TaskType` via `AGENT_TAXONOMY`. `Task.workerRole` reuses this union.
+
+The `pi-daemon` string is a sentinel, not a profile: command-palette local tasks set `workerProfile: 'pi-daemon'` to route directly to the local Pi daemon via `router.routeDirect`.
+
+</details>
 
 Operational safeguards include:
 
@@ -733,7 +745,7 @@ pi --version
 npm install -g @earendil-works/pi-coding-agent
 ```
 
-Then use **Settings → Command Center → Core Configuration** to auto-detect Pi or select the executable path. Missing-binary errors fail fast rather than entering a retry loop.
+Then use **Settings → Command Center → Core** → *Pi harness path* and click **🔍 Detect** (or type a custom path). Detection is non-blocking; the button shows **⏳ Detecting…** while it runs and reports **⚠️ Not found** if the binary is still missing. Missing-binary errors fail fast rather than entering a retry loop.
 
 ### A local provider is unavailable
 
@@ -759,7 +771,7 @@ Check that:
 
 ### A destructive tool is paused
 
-Open the Command Center dashboard, inspect the Mutation Approval card's target list and diff preview, then choose **Approve & Apply** or **Reject**. Closing the dashboard rejects pending confirmations safely.
+Open the Command Center dashboard, inspect the Mutation approvals card's target list and diff preview, then choose **Approve & apply** or **Reject**. Closing the dashboard rejects pending confirmations safely.
 
 ## Future implementation
 
@@ -780,11 +792,11 @@ Image generation models are registered in the OpenRouter provider (openai/gpt-5-
 
 ### xAI Realtime API
 
-xAI's realtime API (`GET /v1/realtime` WebSocket) supports voice-in/voice-out and function calling. The `XAIProvider` class is ready for the WebSocket transport layer.
+xAI's realtime API (`GET /v1/realtime` WebSocket) supports voice-in/voice-out and function calling. The `XAIProvider` class (`src/providers/xai.ts`) currently implements chat completions plus native **STT** (`POST /v1/stt`) and **TTS** (`POST /v1/tts`, `GET /v1/tts/voices`); the WebSocket realtime transport remains a future addition.
 
 ### OpenRouter Responses API
 
-The newer `POST /api/v1/responses` format is available alongside the existing chat completions endpoint. Migration would enable streaming reasoning tokens, server-side tools (web search, code interpreter, MCP), and compaction.
+The newer `POST /api/v1/responses` format is a future migration target alongside the existing chat completions endpoint. Adopting it would enable streaming reasoning tokens, server-side tools (web search, code interpreter, MCP), and compaction; no Responses endpoint is wired up today.
 
 ## Community and support
 

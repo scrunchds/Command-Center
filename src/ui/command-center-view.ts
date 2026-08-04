@@ -847,7 +847,7 @@ export class CommandCenterView extends ItemView {
 		try {
 			const result = await this.plugin.router.route({
 				id: crypto.randomUUID(),
-				workerProfile: 'Orchestrator',
+				workerProfile: 'orchestrator',
 				workerRole: 'Orchestrator',
 				preferredTier: 'tier2_reasoning',
 				prompt,

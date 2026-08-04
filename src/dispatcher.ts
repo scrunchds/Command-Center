@@ -13,14 +13,15 @@
 
 import type {
 	IProviderAdapter, ProviderId, ProviderRequest, ProviderResponse,
-	ProviderFallbackConfig, ProviderError, MultiProviderSettings, TaskType,
+	ProviderFallbackConfig, MultiProviderSettings, TaskType,
 } from './providers/provider-types';
 import { DEFAULT_FALLBACK_CONFIG } from './providers/provider-types';
 import { ProviderFactory } from './providers/provider-factory';
 import {
-	classifyProviderFailure, ProviderCircuitBreaker, type ProviderFailureAction,
+	ProviderCircuitBreaker,
 } from './providers/provider-recovery';
 import { classifyTask, resolveRoute, type ResolvedRoute } from './routing/routing-table';
+import { executeFallbackChain, defaultBackoff } from './providers/fallback-pipeline';
 
 /* ─── Dispatcher ───────────────────────────────────────── */
 
@@ -134,75 +135,33 @@ export class ProviderDispatcher {
 		route: ResolvedRoute,
 		fallback: ProviderFallbackConfig,
 	): Promise<ProviderResponse> {
-		// Build the ordered list of providers to try
+		// Build the ordered list of providers to try. The execution loop is shared
+		// with ModelRouter via fallback-pipeline.ts; only the chain order is local
+		// (ProviderDispatcher keeps the configured fallback order, while
+		// ModelRouter sorts by observed success probability).
 		const chain = this._buildFallbackChain(route.providerId, fallback);
-		let lastError: string | undefined;
+		const { response, attempts } = await executeFallbackChain(
+			request, route, chain, fallback,
+			this.circuitBreaker, this.factory,
+			{ backoff: defaultBackoff },
+		);
+		if (response.success) return response;
 
-		for (let i = 0; i < Math.min(chain.length, fallback.maxAttempts); i++) {
-			const providerId = chain[i]!;
-			const provider = this.factory.get(providerId);
-
-			if (!this.circuitBreaker.canRequest(providerId)) {
-				lastError = `Provider ${providerId} circuit is open after transient failures.`;
-				continue;
-			}
-
-			if (!this.factory.isUsable(providerId)) {
-				lastError = `Provider ${providerId} not available.`;
-				continue;
-			}
-
-			// Use the route model for the primary, a live/registry default for fallbacks.
-			const modelId = i === 0
-				? route.modelId
-				: this.factory.resolveModelForTask(providerId, route.taskType);
-
-			const providerRequest: ProviderRequest = {
-				...request,
-				config: { ...route.config, model: modelId },
+		// Preserve the dispatcher's pre-unification exhaustion message, which
+		// surfaces the last transient error rather than the generic stub. The
+		// shared pipeline only sets 'All providers failed.' when no attempt
+		// produced a response at all.
+		const failed = attempts as Array<{ error?: string }> | undefined;
+		const lastError = failed?.length
+			? failed[failed.length - 1]!.error ?? response.error
+			: response.error;
+		if (!response.error || response.error === 'All providers failed.') {
+			return {
+				...response,
+				error: `All providers failed. Last error: ${lastError ?? 'Unknown'}`,
 			};
-
-			try {
-				const response = await provider.complete(providerRequest);
-
-				if (!response.success) {
-					const action = classifyProviderFailure(response.typedError, fallback);
-					this.circuitBreaker.recordFailure(providerId, response.typedError);
-					if (action !== 'fail') {
-						lastError = response.error;
-						await this._backoffFor(action, fallback, i, chain.length);
-						continue;
-					}
-					// Request-level failures (400/schema/context/content) are not made
-					// valid by changing providers. Return immediately without backoff.
-					return response;
-				}
-
-				this.circuitBreaker.recordSuccess(providerId);
-				return response;
-			} catch (err) {
-				const typedErr = (err as Record<string, unknown>)?.code
-					? (err as ProviderError)
-					: undefined;
-				const action = classifyProviderFailure(typedErr, fallback);
-				this.circuitBreaker.recordFailure(providerId, typedErr);
-				if (action !== 'fail') {
-					lastError = typedErr?.message ?? (err as Error).message;
-					await this._backoffFor(action, fallback, i, chain.length);
-					continue;
-				}
-				return {
-					output: '', success: false, error: (err as Error).message,
-					typedError: typedErr, providerId, latencyMs: 0,
-				};
-			}
 		}
-
-		return {
-			output: '', success: false,
-			error: `All providers failed. Last error: ${lastError ?? 'Unknown'}`,
-			latencyMs: 0,
-		};
+		return response;
 	}
 
 	private _buildFallbackChain(
@@ -221,20 +180,5 @@ export class ProviderDispatcher {
 			if (!chain.includes(adapter.id)) chain.push(adapter.id);
 		}
 		return chain;
-	}
-
-	private async _backoffFor(
-		action: ProviderFailureAction,
-		config: ProviderFallbackConfig,
-		attemptIndex: number,
-		chainLength: number,
-	): Promise<void> {
-		if (action === 'fallback-backoff' && attemptIndex < chainLength - 1) {
-			await this._delay(config.backoffMs * Math.pow(2, attemptIndex));
-		}
-	}
-
-	private _delay(ms: number): Promise<void> {
-		return new Promise(r => window.setTimeout(r, ms));
 	}
 }

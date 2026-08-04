@@ -81,8 +81,6 @@ import { CapacityEngine } from './daily/CapacityEngine';
 import { DailyEngine } from './daily/DailyEngine';
 import { ConfigManager } from './engine/ConfigManager';
 import { InterviewEngine } from './engine/InterviewEngine';
-import { Orchestrator } from './engine/Orchestrator';
-import { ModelRouter as EndpointModelRouter } from './engine/ModelRouter';
 import { CommandCenterCommandBridge } from './cli/command-bridge';
 import { NativeAutoRouter } from './routing/NativeAutoRouter';
 import { DataNormalizer } from './execution/DataNormalizer';
@@ -135,9 +133,7 @@ export default class CommandCenterPlugin extends Plugin {
 	credentialVault!: MemoryCredentialVault;
 	dispatcher!: ProviderDispatcher;
 	router!: ModelRouter;
-	endpointRouter!: EndpointModelRouter;
 	workflowEngine!: WorkflowEngine;
-	orchestrator!: Orchestrator;
 	nativeAutoRouter!: NativeAutoRouter;
 	executionRouter!: ExecutionRouter;
 	pythonWorker!: PythonWorkerTransport;
@@ -329,28 +325,11 @@ export default class CommandCenterPlugin extends Plugin {
 				contextCharLimit,
 			},
 		);
-		this.endpointRouter = new EndpointModelRouter(this.configManager, {
-			resolveCredential: (reference, endpoint) => {
-				const key = reference?.trim() || endpoint.provider;
-				return this.credentialVault.get(key).trim()
-					|| this.credentialVault.get(endpoint.provider).trim()
-					|| Object.values(
-						this.settings.multiProvider.credentials,
-					).find((credentials) => credentials?.providerId === key)
-						?.apiKey?.trim();
-			},
-		});
 		this.workflowEngine = new WorkflowEngine(
 			this.dispatcher,
 			this.router,
 			() => this.configManager.requireStyleGuide(),
 		);
-		this.orchestrator = new Orchestrator(
-			this.dispatcher,
-			() => this.settings.multiProvider,
-			() => this.configManager.requireStyleGuide(),
-		);
-
 		const executor: TaskExecutor = {
 			execute: async (task: Task): Promise<TaskResult> => {
 				this.requireInitialized();

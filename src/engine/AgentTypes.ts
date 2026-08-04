@@ -1,5 +1,13 @@
 import type { TaskType } from '../providers/provider-types';
 
+/**
+ * The role taxonomy — the highest-level vocabulary. Each `StandardAgentRole`
+ * binds an operational responsibility to a compute tier, a worker profile
+ * (a `WorkerProfileName` or a ReAct profile), and a `TaskType`. Roles are
+ * disjoint from worker profiles: a role *selects* a profile; a profile *is*
+ * a prompt+token config. `Task.workerRole` (types.ts) reuses this type so the
+ * role union has one source of truth.
+ */
 export const STANDARD_AGENT_ROLES = [
 	'Orchestrator', 'TriageAgent', 'IndexerAgent', 'HealthReadinessAgent', 'SystemArchitect',
 ] as const;

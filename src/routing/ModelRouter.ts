@@ -6,20 +6,21 @@ import { TOKEN_LIMITS } from '../types';
 import type {
 	TaskType, ProviderId, RoutingTable,
 	ProviderRequest, ProviderResponse, ProviderRequestConfig,
-	ProviderFallbackConfig, ProviderError, MultiProviderSettings, ImageContent,
+	ProviderFallbackConfig, MultiProviderSettings, ImageContent,
 	ProviderTaskMetrics, RoutingOptimizationConfig, ProviderModel,
 } from '../providers/provider-types';
 import { TASK_TYPE_LABELS, TASK_TYPE_ICONS, DEFAULT_PROVIDER_CONFIG, DEFAULT_FALLBACK_CONFIG, isLocalBaseUrl } from '../providers/provider-types';
 import { PROVIDER_REGISTRY } from '../providers/provider-registry';
 import { ProviderFactory } from '../providers/provider-factory';
 import {
-	classifyProviderFailure, ProviderCircuitBreaker, type ProviderFailureAction,
+	ProviderCircuitBreaker,
 } from '../providers/provider-recovery';
 import { DEFAULT_ROUTING } from '../routing/routing-table';
 import type { ToolDefinition } from '../types';
 import { preprocessPrompt, extractImageRefs } from '../providers/image-utils';
 import type { AgentMemoryStore } from '../memory/memory-store';
 import type { HybridRetriever } from '../rag/hybrid-retriever';
+import { executeFallbackChain, defaultBackoff } from '../providers/fallback-pipeline';
 
 export interface ClassificationResult {
 	primary: TaskType; confidence: number;
@@ -293,75 +294,35 @@ export class ModelRouter {
 		// fallbacks by observed success probability to preserve reliability.
 		const chain = this._buildFallbackChain(route.providerId, fallback, route.taskType);
 		const attempts: RouteAttempt[] = [];
-		let lastResponse: ProviderResponse | null = null;
+		const emaAlpha = this._optimizationConfig().emaAlpha;
 
-		for (let i = 0; i < Math.min(chain.length, fallback.maxAttempts); i++) {
-			const pid = chain[i]!;
-			const t0 = Date.now();
-
-			if (this.config.capabilityGating && i > 0) {
-				const cap = this._checkCapabilities(pid, route.taskType);
-				if (!cap.match) {
-					attempts.push({ providerId: pid, modelId: 'skipped', attemptIndex: i, success: false, error: `Capability gap: ${cap.gaps.join(', ')}`, errorCode: 'capability_gap', latencyMs: 0, wasFallback: true });
-					continue;
-				}
-			}
-
-			const provider = this.factory.get(pid);
-			if (!this.circuitBreaker.canRequest(pid)) {
-				attempts.push({ providerId: pid, modelId: 'skipped', attemptIndex: i, success: false, error: `Provider ${pid} circuit is open after transient failures.`, errorCode: 'circuit_open', latencyMs: 0, wasFallback: i > 0 });
-				continue;
-			}
-			if (!this.factory.isUsable(pid)) {
-				attempts.push({ providerId: pid, modelId: 'unavailable', attemptIndex: i, success: false, error: `Provider ${pid} not available.`, errorCode: 'unavailable', latencyMs: 0, wasFallback: i > 0 });
-				continue;
-			}
-
-			const modelId = i === 0
-				? route.modelId
-				: this.factory.resolveModelForTask(pid, route.taskType);
-			const providerReq: ProviderRequest = { ...request, config: { ...route.config, model: modelId } };
-
-			try {
-				const response = await provider.complete(providerReq);
-				const elapsed = response.latencyMs || Date.now() - t0;
-				this._recordMetrics(pid, route.taskType, elapsed, response.success, response.usage, this._optimizationConfig().emaAlpha);
-				attempts.push({ providerId: pid, modelId, attemptIndex: i, success: response.success, error: response.error, errorCode: response.typedError?.code, latencyMs: elapsed, wasFallback: i > 0 });
-				if (response.success) {
-					this.circuitBreaker.recordSuccess(pid);
-					return { response, attempts };
-				}
-				const action = classifyProviderFailure(response.typedError, fallback);
-				this.circuitBreaker.recordFailure(pid, response.typedError);
-				if (action !== 'fail') {
-					lastResponse = response;
-					await this._backoffFor(action, fallback, i, chain.length);
-					continue;
-				}
-				return { response, attempts };
-			} catch (err) {
-				this._recordMetrics(pid, route.taskType, Date.now() - t0, false, undefined, this._optimizationConfig().emaAlpha);
-				const typedErr = (err as Record<string, unknown>)?.code ? (err as ProviderError) : undefined;
-				attempts.push({ providerId: pid, modelId, attemptIndex: i, success: false, error: (err as Error).message, errorCode: typedErr?.code ?? 'exception', latencyMs: Date.now() - t0, wasFallback: i > 0 });
-				const action = classifyProviderFailure(typedErr, fallback);
-				this.circuitBreaker.recordFailure(pid, typedErr);
-				if (action !== 'fail') {
-					await this._backoffFor(action, fallback, i, chain.length);
-					continue;
-				}
-				return { response: { output: '', success: false, error: (err as Error).message, typedError: typedErr, providerId: pid, latencyMs: 0 }, attempts };
-			}
-		}
-		return { response: lastResponse ?? { output: '', success: false, error: 'All providers failed.', latencyMs: 0 }, attempts };
-	}
-
-	private async _backoffFor(
-		action: ProviderFailureAction, config: ProviderFallbackConfig,
-		attemptIndex: number, chainLength: number,
-	): Promise<void> {
-		if (action === 'fallback-backoff' && attemptIndex < chainLength - 1) {
-			await this._delay(config.backoffMs * Math.pow(2, attemptIndex));
-		}
+		const { response } = await executeFallbackChain(
+			request, route, chain, fallback,
+			this.circuitBreaker, this.factory,
+			{
+				backoff: defaultBackoff,
+				// Capability gate applies to fallbacks only (i > 0); the primary is the
+				// configured choice and is never gated.
+				shouldSkip: this.config.capabilityGating
+					? (pid, taskType, i) => {
+						if (i === 0) return false;
+						const cap = this._checkCapabilities(pid, taskType);
+						return cap.match ? false : { reason: `Capability gap: ${cap.gaps.join(', ')}` };
+					}
+					: undefined,
+				onAttempt: (pid, modelId, i, resp, typedErr, elapsed) => {
+					this._recordMetrics(pid, route.taskType, elapsed, resp?.success ?? false, resp?.usage, emaAlpha);
+					attempts.push({
+						providerId: pid, modelId, attemptIndex: i,
+						success: resp?.success ?? false,
+						error: resp?.error ?? (typedErr ? undefined : (typedErr as unknown as Error)?.message),
+						errorCode: resp?.typedError?.code ?? typedErr?.code ?? (typedErr ? 'exception' : undefined),
+						latencyMs: elapsed, wasFallback: i > 0,
+					});
+				},
+			},
+		);
+		return { response, attempts };
 	}
 
 	private _buildFallbackChain(primary: ProviderId, fb: ProviderFallbackConfig, taskType: TaskType): ProviderId[] {
@@ -379,8 +340,6 @@ export class ModelRouter {
 		}
 		return chain;
 	}
-
-	private _delay(ms: number): Promise<void> { return new Promise(r => window.setTimeout(r, ms)); }
 
 	private _optimizationConfig(): RoutingOptimizationConfig {
 		return { ...DEFAULT_OPTIMIZATION, ...this.getSettings().optimization };
