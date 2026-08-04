@@ -2275,7 +2275,6 @@ const settings = () => ({
   defaults: {},
 });
 const dispatcher = new ProviderDispatcher(mockFactory, settings);
-dispatcher._delay = async () => {};
 const chain = dispatcher._buildFallbackChain('anthropic', settings().fallback);
 assert.deepEqual(chain, ['anthropic', 'openai', 'lmstudio'], 'safety net appends usable providers after configured chain');
 pass('34e: fallback chain appends usable providers as a safety net');
@@ -2305,7 +2304,6 @@ const settings = () => ({
   defaults: {},
 });
 const dispatcher = new ProviderDispatcher(mockFactory, settings);
-dispatcher._delay = async () => {};
 const result = await dispatcher.dispatch({ systemPrompt: '', userPrompt: 'hello' }, 'reasoning');
 assert.equal(result.output, 'lm-ok', 'dispatch reached LM Studio and returned its output');
 assert.equal(calls.lmstudio, 1, 'LM Studio complete called exactly once');
