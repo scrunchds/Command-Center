@@ -151,6 +151,14 @@ export class TtsAdapter {
 		if ('textToSpeechModel' in settings && typeof settings.textToSpeechModel === 'string' && settings.textToSpeechModel.trim()) {
 			return settings.textToSpeechModel.trim();
 		}
+		// Discovered live TTS model from the provider's /models catalog (if available).
+		// Mirrors the STT path: scan liveModels for a TTS-capable entry before
+		// falling back to the static default.
+		const mp = this.resolveMultiProviderSettings();
+		const liveTts = mp.liveModels?.[this.options.providerId]?.find(model =>
+			/(\btts\b|text[-_ ]?to[-_ ]?speech|speech[-_ ]?synthesis|voxtral[-_ ]?tts|grok[-_ ]?tts|tts[-_ ]?1)/i.test(model.id),
+		);
+		if (liveTts?.id) return liveTts.id;
 		const fallback = DEFAULT_TTS_MODELS[this.options.providerId];
 		if (fallback) return fallback;
 		throw new TtsError(`No default TTS model for ${this.options.providerId}.`, undefined, false);

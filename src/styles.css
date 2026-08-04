@@ -1127,6 +1127,9 @@ Command Center — Agentic OS for Obsidian
 @keyframes cc-voice-spin { to { transform: rotate(360deg); } }
 .cc-voice-level { width: min(280px, 90%); height: 7px; overflow: hidden; border-radius: 5px; background: var(--background-modifier-border); }
 .cc-voice-level-fill { width: 0; height: 100%; background: var(--interactive-accent); transition: width 0.08s linear; }
+/* Dashboard dictate meter: hidden until recording starts. */
+.cc-dashboard-dictate-meter { display: none; flex: 1; min-width: 60px; max-width: 180px; margin: 0 6px; }
+.cc-dashboard-dictate-meter.is-visible { display: block; }
 .cc-voice-mode-select { display: block; width: min(280px, 100%); margin: 0 auto; }
 .cc-voice-prompt-actions { display: flex; justify-content: center; gap: 9px; margin-top: 16px; }
 .cc-voice-prompt-actions button { min-width: 112px; }

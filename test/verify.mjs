@@ -895,6 +895,22 @@ async function verifyProviderFallback() {
 	assert.equal(DEFAULT_STT_MODELS.openai, 'whisper-1', '7j: OpenAI default STT model is whisper-1');
 	assert.equal(DEFAULT_STT_MODELS.groq, 'whisper-large-v3', '7j: Groq default STT model is whisper-large-v3');
 	pass('7j: OpenAI STT default model corrected from the nonexistent whisper-large-v3-turbo to whisper-1');
+
+	// 7k: sanitizeDictation strips Whisper silence-hallucination artifacts,
+	// including the bare single-word fillers ('you', 'okay', 'so', …) that slip
+	// through the old length<2 guard. Real speech (>=2 chars, not in the list) passes.
+	const { sanitizeDictation } = await import(pathToFileURL(join(SRC, 'audio/transcriber.ts')).href);
+	assert.equal(sanitizeDictation('you'), '', '7k: bare "you" hallucination stripped');
+	assert.equal(sanitizeDictation('You.'), '', '7k: bare "You." hallucination stripped (case-insensitive)');
+	assert.equal(sanitizeDictation('thank you'), '', '7k: "thank you" hallucination stripped');
+	assert.equal(sanitizeDictation('Thank you for watching.'), '', '7k: full hallucination phrase stripped');
+	assert.equal(sanitizeDictation('okay'), '', '7k: bare "okay" filler stripped');
+	assert.equal(sanitizeDictation('mmm'), '', '7k: bare "mmm" filler stripped');
+	assert.equal(sanitizeDictation('a'), '', '7k: single-char "a" stripped');
+	assert.equal(sanitizeDictation('Hello world'), 'Hello world', '7k: real speech passes through');
+	assert.equal(sanitizeDictation('Take a note'), 'Take a note', '7k: real command passes through');
+	assert.equal(sanitizeDictation('  you  '), '', '7k: whitespace-padded "you" stripped');
+	pass('7k: sanitizeDictation strips single-word Whisper silence hallucinations');
 }
 
 /* ═══════════════════════════════════════════════════════════

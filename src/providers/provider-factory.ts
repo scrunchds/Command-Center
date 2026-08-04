@@ -205,4 +205,60 @@ export class ProviderFactory {
 			getBaseUrl: () => this.getBaseUrl(id),
 		};
 	}
+
+	/** All provider IDs that support live model listing (excludes pi-daemon). */
+	private static readonly LIVE_LISTABLE: ProviderId[] = [
+		'openai', 'anthropic', 'google-gemini', 'openrouter', 'groq',
+		'deepinfra', 'mistral', 'cohere', 'xai', 'ollama', 'lmstudio', 'custom',
+	];
+
+	/**
+	 * Fetch live models from every enabled, available provider that supports
+	 * listing, and persist the results into settings.multiProvider.liveModels.
+	 *
+	 * This is the auto-refresh path: the plugin calls it on load so the model
+	 * dropdowns reflect the provider's actual catalog without waiting for the
+	 * user to click “Refresh models” in settings. Bounded to concurrency 3 to
+	 * avoid hammering endpoints. Failures for individual providers are
+	 * swallowed (the static registry remains the fallback for that provider).
+	 *
+	 * Returns a per-provider summary for logging/notice display.
+	 */
+	async refreshLiveModels(onProvider?: (id: ProviderId, ok: boolean, count: number) => void): Promise<{ synced: number; failed: number; total: number }> {
+		const settings = this.getSettings();
+		const toSync = ProviderFactory.LIVE_LISTABLE.filter(id => {
+			const cred = settings.credentials[id];
+			if (!cred?.enabled) return false;
+			const provider = this.get(id);
+			return typeof provider.fetchLiveModels === 'function' && provider.isAvailable();
+		});
+
+		const concurrency = 3;
+		let synced = 0;
+		let failed = 0;
+		for (let i = 0; i < toSync.length; i += concurrency) {
+			const batch = toSync.slice(i, i + concurrency);
+			const results = await Promise.allSettled(batch.map(async id => {
+				const provider = this.get(id);
+				const models = await provider.fetchLiveModels!();
+				const mp = this.getSettings();
+				if (!mp.liveModels) mp.liveModels = {};
+				if (models.length > 0) {
+					mp.liveModels[id] = models;
+				} else {
+					delete mp.liveModels[id];
+				}
+				return { id, count: models.length };
+			}));
+			for (const r of results) {
+				if (r.status === 'fulfilled') {
+					synced++;
+					onProvider?.(r.value.id, true, r.value.count);
+				} else {
+					failed++;
+				}
+			}
+		}
+		return { synced, failed, total: toSync.length };
+	}
 }
