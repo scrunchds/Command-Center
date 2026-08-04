@@ -2,6 +2,8 @@
  * Command Center — shared types for the agentic OS layer.
  */
 
+import type { StandardAgentRole } from './engine/AgentTypes';
+
 /* ─── Task Types ─────────────────────────────────────────── */
 
 /** Hard limits enforced pre-enqueue and at the RPC bridge. */
@@ -25,7 +27,7 @@ export interface Task {
 	workerProfile: string;
 	/** Explicit compute preference for role-directed routing. */
 	preferredTier?: 'tier1_local' | 'tier2_reasoning';
-	workerRole?: 'Orchestrator' | 'TriageAgent' | 'IndexerAgent' | 'HealthReadinessAgent' | 'SystemArchitect';
+	workerRole?: StandardAgentRole;
 	prompt: string;
 	targetPath?: string;
 	status: TaskStatus;
@@ -47,6 +49,16 @@ export interface TaskResult {
 
 /* ─── Worker Profile Types ──────────────────────────────── */
 
+/**
+ * Static worker-profile keys that index the `workers/` prompt registry
+ * (orchestrator/retriever/summarizer/editor). Each carries a system prompt
+ * and token/temperature config. This is the smallest, most stable vocabulary:
+ * ReAct-capable profiles (`react-orchestrator`, `react-analyst`) and the
+ * `pi-daemon` sentinel are NOT here because they have no static prompt entry —
+ * they resolve their prompt at runtime. See `AgentWorkerProfile` in
+ * `execution/ExecutionRouter.ts` for the execution-modality superset and
+ * `StandardAgentRole` in `engine/AgentTypes.ts` for the role taxonomy.
+ */
 export type WorkerProfileName = 'orchestrator' | 'retriever' | 'summarizer' | 'editor';
 
 export interface WorkerProfile {
