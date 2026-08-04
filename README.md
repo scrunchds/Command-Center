@@ -88,7 +88,7 @@ The ReAct runtime follows an **Orchestrator → Worker → Observation → Corre
 4. Validation detects incomplete, circular, hedged, conflicting, or error-heavy output.
 5. The loop corrects, re-routes, or synthesizes a final answer.
 
-Built-in worker profiles cover orchestration, retrieval, summarization, and structural editing. Six reusable roles—Researcher, Analyst, Writer, Reviewer, Planner, and Fact-Checker—apply least-privilege tool policies. The runtime can create constrained custom roles for operational responsibilities such as **Triage**, **Indexer**, **Health**, or **System Architect** without granting tools outside the parent worker's ceiling.
+Built-in worker profiles cover orchestration, retrieval, summarization, and structural editing. ReAct-capable profiles (`react-orchestrator`, `react-analyst`) extend these with iterative reason-act-observe loops. Five standard agent roles—**Orchestrator**, **Triage**, **Indexer**, **Health**, and **System Architect**—bind each operational responsibility to a compute tier and least-privilege tool ceiling, and the runtime can create constrained custom roles without granting tools outside the parent worker's ceiling.
 
 Operational safeguards include:
 
