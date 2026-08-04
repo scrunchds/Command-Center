@@ -35,6 +35,12 @@ export class AudioRecorder {
 	private peakLevel = 0;
 	private audioContext: AudioContext | null = null;
 	private analyser: AnalyserNode | null = null;
+	// Raw PCM capture (WAV fallback). Populated from the same AudioContext graph
+	// that drives the level meter, bypassing the MediaRecorder Opus encoder which
+	// on some Windows/Electron builds emits a silent or corrupt track.
+	private pcmNode: ScriptProcessorNode | null = null;
+	private pcmChunks: Float32Array[] = [];
+	private pcmSampleRate = 0;
 	private listeners = new Set<AudioRecorderStateCallback>();
 	private durationListeners = new Set<AudioRecorderDurationCallback>();
 	private levelListeners = new Set<AudioRecorderLevelCallback>();
@@ -106,15 +112,21 @@ export class AudioRecorder {
 		this.setState('requesting-permission');
 		try {
 			// Audio constraints for dictation / transcription capture.
-			// Echo cancellation, noise suppression, and auto gain control are
-			// disabled because they are optimised for two-way calls — not
-			// recording. On Windows (Chromium / WASAPI) the built-in AEC is
-			// so aggressive that it suppresses the user's actual speech,
-			// especially right after any audio playback (e.g. cue tones),
-			// producing recordings that sound like silence to Whisper.
+			//
+			// echoCancellation stays OFF: on Windows (Chromium / WASAPI) the
+			// built-in AEC is aggressive enough to suppress the user's own speech,
+			// especially right after audio playback (e.g. cue tones), producing
+			// recordings that sound like silence to Whisper.
+			//
+			// autoGainControl + noiseSuppression stay ON: disabling AGC leaves a
+			// low-gain microphone so quiet that Whisper (and hosted derivatives on
+			// OpenRouter / xAI) decode the Opus stream as silence and report
+			// "no speech detected". AGC normalises quiet input up to an audible
+			// level; noise suppression further stabilises it.
+			const audioConstraints: MediaTrackConstraints = { echoCancellation: false, noiseSuppression: true, autoGainControl: true };
 			const constraints: MediaStreamConstraints = this.options.deviceId
-				? { audio: { deviceId: { exact: this.options.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } }
-				: { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } };
+				? { audio: { deviceId: { exact: this.options.deviceId }, ...audioConstraints } }
+				: { audio: audioConstraints };
 			const stream = await navigator.mediaDevices.getUserMedia(constraints);
 			if (generation !== this.startGeneration) {
 				for (const track of stream.getTracks()) {
@@ -209,9 +221,15 @@ export class AudioRecorder {
 			// declared type doesn't match its content. That mismatched Blob
 			// is decoded as silence by Whisper and its hosted derivatives.
 			const type = recorder.mimeType || this.chunks[0]?.type || 'audio/webm';
-			const blob = new Blob(this.chunks, { type });
-			console.debug(`[CC] AudioRecorder stopped: ${this.chunks.length} chunks, blob ${blob.size} bytes, type=${type}, peakLevel=${this.peakLevel.toFixed(4)}`);
+			const webmBlob = new Blob(this.chunks, { type });
+			// Prefer the uncompressed WAV built from raw PCM: the MediaRecorder Opus
+			// path silently produces a corrupt/silent track on some Windows/Electron
+			// builds. WAV has no encoder to fail, so Whisper always decodes it.
+			const wavBlob = this.buildWavBlob();
+			const blob = wavBlob ?? webmBlob;
+			console.debug(`[CC] AudioRecorder stopped: ${this.chunks.length} webm chunks (${webmBlob.size}b), pcmSamples=${this.pcmChunks.reduce((n, c) => n + c.length, 0)}, using=${wavBlob ? 'WAV' : 'WEBM'}, blob ${blob.size} bytes, type=${blob.type}, peakLevel=${this.peakLevel.toFixed(4)}`);
 			this.chunks = [];
+			this.pcmChunks = [];
 			this.options.onChunk?.(blob, true);
 			cleanup();
 			resolveStop(blob);
@@ -304,7 +322,29 @@ export class AudioRecorder {
 			}
 			this.analyser = this.audioContext.createAnalyser();
 			this.analyser.fftSize = 256;
-			this.audioContext.createMediaStreamSource(this.stream).connect(this.analyser);
+			const source = this.audioContext.createMediaStreamSource(this.stream);
+			source.connect(this.analyser);
+			// Tap raw PCM from the same graph for the WAV fallback.
+			try {
+				this.pcmSampleRate = this.audioContext.sampleRate;
+				this.pcmChunks = [];
+				const bufferSize = 4096;
+				const processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+				processor.onaudioprocess = (event): void => {
+					if (this.state !== 'recording') return;
+					const input = event.inputBuffer.getChannelData(0);
+					this.pcmChunks.push(new Float32Array(input));
+				};
+				source.connect(processor);
+				// Connect to destination so the graph is pulled; gain 0 keeps it silent.
+				const mute = this.audioContext.createGain();
+				mute.gain.value = 0;
+				processor.connect(mute).connect(this.audioContext.destination);
+				this.pcmNode = processor;
+			} catch (error) {
+				console.debug('[CC] PCM capture unavailable, falling back to MediaRecorder blob:', error);
+				this.pcmNode = null;
+			}
 			const samples = new Uint8Array(this.analyser.fftSize);
 			const sampleLevel = (): void => {
 				if (!this.analyser || this.state !== 'recording') return;
@@ -343,9 +383,50 @@ export class AudioRecorder {
 		if (this.levelFrame !== null && typeof window.cancelAnimationFrame !== 'undefined') window.cancelAnimationFrame(this.levelFrame);
 		this.levelFrame = null;
 		this.analyser = null;
+		if (this.pcmNode) {
+			try { this.pcmNode.onaudioprocess = null; this.pcmNode.disconnect(); } catch { /* node already torn down */ }
+			this.pcmNode = null;
+		}
 		const context = this.audioContext;
 		this.audioContext = null;
 		if (context && context.state !== 'closed') void context.close().catch(() => undefined);
+	}
+
+	/**
+	 * Encode captured raw PCM into a 16-bit mono WAV Blob. Returns null when no
+	 * usable PCM was captured (so the caller falls back to the MediaRecorder blob).
+	 */
+	private buildWavBlob(): Blob | null {
+		const total = this.pcmChunks.reduce((n, c) => n + c.length, 0);
+		if (total === 0 || this.pcmSampleRate === 0) return null;
+		const pcm = new Float32Array(total);
+		let offset = 0;
+		for (const chunk of this.pcmChunks) { pcm.set(chunk, offset); offset += chunk.length; }
+		const sampleRate = this.pcmSampleRate;
+		const bytesPerSample = 2;
+		const dataSize = pcm.length * bytesPerSample;
+		const buffer = new ArrayBuffer(44 + dataSize);
+		const view = new DataView(buffer);
+		const writeString = (pos: number, str: string): void => { for (let i = 0; i < str.length; i++) view.setUint8(pos + i, str.charCodeAt(i)); };
+		writeString(0, 'RIFF');
+		view.setUint32(4, 36 + dataSize, true);
+		writeString(8, 'WAVE');
+		writeString(12, 'fmt ');
+		view.setUint32(16, 16, true);          // PCM chunk size
+		view.setUint16(20, 1, true);           // audio format = PCM
+		view.setUint16(22, 1, true);           // channels = mono
+		view.setUint32(24, sampleRate, true);
+		view.setUint32(28, sampleRate * bytesPerSample, true); // byte rate
+		view.setUint16(32, bytesPerSample, true);              // block align
+		view.setUint16(34, 16, true);          // bits per sample
+		writeString(36, 'data');
+		view.setUint32(40, dataSize, true);
+		let pos = 44;
+		for (let i = 0; i < pcm.length; i++, pos += 2) {
+			const s = Math.max(-1, Math.min(1, pcm[i]!));
+			view.setInt16(pos, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+		}
+		return new Blob([buffer], { type: 'audio/wav' });
 	}
 
 	private releaseStream(): void {

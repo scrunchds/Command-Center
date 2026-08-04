@@ -663,10 +663,11 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.addSlider(slider => slider.setLimits(0.5, 2.0, 0.1).setValue(this.plugin.settings.textToSpeechRate).onChange(value => this.saveSetting('textToSpeechRate', value)));
 
 		// ── TTS provider routing (browser vs. provider API) ──
-		const ttsProviders: Array<'browser' | 'auto' | ProviderId> = ['browser', 'auto', ...TRANSCRIPTION_PROVIDER_ORDER.filter(id => TtsAdapter.supportsProvider(id))];
+		const ttsProviderIds = this.sortProvidersByReadiness(TRANSCRIPTION_PROVIDER_ORDER.filter(id => TtsAdapter.supportsProvider(id)));
+		const ttsProviders: Array<'browser' | 'auto' | ProviderId> = ['browser', 'auto', ...ttsProviderIds];
 		new Setting(body)
 			.setName('Text-to-speech engine')
-			.setDesc('Browser uses the built-in speech engine. A provider routes spoken output through its /audio/speech (or xai /v1/tts) endpoint for higher-quality voices. Auto picks the first enabled tts-capable provider.')
+			.setDesc('Browser uses the built-in speech engine. A provider routes spoken output through its /audio/speech (or xai /v1/tts) endpoint for higher-quality voices. Auto picks the first enabled tts-capable provider. Legend: 🟢 ready · 🔴 needs API key · ⚪ disabled.')
 			.addDropdown(dropdown => {
 				for (const providerId of ttsProviders) {
 					const label = providerId === 'browser' ? 'Browser (built-in)' : providerId === 'auto' ? 'Auto (provider)' : this.sttProviderLabel(providerId);
@@ -694,10 +695,10 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.setDesc('Allow voice recording and transcription for chat, workflow voice prompts, and dictation.')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.speechToTextEnabled).onChange(value => this.saveSetting('speechToTextEnabled', value)));
 
-		const sttProviders: Array<'auto' | ProviderId> = ['auto', ...TRANSCRIPTION_PROVIDER_ORDER];
+		const sttProviders: Array<'auto' | ProviderId> = ['auto', ...this.sortProvidersByReadiness(TRANSCRIPTION_PROVIDER_ORDER)];
 		new Setting(body)
 			.setName('Speech-to-text provider')
-			.setDesc('Auto uses the normal fallback order; pick a provider to prefer it first.')
+			.setDesc('Auto uses the normal fallback order; pick a provider to prefer it first. Legend: 🟢 ready · 🔴 needs API key · ⚪ disabled.')
 			.addDropdown(dropdown => {
 				for (const providerId of sttProviders) {
 					const label = providerId === 'auto' ? 'Auto' : this.sttProviderLabel(providerId);
@@ -772,13 +773,27 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.setDesc('Audio input device for voice recording. Select the mic you want to use.')
 			.addDropdown(dropdown => {
 				dropdown.addOption('', 'System default');
-				// Populate devices asynchronously; the dropdown updates after enumeration.
-				void getAudioInputDevices().then(devices => {
+				// Persist the chosen device immediately. Without this handler the
+				// selection was never saved, so voice capture always fell back to the
+				// system default device (which can be a silent/dead input).
+				dropdown.onChange(async value => {
+					this.plugin.settings.audioInputDeviceId = value;
+					await this.plugin.saveSettings();
+				});
+				// Device labels are blank until mic permission is granted in this
+				// session. Request access first so the user sees real device names,
+				// then populate and restore the saved selection.
+				void (async () => {
+					try {
+						const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+						for (const track of probe.getTracks()) track.stop();
+					} catch { /* permission denied or no device — labels may stay generic */ }
+					const devices = await getAudioInputDevices();
 					for (const device of devices) {
 						dropdown.addOption(device.deviceId, device.label || `Microphone (${device.deviceId.slice(0, 8)}…)`);
 					}
 					dropdown.setValue(this.plugin.settings.audioInputDeviceId);
-				});
+				})();
 				return dropdown;
 			});
 	}
@@ -837,6 +852,26 @@ export class PluginSettingsTab extends PluginSettingTab {
 	}
 
 	/** Build a provider label with a readiness indicator for the STT dropdown. */
+	/**
+	 * Order providers so ready-to-use ones surface first in the STT/TTS pickers:
+	 * enabled + key present (🟢) → enabled but missing key (🔴) → disabled (⚪).
+	 * Ties keep the original fallback order (stable sort).
+	 */
+	private sortProvidersByReadiness(providerIds: ProviderId[]): ProviderId[] {
+		const mp = this.plugin.settings.multiProvider;
+		const rank = (providerId: ProviderId): number => {
+			const meta = PROVIDER_REGISTRY[providerId];
+			const cred = mp.credentials[providerId];
+			if (!cred?.enabled) return 2;
+			if (meta?.requiresKey && !this.plugin.credentialVault.has(providerId)) return 1;
+			return 0;
+		};
+		return providerIds
+			.map((id, index) => ({ id, index, r: rank(id) }))
+			.sort((a, b) => a.r - b.r || a.index - b.index)
+			.map(entry => entry.id);
+	}
+
 	private sttProviderLabel(providerId: ProviderId): string {
 		const meta = PROVIDER_REGISTRY[providerId];
 		if (!meta) return providerId;
@@ -848,58 +883,70 @@ export class PluginSettingsTab extends PluginSettingTab {
 		return `${base} 🟢`;
 	}
 
-	/** Render one text field per STT-capable provider for per-provider model overrides. */
+	/** Render one model dropdown per STT-capable provider. Live provider models are
+	 * populated after the provider model sync; the registry/default remains available
+	 * when a provider does not expose a model catalogue. */
 	private renderPerProviderSttModels(body: HTMLElement): void {
 		body.createDiv({ cls: 'cc-subsetting-label', text: 'Per-provider speech-to-text models' });
-		body.createDiv({ cls: 'cc-setting-hint', text: 'Speech-to-text model ids are not portable across providers (e.g. openai/gpt-4o-mini-transcribe is openrouter, grok-stt is xAI). Set the slug each provider accepts; blank uses the default above.' });
+		body.createDiv({ cls: 'cc-setting-hint', text: 'Models are populated from each provider after Sync Models. Choose a model or use the provider default.' });
 		for (const providerId of TRANSCRIPTION_PROVIDER_ORDER) {
 			const meta = PROVIDER_REGISTRY[providerId];
 			if (!meta) continue;
-			const mp = this.plugin.settings.multiProvider;
-			const cred = mp.credentials[providerId];
+			const cred = this.plugin.settings.multiProvider.credentials[providerId];
 			const enabled = cred?.enabled && (!meta.requiresKey || this.plugin.credentialVault.has(providerId));
 			const defaultModel = DEFAULT_STT_MODELS[providerId];
 			if (!enabled && !defaultModel) continue;
-			new Setting(body)
-				.setName(`${meta.label} speech-to-text model`)
-				.setDesc(`Default: ${defaultModel ?? 'provider-chosen'}. Leave blank to use the default.`)
-				.addText(text => text
-					.setPlaceholder(defaultModel ?? 'automatic')
-					.setValue(this.plugin.settings.speechToTextModels[providerId] ?? '')
-					.onChange(value => {
-						const map = { ...this.plugin.settings.speechToTextModels };
-						if (value.trim()) map[providerId] = value.trim();
-						else delete map[providerId];
-						void this.saveSetting('speechToTextModels', map);
-					}));
+			this.renderSpeechModelDropdown(body, providerId, 'stt', defaultModel, /whisper|speech[-_ ]?to[-_ ]?text|transcri|\bstt\b/i);
 		}
 	}
 
-	/** Render one text field per TTS-capable provider for per-provider TTS model overrides. */
+	/** Render one model dropdown per TTS-capable provider. */
 	private renderPerProviderTtsModels(body: HTMLElement): void {
 		body.createDiv({ cls: 'cc-subsetting-label', text: 'Per-provider text-to-speech models' });
-		body.createDiv({ cls: 'cc-setting-hint', text: 'Text-to-speech model ids are not portable across providers. Set the slug each provider accepts; blank uses the engine default.' });
+		body.createDiv({ cls: 'cc-setting-hint', text: 'Models are populated from each provider after Sync Models. Choose a model or use the provider default.' });
 		for (const providerId of TRANSCRIPTION_PROVIDER_ORDER) {
 			const meta = PROVIDER_REGISTRY[providerId];
 			if (!meta || !TtsAdapter.supportsProvider(providerId)) continue;
-			const mp = this.plugin.settings.multiProvider;
-			const cred = mp.credentials[providerId];
+			const cred = this.plugin.settings.multiProvider.credentials[providerId];
 			const enabled = cred?.enabled && (!meta.requiresKey || this.plugin.credentialVault.has(providerId));
 			const defaultModel = DEFAULT_TTS_MODELS[providerId];
 			if (!enabled && !defaultModel) continue;
-			new Setting(body)
-				.setName(`${meta.label} text-to-speech model`)
-				.setDesc(`Default: ${defaultModel ?? 'none'}. Leave blank to use the default.`)
-				.addText(text => text
-					.setPlaceholder(defaultModel ?? 'none')
-					.setValue(this.plugin.settings.textToSpeechModels[providerId] ?? '')
-					.onChange(value => {
-						const map = { ...this.plugin.settings.textToSpeechModels };
-						if (value.trim()) map[providerId] = value.trim();
-						else delete map[providerId];
-						void this.saveSetting('textToSpeechModels', map);
-					}));
+			this.renderSpeechModelDropdown(body, providerId, 'tts', defaultModel, /\btts\b|text[-_ ]?to[-_ ]?speech|speech|audio[-_ ]?speech/i);
 		}
+	}
+
+	private renderSpeechModelDropdown(
+		body: HTMLElement,
+		providerId: ProviderId,
+		kind: 'stt' | 'tts',
+		defaultModel: string | undefined,
+		filter: RegExp,
+	): void {
+		const meta = PROVIDER_REGISTRY[providerId];
+		if (!meta) return;
+		const live = this.plugin.settings.multiProvider.liveModels?.[providerId] ?? [];
+		const values = new Set<string>();
+		if (defaultModel) values.add(defaultModel);
+		for (const model of live) if (filter.test(model.id) || filter.test(model.label)) values.add(model.id);
+		const settingMap = kind === 'stt' ? this.plugin.settings.speechToTextModels : this.plugin.settings.textToSpeechModels;
+		const selected = settingMap[providerId] ?? '';
+		if (selected) values.add(selected);
+		const options = [...values];
+		new Setting(body)
+			.setName(`${meta.label} ${kind === 'stt' ? 'speech-to-text' : 'text-to-speech'} model`)
+			.setDesc(`${live.length ? `${options.length} compatible model(s) found live. ` : ''}Choose a model or use the provider default.`)
+			.addDropdown(dropdown => {
+				dropdown.addOption('', `Provider default${defaultModel ? ` (${defaultModel})` : ''}`);
+				for (const model of options) dropdown.addOption(model, model);
+				dropdown.setValue(selected);
+				dropdown.onChange(value => {
+					const map = { ...settingMap };
+					if (value) map[providerId] = value;
+					else delete map[providerId];
+					void this.saveSetting(kind === 'stt' ? 'speechToTextModels' : 'textToSpeechModels', map);
+				});
+				return dropdown;
+			});
 	}
 
 	private renderProviderCard(container: HTMLElement, pid: ProviderId): void {

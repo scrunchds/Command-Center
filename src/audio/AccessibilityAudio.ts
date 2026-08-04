@@ -38,11 +38,21 @@ export class AccessibilityAudio {
 				const durationMs = recorder.getDurationMs();
 				const peakLevel = recorder.getPeakLevel();
 				console.debug(`[CC] Dictation stats: ${durationMs}ms, peakLevel=${peakLevel.toFixed(4)}`);
-				if (durationMs < MIN_TRANSCRIPTION_DURATION_MS || peakLevel < SILENCE_LEVEL_THRESHOLD) {
-					console.debug('[CC] Dictation audio too short or silent — discarding');
+				// Reject only clips that are clearly accidental: too short to contain
+				// speech, OR short AND silent. A recording of sufficient length is sent
+				// even when the analyser under-measured its level (a known Windows /
+				// Electron issue where the AudioContext reports a low RMS); the backend
+				// sanitizeDictation() still strips genuine silence hallucinations.
+				const tooShort = durationMs < MIN_TRANSCRIPTION_DURATION_MS;
+				const shortAndSilent = durationMs < 1500 && peakLevel < SILENCE_LEVEL_THRESHOLD;
+				if (tooShort || shortAndSilent) {
+					console.debug(`[CC] Dictation audio rejected — tooShort=${tooShort}, shortAndSilent=${shortAndSilent}`);
 					onStatus?.('error', 'No speech detected — recording too short or silent.');
 					await recorder.stop();
 					return '';
+				}
+				if (peakLevel < SILENCE_LEVEL_THRESHOLD) {
+					console.debug(`[CC] Low peakLevel (${peakLevel.toFixed(4)}) but duration ${durationMs}ms — sending anyway.`);
 				}
 				const audio = await recorder.stop();
 				this.cue('stop');
@@ -55,6 +65,7 @@ export class AccessibilityAudio {
 		const candidates = this.transcriptionCandidates();
 		if (!this.plugin.settings.speechToTextEnabled) throw new Error('Enable speech to text in Command Center settings.');
 		if (!candidates.length) throw new Error('Enable a local or cloud speech-to-text provider in Command Center settings.');
+		console.debug(`[CC] transcribe() sending blob: ${audio.size} bytes, type=${audio.type}`);
 		const errors: string[] = [];
 		for (let index = 0; index < candidates.length; index++) {
 			if (signal?.aborted) throw new Error('Transcription cancelled.');
