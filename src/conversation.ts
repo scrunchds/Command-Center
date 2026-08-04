@@ -45,6 +45,18 @@ export class ConversationManager {
 	private readonly MAX_TURN_CHARS = TOKEN_LIMITS.MAX_TURN_CHARS;
 	private readonly MAX_TURNS = TOKEN_LIMITS.MAX_TURNS;
 
+	/**
+	 * Shared context cache — the "one body" memory state shared across agent
+	 * turns within a conversation. Caches the last RAG + memory-recall context
+	 * per conversation so consecutive turns don't re-run expensive retrieval
+	 * (and rebuild heavy payloads) when the conversational focus hasn't shifted.
+	 * Entries are query-keyed and TTL-bounded; any new query, a conversation
+	 * switch, or expiry forces a fresh retrieval.
+	 */
+	private readonly contextCache = new Map<string, { query: string; context: string; expiresAt: number }>();
+	/** Re-run retrieval at most once per this many ms within a conversation. */
+	private readonly contextCacheTtlMs = 60_000;
+
 	constructor(
 		daemon: PiAgentDaemon, onPersist?: () => void, memoryStore?: AgentMemoryStore,
 		retriever?: HybridRetriever, contextCharLimit = 8_000, getStyleGuide?: () => string,
@@ -83,6 +95,7 @@ export class ConversationManager {
 	}
 	delete(id: string): boolean {
 		if (this.activeConversationId === id) this.activeConversationId = null;
+		this.contextCache.delete(id);
 		return this.conversations.delete(id);
 	}
 	list(): Conversation[] { return [...this.conversations.values()]; }
@@ -96,6 +109,7 @@ export class ConversationManager {
 		}
 		if (oldest) {
 			if (this.activeConversationId === oldest.id) this.activeConversationId = null;
+			this.contextCache.delete(oldest.id);
 			this.conversations.delete(oldest.id);
 		}
 	}
@@ -116,7 +130,7 @@ export class ConversationManager {
 		this.addTurn(conv, 'user', message);
 		this.compactTurns(conv);
 		try {
-			const context = await this.buildContext(message);
+			const context = await this.buildContext(conv.id, message);
 			const styleGuide = this.getStyleGuide?.() ?? '';
 			const response = await dispatcher.dispatch({
 				systemPrompt: `You are Command Center operating inside an Obsidian vault. Follow the user-authored style guide below; do not substitute a built-in tone.\n\n<style-guide>\n${styleGuide}\n</style-guide>${context}`,
@@ -195,14 +209,28 @@ export class ConversationManager {
 		}
 	}
 
-	private async buildContext(query: string): Promise<string> {
+	/**
+	 * Build the shared vault + memory context for a turn, backed by a
+	 * per-conversation cache. Consecutive turns in the same conversation whose
+	 * query is unchanged reuse the cached context (avoiding a redundant RAG
+	 * retrieval + memory recall pass and the heavy payload rebuild that goes
+	 * with it); a changed query or an expired entry forces a fresh retrieval.
+	 */
+	private async buildContext(conversationId: string, query: string): Promise<string> {
+		const now = Date.now();
+		const cached = this.contextCache.get(conversationId);
+		if (cached && cached.query === query && cached.expiresAt > now) {
+			return cached.context;
+		}
 		const context = await injectRagContext(this.retriever, query, {
 			existingContext: this.memoryStore?.getSystemMemoryPrompt(query) ?? '',
 			limit: 5,
 			charBudget: this.contextCharLimit,
 			logger: { warn: (message: string, error: unknown) => console.warn(message.replace('Passive RAG', 'Passive chat retrieval'), error) },
 		});
-		return context ? `\n\n${context}` : '';
+		const result = context ? `\n\n${context}` : '';
+		this.contextCache.set(conversationId, { query, context: result, expiresAt: now + this.contextCacheTtlMs });
+		return result;
 	}
 
 	private async retainSession(conv: Conversation): Promise<void> {

@@ -29,6 +29,14 @@ export class ProviderDispatcher {
 	private getSettings: () => MultiProviderSettings;
 	/** Provider-local circuits; permanent auth/schema errors never open them. */
 	readonly circuitBreaker = new ProviderCircuitBreaker();
+	/**
+	 * Bounded memo for prompt → TaskType classification. classifyTask compiles
+	 * several regexes per call and runs on every dispatch; caching by prompt
+	 * (capped, FIFO-evicted) removes that repeated work for repeated prompts
+	 * (e.g. retried/steered turns) without changing routing behavior.
+	 */
+	private readonly classificationCache = new Map<string, TaskType>();
+	private readonly classificationCacheLimit = 128;
 
 	constructor(factory: ProviderFactory, getSettings: () => MultiProviderSettings) {
 		this.factory = factory;
@@ -44,7 +52,7 @@ export class ProviderDispatcher {
 		explicitTaskType?: TaskType,
 	): Promise<ProviderResponse> {
 		const settings = this.getSettings();
-		const taskType = explicitTaskType ?? classifyTask(request.userPrompt);
+		const taskType = explicitTaskType ?? this.classifyCached(request.userPrompt);
 		const route = resolveRoute(taskType, settings);
 		const fallback = settings.fallback ?? DEFAULT_FALLBACK_CONFIG;
 
@@ -98,6 +106,25 @@ export class ProviderDispatcher {
 	/** Invalidate cached providers (e.g., after credentials change). */
 	invalidate(id?: ProviderId): void {
 		this.factory.invalidate(id);
+	}
+
+	/**
+	 * Classify a prompt with a bounded FIFO cache. classifyTask is a pure
+	 * function of (prompt, workerProfile) that compiles regexes per call; this
+	 * memoizes its result so repeated dispatches of the same prompt skip the
+	 * regex work. The cache is capped and evicts in insertion order.
+	 */
+	private classifyCached(prompt: string, workerProfile?: string): TaskType {
+		const key = `${prompt}\u0000${workerProfile ?? ''}`;
+		const hit = this.classificationCache.get(key);
+		if (hit !== undefined) return hit;
+		const taskType = classifyTask(prompt, workerProfile);
+		if (this.classificationCache.size >= this.classificationCacheLimit) {
+			const oldest = this.classificationCache.keys().next();
+			if (!oldest.done) this.classificationCache.delete(oldest.value);
+		}
+		this.classificationCache.set(key, taskType);
+		return taskType;
 	}
 
 	/* ─── Internal Fallback Pipeline ────────────────── */
