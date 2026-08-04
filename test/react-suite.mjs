@@ -1984,6 +1984,30 @@ const agentContext = await daemon.buildPassiveContext('production deployment');
 assert.match(agentContext, /<context>[\s\S]*Persistent Memory/);
 assert.match(agentContext, /Relevant Vault Context[\s\S]*blue-green releases/);
 pass('31c: chat and ReAct loops inject bounded RAG plus persistent memory context blocks');
+{
+// 31c.1 — ConversationManager caches vault+memory context per conversation so
+// a repeated query reuses retrieval (no second RAG pass) and a changed query
+// forces a fresh retrieval. This is the shared-memory-state optimization that
+// prevents heavy payloads from being rebuilt on every turn.
+let ragCalls = 0;
+let memoryCalls = 0;
+const cachedMemory = { getSystemMemoryPrompt: () => { memoryCalls++; return '## Memory'; }, summarizeSession: async () => ({}) };
+const cachedRetriever = { search: async () => { ragCalls++; return [sampleMatch]; }, formatContext: matches => matches.map(m => `[${m.chunk.metadata.filePath}]\n${m.chunk.text}`).join('\n') };
+const cachedConversations = new ConversationManager({}, undefined, cachedMemory, cachedRetriever, 1000);
+const cachedDispatcher = { dispatch: async () => ({ success: true, output: 'ok' }) };
+await cachedConversations.executeProviderTurn(cachedDispatcher, 'How is production deployed?');
+const firstRagCalls = ragCalls;
+const firstMemoryCalls = memoryCalls;
+// Same query, same conversation -> reuse cached context, no new retrieval.
+await cachedConversations.executeProviderTurn(cachedDispatcher, 'How is production deployed?');
+assert.equal(ragCalls, firstRagCalls, 'repeated query should not re-run RAG retrieval');
+assert.equal(memoryCalls, firstMemoryCalls, 'repeated query should not re-run memory recall');
+// Different query -> fresh retrieval.
+await cachedConversations.executeProviderTurn(cachedDispatcher, 'How is staging deployed?');
+assert.ok(ragCalls > firstRagCalls, 'changed query should re-run RAG retrieval');
+assert.ok(memoryCalls > firstMemoryCalls, 'changed query should re-run memory recall');
+pass('31c.1: ConversationManager caches context per conversation and refreshes on query change');
+}
 }
 }
 
@@ -2286,6 +2310,29 @@ const result = await dispatcher.dispatch({ systemPrompt: '', userPrompt: 'hello'
 assert.equal(result.output, 'lm-ok', 'dispatch reached LM Studio and returned its output');
 assert.equal(calls.lmstudio, 1, 'LM Studio complete called exactly once');
 pass('34f: dispatch auto-reaches an enabled local provider when cloud routes are disabled');
+}
+{
+// 34g — ProviderDispatcher memoizes prompt → TaskType classification so the
+// regex-heavy classifyTask runs at most once per (prompt, workerProfile) pair.
+// Two dispatches of the same prompt share one classification; a distinct
+// prompt triggers a second classification. This trims latency on the hot path
+// without changing routing behavior.
+const classifyCalls = { count: 0 };
+const tracedFactory = {
+  get: () => ({ complete: async () => ({ output: 'ok', success: true, latencyMs: 1 }), healthCheck: async () => null }),
+  isUsable: () => true,
+  listUsable: () => [], listAvailable: () => [], resolveModelForTask: () => 'm', getBaseUrl: () => '', invalidate: () => {},
+};
+const tracedSettings = () => ({ credentials: { lmstudio: { enabled: true } }, routing: {}, fallback: { primary: 'lmstudio', fallbacks: [], fallbackOnRateLimit: true, fallbackOnTimeout: true, maxAttempts: 1, backoffMs: 1 }, defaults: {} });
+const tracedDispatcher = new ProviderDispatcher(tracedFactory, tracedSettings);
+// Patch classifyCached to count entries into the memo.
+const memoBefore = tracedDispatcher.classificationCache.size;
+await tracedDispatcher.dispatch({ systemPrompt: '', userPrompt: 'summarize this long document please ' + 'x'.repeat(600) });
+await tracedDispatcher.dispatch({ systemPrompt: '', userPrompt: 'summarize this long document please ' + 'x'.repeat(600) });
+await tracedDispatcher.dispatch({ systemPrompt: '', userPrompt: 'why does the pipeline fail in production?' });
+const memoAfter = tracedDispatcher.classificationCache.size;
+assert.equal(memoAfter - memoBefore, 2, 'two distinct prompts produce exactly two cached classifications (repeat did not re-classify)');
+pass('34g: ProviderDispatcher memoizes prompt classification across repeated dispatches');
 }
 }
 
