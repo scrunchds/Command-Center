@@ -1,4 +1,4 @@
-import { Modal, Notice, normalizePath, Plugin, TFile, type WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Modal, Notice, normalizePath, Plugin, TFile, type WorkspaceLeaf } from 'obsidian';
 import {
 	PiAgentDaemon,
 	detectPiPath,
@@ -68,7 +68,7 @@ import {
 	loadWorkflowFromNote,
 } from './workflows/native-workflow-parser';
 import type { ResolvedChatContext } from './ui/chat-context';
-import type { VoicePromptMode } from './ui/voice-prompt-modal';
+import type { VoicePromptMode, VoicePromptFocus } from './ui/voice-prompt-modal';
 import { AgentMemoryStore } from './memory/memory-store';
 import { EmbeddingAdapter } from './rag/embeddings';
 import { HybridRetriever } from './rag/hybrid-retriever';
@@ -1294,18 +1294,44 @@ export default class CommandCenterPlugin extends Plugin {
 		mode: VoicePromptMode,
 		spokenText: string,
 		resolved: ResolvedChatContext,
+		focus?: VoicePromptFocus,
 	): Promise<void> {
-		// Preserve the original speech when handing off to chat: the chat view owns
-		// mention/selection resolution and will refresh its context pills before send.
-		const chatView = this.getCommandCenterChatView();
+		const { workspace } = this.app;
+
+		// Resolve the user's focus context. The global voice modal captures `focus`
+		// before it takes keyboard focus, so the user's pre-recording intent
+		// survives the asynchronous transcription delay. The internal quick-voice
+		// entry point passes no snapshot, so we detect the active editor live.
+		const mdView = focus?.markdownView ?? workspace.getActiveViewOfType(MarkdownView);
+
+		// (3) Note Routing — a note editor is in focus: insert the transcribed text
+		// directly into the active note at the cursor position.
+		if (mdView?.editor) {
+			try {
+				const editor = mdView.editor;
+				editor.replaceRange(spokenText, editor.getCursor());
+				return;
+			} catch {
+				// The note may have been closed during recording — fall through to chat.
+			}
+		}
+
+		// (4) Chat Routing — the chat panel is in focus, or no note editor is in
+		// focus: route the transcribed text into the chat input field. Open the
+		// chat panel if it is not already available, and populate (not send) so
+		// the user can review the transcription before dispatching.
+		let chatView = this.getCommandCenterChatView();
+		if (!chatView) {
+			await this.activateCommandCenterChatView();
+			chatView = this.getCommandCenterChatView();
+		}
 		if (chatView) {
-			await chatView.submitExternalPrompt(
-				spokenText,
-				mode,
-			);
+			chatView.populateChatInput(spokenText, mode);
 			return;
 		}
 
+		// Defensive fallback — no note editor in focus and the chat panel could not
+		// be opened: preserve prior behavior by running inline in the dashboard.
 		const prompt = resolved.cleanedPrompt || spokenText;
 		const activeFile = this.app.workspace.getActiveFile();
 

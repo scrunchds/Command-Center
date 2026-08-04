@@ -540,6 +540,7 @@ The chat microphone and **Command Center: Quick Voice Prompt** use browser-nativ
 - Retry only for transient network/408/429/5xx failures
 - **Mic button disabled** when no STT provider is configured, with tooltip feedback
 - Spoken `@` mentions and active-selection context resolution
+- **Contextual delivery** — the Quick Voice Prompt routes transcribed text by focus: into the active note at the cursor when a note is in focus, or into the chat input field (for review before send) when the chat panel is in focus or no note editor is active
 
 Audio is sent only to the transcription endpoint configured in your local settings. Review that provider's privacy policy before use.
 

@@ -1794,7 +1794,8 @@ pass('27h: voice modal auto-starts recording, aborts transcription, and tears do
 assert.match(modalSource, /Done & send/);
 assert.match(modalSource, /Transcribing audio\.\.\./);
 assert.match(modalSource, /resolveChatContext\(this\.plugin\.app, spokenText\)/);
-assert.match(modalSource, /dispatchVoicePrompt\(this\.mode, spokenText, resolved\)/);
+assert.match(modalSource, /dispatchVoicePrompt\(this\.mode, spokenText, resolved[^)]*\)/);
+assert.match(modalSource, /VoicePromptFocus/);
 assert.match(modalSource, /fetchLiveAudioModels\(\)/);
 assert.match(modalSource, /cc-voice-mode-select/);
 assert.match(modalSource, /cc-voice-stt-badge/);
@@ -1802,6 +1803,11 @@ pass('27i: voice modal discovers STT, transcribes, resolves context, and dispatc
 const commandSource = await readFile(join(SRC, 'commands.ts'), 'utf8');
 const mainSource = await readFile(join(SRC, 'main.ts'), 'utf8');
 assert.match(commandSource, /name: 'Voice prompt'/);
+assert.match(commandSource, /markdownView: plugin\.app\.workspace\.getActiveViewOfType\(MarkdownView\)/);
+assert.match(mainSource, /Note Routing/);
+assert.match(mainSource, /Chat Routing/);
+assert.match(mainSource, /populateChatInput\(spokenText/);
+assert.match(mainSource, /editor\.replaceRange\(spokenText, editor\.getCursor\(\)\)/);
 assert.match(mainSource, /mode === 'workflow'/);
 assert.match(mainSource, /mode === 'react'/);
 assert.match(mainSource, /executeProviderTurn/);
