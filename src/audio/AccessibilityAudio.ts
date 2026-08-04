@@ -1,5 +1,5 @@
 import type CommandCenterPlugin from '../main';
-import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, type TranscriptionCandidate } from './transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MIN_TRANSCRIPTION_DURATION_MS, SILENCE_LEVEL_THRESHOLD, type TranscriptionCandidate } from './transcriber';
 import { AudioRecorder } from './audio-recorder';
 import { TtsAdapter, playTtsBlob } from './tts-adapter';
 
@@ -27,6 +27,20 @@ export class AccessibilityAudio {
 		return {
 			recorder,
 			stop: async () => {
+				// Silence / short-audio guard: reject near-silent or accidental-tap
+				// recordings BEFORE sending audio to the provider. Whisper and its
+				// hosted derivatives hallucinate filler words ("you", "thank you",
+				// "okay", …) on noise-only input; sending it wastes a request and
+				// surfaces those artifacts as dictation text.
+				const durationMs = recorder.getDurationMs();
+				const peakLevel = recorder.getPeakLevel();
+				console.debug(`[CC] Dictation stats: ${durationMs}ms, peakLevel=${peakLevel.toFixed(4)}`);
+				if (durationMs < MIN_TRANSCRIPTION_DURATION_MS || peakLevel < SILENCE_LEVEL_THRESHOLD) {
+					console.debug('[CC] Dictation audio too short or silent — discarding');
+					onStatus?.('error', 'No speech detected — recording too short or silent.');
+					await recorder.stop();
+					return '';
+				}
 				const audio = await recorder.stop();
 				this.cue('stop');
 				return this.transcribe(audio, signal, onStatus);

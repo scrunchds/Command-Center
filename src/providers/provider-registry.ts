@@ -46,10 +46,12 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 		requiresKey: true, defaultBaseUrl: 'https://api.openai.com/v1',
 		capabilities: caps({ vision: true, embeddings: true, tokenCounting: true, maxContextWindow: 200_000 }),
 		models: [
+			m('gpt-5', 'GPT-5', 400_000, 32_768, { vision: true, strengths: ['reasoning', 'coding', 'vision', 'reading'] }),
 			m('gpt-4o', 'GPT-4o', 128_000, 16384, { vision: true, strengths: ['reasoning', 'coding', 'vision', 'reading'] }),
 			m('gpt-4o-mini', 'GPT-4o Mini', 128_000, 16384, { vision: true, cost: 'cheap', strengths: ['fast', 'reading', 'reasoning'] }),
-			m('o1', 'o1', 200_000, 100_000, { vision: true, tools: false, cost: 'expensive', strengths: ['reasoning', 'coding'] }),
-			m('o3-mini', 'o3-mini', 200_000, 100_000, { tools: false, strengths: ['reasoning', 'coding'] }),
+			m('o3', 'o3', 200_000, 100_000, { vision: true, cost: 'expensive', strengths: ['reasoning', 'coding'] }),
+			m('o3-mini', 'o3-mini', 200_000, 100_000, { strengths: ['reasoning', 'coding'] }),
+			m('o4-mini', 'o4-mini', 200_000, 100_000, { vision: true, strengths: ['reasoning', 'coding', 'fast'] }),
 		],
 	},
 	'anthropic': {
@@ -58,9 +60,9 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 		requiresKey: true, defaultBaseUrl: 'https://api.anthropic.com/v1',
 		capabilities: caps({ vision: true, promptCaching: true, tokenCounting: true, maxContextWindow: 200_000 }),
 		models: [
-			m('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet', 200_000, 8192, { vision: true, cache: true, strengths: ['coding', 'reasoning', 'reading', 'vision'] }),
-			m('claude-3-opus-20240229', 'Claude 3 Opus', 200_000, 4096, { vision: true, cache: true, cost: 'expensive', strengths: ['reasoning', 'reading', 'coding'] }),
-			m('claude-3-5-haiku-20241022', 'Claude 3.5 Haiku', 200_000, 8192, { vision: true, cache: true, cost: 'cheap', strengths: ['fast', 'reading', 'reasoning'] }),
+			m('claude-opus-4-1-20250805', 'Claude Opus 4.1', 200_000, 32_000, { vision: true, cache: true, cost: 'expensive', strengths: ['reasoning', 'reading', 'coding', 'vision'] }),
+			m('claude-sonnet-4-5-20250929', 'Claude Sonnet 4.5', 200_000, 16_384, { vision: true, cache: true, strengths: ['coding', 'reasoning', 'reading', 'vision'] }),
+			m('claude-haiku-4-5-20251001', 'Claude Haiku 4.5', 200_000, 8192, { vision: true, cache: true, cost: 'cheap', strengths: ['fast', 'reading', 'reasoning'] }),
 		],
 	},
 	'google-gemini': {
@@ -69,8 +71,9 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 		requiresKey: true, defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
 		capabilities: caps({ vision: true, promptCaching: true, tokenCounting: true, maxContextWindow: 2_097_152 }),
 		models: [
-			m('gemini-1.5-pro', 'Gemini 1.5 Pro', 2_097_152, 8192, { vision: true, strengths: ['reading', 'reasoning', 'vision'] }),
-			m('gemini-1.5-flash', 'Gemini 1.5 Flash', 1_048_576, 8192, { vision: true, cost: 'cheap', strengths: ['fast', 'reading', 'vision'] }),
+			m('gemini-2.5-pro', 'Gemini 2.5 Pro', 2_097_152, 8192, { vision: true, strengths: ['reading', 'reasoning', 'vision'] }),
+			m('gemini-2.5-flash', 'Gemini 2.5 Flash', 1_048_576, 8192, { vision: true, cost: 'cheap', strengths: ['fast', 'reading', 'vision', 'reasoning'] }),
+			m('gemini-2.0-flash', 'Gemini 2.0 Flash', 1_048_576, 8192, { vision: true, cost: 'cheap', strengths: ['fast', 'reading', 'vision'] }),
 		],
 	},
 	'openrouter': {
@@ -114,9 +117,10 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 		requiresKey: true, defaultBaseUrl: 'https://api.groq.com/openai/v1',
 		capabilities: caps({ vision: false, maxContextWindow: 128_000 }),
 		models: [
-			m('llama-3.1-70b-versatile', 'Llama 3.1 70B', 128_000, 8192, { cost: 'cheap', strengths: ['reasoning', 'coding', 'fast'] }),
+			m('llama-3.3-70b-versatile', 'Llama 3.3 70B', 128_000, 8192, { cost: 'cheap', strengths: ['reasoning', 'coding', 'fast'] }),
 			m('llama-3.1-8b-instant', 'Llama 3.1 8B', 128_000, 8192, { cost: 'cheap', strengths: ['fast', 'reading'] }),
-			m('mixtral-8x7b-32768', 'Mixtral 8x7B', 32_000, 4096, { cost: 'cheap', strengths: ['reasoning', 'reading'] }),
+			m('llama-4-maverick-17b-128e-instruct', 'Llama 4 Maverick', 1_048_576, 8192, { cost: 'cheap', strengths: ['reasoning', 'reading'] }),
+			m('llama-4-scout-17b-16e-instruct', 'Llama 4 Scout', 1_048_576, 8192, { cost: 'cheap', strengths: ['reading', 'fast'] }),
 		],
 	},
 	'deepinfra': {
@@ -136,8 +140,10 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 		capabilities: caps({ vision: false, maxContextWindow: 128_000 }),
 		models: [
 			m('mistral-large-latest', 'Mistral Large', 128_000, 4096, { strengths: ['reasoning', 'reading', 'coding'] }),
+			m('mistral-medium-3', 'Mistral Medium 3', 128_000, 4096, { strengths: ['reasoning', 'reading', 'fast'] }),
 			m('mistral-small-latest', 'Mistral Small', 32_000, 4096, { cost: 'cheap', strengths: ['fast', 'reading'] }),
-			m('codestral-latest', 'Codral', 32_000, 4096, { strengths: ['coding', 'reasoning'] }),
+			m('codestral-latest', 'Codestral', 32_000, 4096, { strengths: ['coding', 'reasoning'] }),
+			m('devstral-2507', 'Devstral', 32_000, 4096, { strengths: ['coding', 'fast'] }),
 		],
 	},
 	'cohere': {
@@ -189,10 +195,10 @@ export const PROVIDER_REGISTRY: Record<ProviderId, ProviderMeta> = {
 /* ─── Default Models Per Task Type ─────────────────────── */
 
 export const DEFAULT_ROUTE_MODELS: Record<TaskType, { provider: ProviderId; model: string }> = {
-	coding:    { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022' },
+	coding:    { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
 	vision:    { provider: 'openai', model: 'gpt-4o' },
-	reading:   { provider: 'google-gemini', model: 'gemini-1.5-pro' },
-	reasoning: { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022' },
+	reading:   { provider: 'google-gemini', model: 'gemini-2.5-pro' },
+	reasoning: { provider: 'anthropic', model: 'claude-opus-4-1-20250805' },
 	fast:      { provider: 'groq', model: 'llama-3.1-8b-instant' },
 };
 

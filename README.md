@@ -68,7 +68,7 @@ Routing classifies work as `coding`, `vision`, `reading`, `reasoning`, or `fast`
 
 Additional provider capabilities include:
 
-- Background model discovery with persistent catalogs and static-registry fallback
+- Background model discovery with persistent catalogs and static-registry fallback — live models auto-fetch from each enabled provider's `/models` endpoint on startup, covering chat, STT, and TTS model resolution
 - Anthropic prompt caching and Gemini cached-content bookkeeping
 - Multimodal image preprocessing for vault attachments and Canvas file nodes
 - Structured-output repair only at model-authored JSON boundaries
@@ -550,7 +550,7 @@ This allows a Base to function as a live, self-draining agent queue.
 The chat microphone and **Command Center: Quick Voice Prompt** use browser-native `MediaRecorder`:
 
 - In-memory audio assembly
-- Live timer and level meter
+- Live timer and level meter (chat, voice prompt modal, and dashboard dictate button)
 - Deterministic microphone-track cleanup
 - OpenAI-compatible multipart transcription (per-provider model resolution — see below)
 - Retry only for transient network/408/429/5xx failures

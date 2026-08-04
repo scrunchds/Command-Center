@@ -429,16 +429,39 @@ export const SILENCE_LEVEL_THRESHOLD = 0.02;
  * transcripts shorter than 2 characters (which are never valid speech).
  */
 export function sanitizeDictation(text: string): string {
-	const hallucinations = [
+	// Known Whisper silence-hallucination artifacts. Whisper and its hosted
+	// derivatives (OpenRouter, Groq, DeepInfra, etc.) emit these on near-silent
+	// or noise-only input. Match case-insensitively against the trimmed text.
+	const hallucinations = new Set([
 		"thank you.",
 		"thank you",
 		"thank you, you you",
 		"thank you for watching.",
+		"thank you for watching",
 		"subtitles by amara.org community",
-	];
+		"you",
+		"you.",
+		"you you",
+		"you you you",
+		"mmm",
+		"mm",
+		"hmm",
+		"uh",
+		"um",
+		"ah",
+		"okay",
+		"ok",
+		"so",
+		"the",
+		"a",
+		"i",
+		"and",
+		"is",
+		"it",
+	]);
 	const normalizedText = text.trim().toLowerCase();
 
-	if (hallucinations.includes(normalizedText) || normalizedText.length < 2) {
+	if (hallucinations.has(normalizedText) || normalizedText.length < 2) {
 		return ""; // Kill the hallucination
 	}
 	return text.trim();

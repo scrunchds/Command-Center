@@ -752,6 +752,9 @@ export class CommandCenterView extends ItemView {
 		const controls = section.createDiv({ cls: 'cc-dashboard-input-actions' });
 		const dictate = controls.createEl('button', { text: '🎙 Dictate', attr: { 'aria-label': 'Start dictation' } });
 		let stopDictation: (() => Promise<string>) | null = null;
+		const levelMeter = controls.createDiv({ cls: 'cc-voice-level cc-dashboard-dictate-meter', attr: { role: 'meter', 'aria-label': 'Microphone audio level', 'aria-valuemin': '0', 'aria-valuemax': '100' } });
+		const levelFill = levelMeter.createDiv({ cls: 'cc-voice-level-fill' });
+		let stopLevelMeter: (() => void) | null = null;
 		this.registerDomEvent(dictate, 'click', () => void (async () => {
 			if (stopDictation) {
 				dictate.disabled = true;
@@ -768,7 +771,7 @@ export class CommandCenterView extends ItemView {
 						new Notice('Dictation was empty — no text inserted.', 4000);
 					}
 				} catch (error) { new Notice(`Dictation failed: ${(error as Error).message}`); }
-				finally { stopDictation = null; dictate.disabled = false; dictate.setText('🎙 Dictate'); }
+				finally { stopDictation = null; dictate.disabled = false; dictate.setText('🎙 Dictate'); stopLevelMeter?.(); stopLevelMeter = null; levelMeter.removeClass('is-visible'); levelFill.setCssProps({ width: '0%' }); }
 			} else {
 				try {
 					if (!this.plugin.settings.speechToTextEnabled) throw new Error('Enable speech to text in Settings to use dictation.');
@@ -777,6 +780,16 @@ export class CommandCenterView extends ItemView {
 					});
 					stopDictation = session.stop;
 					dictate.setText('■ stop dictation');
+
+					// Live mic-level meter: visual feedback while recording so the user
+					// can see their voice is being captured (and why a silent clip may
+					// be discarded by the silence guard).
+					levelMeter.addClass('is-visible');
+					stopLevelMeter = session.recorder.onAudioLevel(level => {
+						const percent = Math.round(Math.min(1, level) * 100);
+						levelFill.setCssProps({ width: `${percent}%` });
+						levelMeter.setAttribute('aria-valuenow', String(percent));
+					});
 				} catch (error) { new Notice(`Dictation failed: ${(error as Error).message}`); }
 			}
 		})());

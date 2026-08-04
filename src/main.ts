@@ -535,6 +535,18 @@ export default class CommandCenterPlugin extends Plugin {
 				this.openOnboarding();
 		});
 
+		// Auto-fetch live models (chat + STT + TTS) from every enabled provider's
+		// /models endpoint after the workspace is ready. This keeps the model
+		// dropdowns and the STT/TTS default-model resolution current without
+		// waiting for the user to click “Refresh models” in settings. Fire-and-
+		// forget: failures fall back to the static registry defaults.
+		this.app.workspace.onLayoutReady(() => {
+			void this.providerFactory.refreshLiveModels().then(({ synced, failed }) => {
+				if (synced > 0) this.saveSettings().catch(() => undefined);
+				console.debug(`[CC] Live model refresh: ${synced} synced${failed ? `, ${failed} failed` : ''}`);
+			});
+		});
+
 		if (this.settings.enableDaemon) {
 			await this.daemon.prepareNodeExecutable();
 			this.daemon.start();
