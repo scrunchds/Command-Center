@@ -89,6 +89,7 @@ export class Setting {
 	setDynamicTooltip() { return this; }
 	setLimits(min, max, step) { return this; }
 	setWarning() { return this; }
+	setDestructive() { return this; }
 	setButtonText(text) { return this; }
 	onChange(cb) { return this; }
 }
