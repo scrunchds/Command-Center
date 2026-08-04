@@ -1096,6 +1096,8 @@ export class CommandCenterChatView extends ItemView {
 			return;
 		}
 		let streamed = '';
+		const tools = getCapabilityRegistry().getEnabledToolDefinitions(true);
+		console.debug('[Command Center] Chat tools available:', tools.map(tool => tool.name));
 		const result = await this.plugin.conversations.executeProviderTurn(
 			this.plugin.dispatcher,
 			prompt,
@@ -1103,6 +1105,26 @@ export class CommandCenterChatView extends ItemView {
 			delta => {
 				streamed += delta;
 				if (this.isOpen) this.appendMessage(assistant, delta);
+			},
+			tools,
+			async (name, params) => {
+				const tool = tools.find(candidate => candidate.name === name);
+				if (!tool) return { toolCallId: name, content: '', error: `Unknown tool: ${name}` };
+				try {
+					if (tool.confirmation) {
+						const request = await tool.confirmation(params);
+						if (request && (await this.plugin.requestDashboardApproval(request)) !== 'approved') {
+							return { toolCallId: name, content: '', error: 'Tool execution was not approved.' };
+						}
+					}
+					console.debug('[Command Center] Chat executing tool:', name);
+					const toolResult = await tool.execute(name, params);
+					console.debug('[Command Center] Chat tool completed:', name);
+					return { toolCallId: name, content: toolResult.content.map(item => item.text).join('') };
+				} catch (error) {
+					console.warn('[Command Center] Chat tool failed:', name, error);
+					return { toolCallId: name, content: '', error: error instanceof Error ? error.message : String(error) };
+				}
 			},
 		);
 		if (!streamed) this.setMessage(assistant, result.output || result.summary || 'Task completed.');

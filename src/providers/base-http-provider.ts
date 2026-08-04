@@ -149,7 +149,19 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 		try {
 			const response = await this._request(body, headers, model);
 			const data = response.json as Record<string, unknown>;
-			return this.parseResponse(data, model, startedAt);
+			const parsed = this.parseResponse(data, model, startedAt);
+			// Tool execution must work for non-streaming requests too (the interview
+			// and several dashboard paths intentionally do not stream).
+			if (parsed.toolCalls?.length && request.onToolCall) {
+				const toolResults = await this._executeToolCalls(parsed.toolCalls, request);
+				return await this._sendToolResults(
+					this.buildMessages(request.systemPrompt, request.userPrompt, request.history),
+					model,
+					toolResults,
+					request,
+				);
+			}
+			return parsed;
 		} catch (err) {
 			return this._errorResponse(err, model, startedAt);
 		}
@@ -251,7 +263,7 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 		const allMessages = [...messages, ...toolMsgs];
 		const config = { ...DEFAULT_PROVIDER_CONFIG, ...request.config };
 		const body = this.applyJitPayloadFields(
-			this.buildRequestBody(allMessages, model, config, undefined, request.images), config,
+			this.buildRequestBody(allMessages, model, config, request.tools, request.images), config,
 		);
 		const headers = this.buildHeaders(this.getApiKey());
 

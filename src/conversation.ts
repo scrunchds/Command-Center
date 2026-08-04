@@ -8,7 +8,8 @@ import type { TaskResult } from './types';
 import { TOKEN_LIMITS } from './types';
 import type { PiAgentDaemon } from './daemon';
 import type { ProviderDispatcher } from './dispatcher';
-import type { ProviderMessage, TaskType } from './providers/provider-types';
+import type { ToolDefinition } from './types';
+import type { ProviderMessage, ProviderToolResult, TaskType } from './providers/provider-types';
 import { getWorkerProfile } from './workers';
 import type { AgentMemoryStore } from './memory/memory-store';
 import type { HybridRetriever } from './rag/hybrid-retriever';
@@ -120,6 +121,8 @@ export class ConversationManager {
 		message: string,
 		taskType?: TaskType,
 		onStream?: (delta: string) => void,
+		tools?: ToolDefinition[],
+		onToolCall?: (name: string, params: Record<string, unknown>) => Promise<ProviderToolResult>,
 	): Promise<TaskResult> {
 		let conv = this.getActive();
 		if (!conv) conv = this.create('chat', 'Command Center Chat');
@@ -137,6 +140,8 @@ export class ConversationManager {
 				userPrompt: message,
 				history,
 				onStream,
+				tools,
+				onToolCall,
 			}, taskType);
 			if (!response.success) throw new Error(response.error ?? 'Provider request failed.');
 			this.addTurn(conv, 'assistant', response.output, undefined, {

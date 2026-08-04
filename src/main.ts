@@ -587,7 +587,18 @@ export default class CommandCenterPlugin extends Plugin {
 			await this.activateCommandCenterView();
 			const view = this.getCommandCenterView();
 			if (!view) throw new Error('Command Center dashboard failed to initialize.');
-			const engine = new InterviewEngine(this.app, this.dispatcher, this.configManager);
+			const engine = new InterviewEngine(
+				this.app,
+				this.dispatcher,
+				this.configManager,
+				() => getCapabilityRegistry().getEnabledToolDefinitions(true),
+				async (tool, params) => {
+					if (!tool.confirmation) return true;
+					const request = await tool.confirmation(params);
+					if (!request) return true;
+					return (await this.requestDashboardApproval(request)) === 'approved';
+				},
+			);
 			await view.openOnboarding(engine, async (config) => {
 				await this.folderIndexer.initialize(config.managedFolders);
 				this.configureDailyEngines(config);
@@ -1353,7 +1364,7 @@ export default class CommandCenterPlugin extends Plugin {
 		}
 
 		await this.activateCommandCenterView();
-		const voiceTools = createObsidianTools(this.app);
+		const voiceTools = getCapabilityRegistry().getEnabledToolDefinitions(true);
 		const streamId = `voice-${mode}-${Date.now().toString(36)}`;
 		this.getCommandCenterView()?.startTaskStream(
 			streamId,
@@ -1399,6 +1410,7 @@ export default class CommandCenterPlugin extends Plugin {
 					? `${prompt}\n\nActive vault context: [[${activeFile.path}]]`
 					: prompt;
 				let streamed = '';
+				const tools = getCapabilityRegistry().getEnabledToolDefinitions(true);
 				const result = await this.conversations.executeProviderTurn(
 					this.dispatcher,
 					request,
@@ -1409,6 +1421,22 @@ export default class CommandCenterPlugin extends Plugin {
 							delta,
 							streamId,
 						);
+					},
+					tools,
+					async (name, params) => {
+						const tool = tools.find(candidate => candidate.name === name);
+						if (!tool) return { toolCallId: name, content: '', error: `Unknown tool: ${name}` };
+						const approval = tool.confirmation ? await tool.confirmation(params) : null;
+						if (approval && (await this.requestDashboardApproval(approval)) !== 'approved') return { toolCallId: name, content: '', error: 'Tool execution was not approved.' };
+						try {
+							console.debug('[Command Center] Voice executing tool:', name);
+							const toolResult = await tool.execute(name, params);
+							console.debug('[Command Center] Voice tool completed:', name);
+							return { toolCallId: name, content: toolResult.content.map(item => item.text).join('') };
+						} catch (error) {
+							console.warn('[Command Center] Voice tool failed:', name, error);
+							return { toolCallId: name, content: '', error: error instanceof Error ? error.message : String(error) };
+						}
 					},
 				);
 				if (!streamed)

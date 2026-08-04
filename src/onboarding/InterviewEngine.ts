@@ -8,6 +8,8 @@ import { WorkflowBuilder } from '../workflows/WorkflowBuilder';
 import type { ConfigManager } from '../engine/ConfigManager';
 import { LOGIC_DISCOVERY_SYSTEM_PROMPT } from '../ingestion/LogicDiscovery';
 import { getCapabilityRegistry } from '../capabilities';
+import type { ToolDefinition } from '../types';
+import type { ProviderToolResult } from '../providers/provider-types';
 
 export const INTERVIEW_COMPLETE_SIGNAL = 'COMMAND_CENTER_INTERVIEW_COMPLETE';
 export const SYNTHESIS_COMPLETE_SIGNAL = 'COMMAND_CENTER_SYNTHESIS_COMPLETE';
@@ -41,7 +43,13 @@ export class InterviewEngine {
 	private vaultTopology: VaultTopologySnapshot = { folders: [], rootMarkdownFiles: [], proposedIndexAnchors: [], empty: true };
 	private pendingSynthesis: InterviewSynthesis | null = null;
 
-	constructor(private readonly app: App, private readonly dispatcher: ProviderDispatcher, private readonly configs: ConfigManager) {}
+	constructor(
+		private readonly app: App,
+		private readonly dispatcher: ProviderDispatcher,
+		private readonly configs: ConfigManager,
+		private readonly getTools: () => ToolDefinition[] = () => getCapabilityRegistry().getEnabledToolDefinitions(true),
+		private readonly confirmTool?: (tool: ToolDefinition, params: Record<string, unknown>) => Promise<boolean>,
+	) {}
 
 	async start(): Promise<string> {
 		this.turns = [];
@@ -60,9 +68,29 @@ export class InterviewEngine {
 		};
 		if (this.pendingSynthesis) throw new Error('Review and approve the proposed assets before continuing.');
 		this.turns.push({ role: 'user', content: answer });
+		const tools = this.getTools();
+		console.debug('[Command Center] Interview tools available:', tools.map(tool => tool.name));
 		const response = await this.dispatcher.dispatch({
-			systemPrompt: this.systemPrompt(), userPrompt: answer,
+			systemPrompt: `${this.systemPrompt()}\n\nTOOL EXECUTION: Use the supplied Obsidian tools whenever the user asks you to inspect, search, create, update, append, move, rename, or delete vault content. Do not claim a filesystem action completed unless the corresponding tool returned success.`,
+			userPrompt: answer,
 			history: this.turns.slice(0, -1).map(turn => ({ role: turn.role, content: turn.content })),
+			tools,
+			onToolCall: async (name: string, params: Record<string, unknown>): Promise<ProviderToolResult> => {
+				const tool = tools.find(candidate => candidate.name === name);
+				if (!tool) return { toolCallId: name, content: '', error: `Unknown tool: ${name}` };
+				try {
+					if (tool.confirmation && !(await (this.confirmTool?.(tool, params) ?? Promise.resolve(true)))) {
+						return { toolCallId: name, content: '', error: 'Tool execution was not approved.' };
+					}
+					console.debug('[Command Center] Interview executing tool:', name);
+					const result = await tool.execute(name, params);
+					console.debug('[Command Center] Interview tool completed:', name);
+					return { toolCallId: name, content: result.content.map(item => item.text).join('') };
+				} catch (error) {
+					console.warn('[Command Center] Interview tool failed:', name, error);
+					return { toolCallId: name, content: '', error: error instanceof Error ? error.message : String(error) };
+				}
+			},
 			config: { temperature: 0.2, maxTokens: 8192 },
 		}, 'reasoning');
 		if (!response.success) throw new Error(response.error ?? 'Interview model did not respond.');
