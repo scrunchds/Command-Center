@@ -211,7 +211,7 @@ export default class CommandCenterPlugin extends Plugin {
 
 		// ── Auto-detect pi binary path ────────────────
 		// If the configured path is the default, try to auto-detect the real path.
-		const detectedPath = detectPiPath(this.settings.piPath);
+		const detectedPath = await detectPiPath(this.settings.piPath);
 		if (detectedPath && detectedPath !== this.settings.piPath) {
 			this.settings.piPath = detectedPath;
 			// Persist the detected path for next launch
@@ -557,6 +557,7 @@ export default class CommandCenterPlugin extends Plugin {
 		});
 
 		if (this.settings.enableDaemon) {
+			await this.daemon.prepareNodeExecutable();
 			this.daemon.start();
 			if (this.daemon.startError) {
 				this.statusBar.setState('error');
@@ -797,7 +798,7 @@ export default class CommandCenterPlugin extends Plugin {
 	async ensureDaemonRunning(): Promise<boolean> {
 		if (this.daemon.isRunning() && !this.daemon.startError) return true;
 
-		const detectedPath = detectPiPath(this.settings.piPath);
+		const detectedPath = await detectPiPath(this.settings.piPath);
 		if (detectedPath && detectedPath !== this.daemon.piPath) {
 			if (!this.daemon.setPiPath(detectedPath)) return false;
 			this.settings.piPath = detectedPath;
@@ -806,6 +807,7 @@ export default class CommandCenterPlugin extends Plugin {
 
 		// Remove any failed/stale process object before restarting.
 		this.daemon.stop();
+		await this.daemon.prepareNodeExecutable();
 		this.daemon.start();
 
 		// A successful spawn is immediately running; ENOENT/EINVAL arrives on

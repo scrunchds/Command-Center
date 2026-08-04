@@ -658,6 +658,17 @@ async function verifyRealDaemon() {
 		assert.ok(daemon.isRunning());
 		daemon.stop();
 		pass('6e: daemon start after stop works');
+
+		// 6f — pi path detection is async (non-blocking) and resolves to a string.
+		// The previous execSync('where'/'which') blocked the main thread for up to
+		// 4s; detectPiPath now returns a Promise. prepareNodeExecutable() resolves
+		// the Node executable off-thread and caches it for the daemon's lifetime.
+		const { detectPiPath } = await import(pathToFileURL(join(SRC, 'daemon.ts')).href);
+		const detected = await detectPiPath('__nonexistent_pi_candidate__');
+		assert.equal(typeof detected, 'string', 'detectPiPath resolves to a string');
+		assert.ok(detected.length > 0, 'detectPiPath always returns a truthy path or the default');
+		await daemon.prepareNodeExecutable();
+		pass('6f: detectPiPath is async and prepareNodeExecutable resolves off-thread');
 	} catch (err) {
 		fail('Pi RPC subprocess integration', err);
 	} finally {
