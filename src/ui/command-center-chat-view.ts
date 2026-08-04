@@ -1034,6 +1034,30 @@ export class CommandCenterChatView extends ItemView {
 		await this.sendCurrentMessage();
 	}
 
+	/**
+	 * Populate the chat input field with transcribed text without sending.
+	 *
+	 * Used by contextual voice routing: when the user is focused on the chat
+	 * panel (or no note editor is in focus), dictation lands in the input field
+	 * so the user can review, edit, and send explicitly — the speech is never
+	 * auto-submitted.
+	 */
+	populateChatInput(text: string, mode?: ChatMode): void {
+		if (!this.isOpen || this.isSending) return;
+		if (mode) {
+			this.mode = mode;
+			this.modeSelectEl.value = mode;
+			this.updateHeader();
+		}
+		const existing = this.textareaEl.value.trim();
+		this.textareaEl.value = existing ? `${existing} ${text}` : text;
+		this.resizeTextarea();
+		void this.refreshDetectedContext();
+		this.textareaEl.focus();
+		const end = this.textareaEl.value.length;
+		this.textareaEl.setSelectionRange(end, end);
+	}
+
 	private async sendCurrentMessage(): Promise<void> {
 		const input = this.textareaEl.value.trim();
 		if (!input || this.isSending) return;

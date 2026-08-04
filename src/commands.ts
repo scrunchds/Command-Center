@@ -1,11 +1,11 @@
-import { Notice, parseYaml, TFile } from 'obsidian';
+import { MarkdownView, Notice, parseYaml, TFile } from 'obsidian';
 import type CommandCenterPlugin from './main';
 import type { Task } from './types';
 import * as crypto from 'crypto';
 import { loadWorkflowFromCanvas, loadWorkflowFromNote } from './workflows/native-workflow-parser';
 import { collectWorkflowBatchInputs, collectWorkflowInputs } from './ui/workflow-modal';
 import type { WorkflowDefinition } from './workflows/workflow-types';
-import { VoicePromptModal } from './ui/voice-prompt-modal';
+import { VoicePromptModal, type VoicePromptFocus } from './ui/voice-prompt-modal';
 
 function record(value: unknown): Record<string, unknown> | undefined {
 	return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -51,7 +51,17 @@ export function registerCommands(plugin: CommandCenterPlugin) {
 	plugin.addCommand({
 		id: 'quick-voice-prompt',
 		name: 'Voice prompt',
-		callback: () => new VoicePromptModal(plugin).open(),
+		// Capture the focused note *before* the modal takes keyboard focus. The
+		// modal holds focus for the duration of recording, so any focus check run
+		// after the async transcription delay would miss the note the user was
+		// actually editing. This snapshot is what makes contextual note-vs-chat
+		// routing reliable across that delay.
+		callback: () => {
+			const focus: VoicePromptFocus = {
+				markdownView: plugin.app.workspace.getActiveViewOfType(MarkdownView),
+			};
+			new VoicePromptModal(plugin, focus).open();
+		},
 	});
 
 	plugin.addCommand({

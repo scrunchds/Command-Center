@@ -5,7 +5,22 @@ import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MI
 import type { TranscriptionStatusCallback } from '../audio/AccessibilityAudio';
 import { resolveChatContext } from './chat-context';
 
+import type { MarkdownView } from 'obsidian';
+
 export type VoicePromptMode = 'quick' | 'react' | 'workflow';
+
+/**
+ * Snapshot of the workspace focus state captured *before* the voice modal takes
+ * keyboard focus. The modal grabs focus while recording, so any focus check run
+ * after the asynchronous transcription delay would see the modal — not the note
+ * the user was actually editing. Carrying this snapshot through to dispatch lets
+ * contextual routing honor the user's pre-recording intent.
+ */
+export interface VoicePromptFocus {
+	/** Markdown note that was the active leaf when the voice command was invoked, or null. */
+	readonly markdownView: MarkdownView | null;
+}
+
 interface SttCandidate { providerId: import('../providers/provider-types').ProviderId; model?: string; label: string; local: boolean; transcriptionPath?: string }
 
 /** Floating, auto-starting voice capture used by the global palette command. */
@@ -22,8 +37,13 @@ export class VoicePromptModal extends Modal {
 	private closed = false;
 	private finishing = false;
 	private transcriptionAbort: AbortController | null = null;
+	private readonly focus: VoicePromptFocus;
 
-	constructor(plugin: CommandCenterPlugin) { super(plugin.app); this.plugin = plugin; }
+	constructor(plugin: CommandCenterPlugin, focus?: VoicePromptFocus) {
+		super(plugin.app);
+		this.plugin = plugin;
+		this.focus = focus ?? { markdownView: null };
+	}
 
 	onOpen(): void {
 		this.closed = false;
@@ -170,7 +190,7 @@ export class VoicePromptModal extends Modal {
 			const resolved = await resolveChatContext(this.plugin.app, spokenText);
 			if (this.closed || controller.signal.aborted) return;
 			this.statusEl.setText('Dispatching...');
-			await this.plugin.dispatchVoicePrompt(this.mode, spokenText, resolved);
+			await this.plugin.dispatchVoicePrompt(this.mode, spokenText, resolved, this.focus);
 			if (!this.closed) this.close();
 		} catch (error) {
 			if (!this.closed && !controller.signal.aborted) this.showError(`Voice prompt failed: ${(error as Error).message}`);
