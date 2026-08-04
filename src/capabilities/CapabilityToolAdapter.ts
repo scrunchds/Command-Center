@@ -195,7 +195,6 @@ export function ingestMcpCapabilities(
 	serverLabel: string,
 	tools: ToolDefinition[],
 ): void {
-	const registry = getCapabilityRegistry();
 	for (const tool of tools) {
 		const namespacedId = `mcp:${serverId}:${tool.name}`;
 		wrapToolAsCapability(tool, {

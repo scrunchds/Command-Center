@@ -13,7 +13,7 @@
  * `Setting` API, consistent with the existing PluginSettingsTab.
  */
 
-import { App, Setting } from 'obsidian';
+import { Setting } from 'obsidian';
 import type { CommandCenterSettings } from '../settings/settings-model';
 
 /**
@@ -24,7 +24,7 @@ interface CapabilitySettingsHost {
 	settings: CommandCenterSettings;
 	saveSettings(): Promise<void>;
 }
-import type { CapabilityCategory, CapabilityUserPreference } from './CapabilityTypes';
+import type { CapabilityCategory } from './CapabilityTypes';
 import { getCapabilityRegistry } from './CapabilityRegistry';
 import { serializeCapabilityPreferences } from './CapabilityToolAdapter';
 
@@ -62,12 +62,10 @@ const CATEGORY_ICONS: Record<CapabilityCategory, string> = {
  *
  * @param container  The settings container element.
  * @param plugin     The Command Center plugin instance.
- * @param app        The Obsidian App instance.
  */
 export function renderCapabilitySettings(
 	container: HTMLElement,
 	plugin: CapabilitySettingsHost,
-	app: App,
 ): void {
 	const registry = getCapabilityRegistry();
 	const settings = plugin.settings;
@@ -90,7 +88,7 @@ export function renderCapabilitySettings(
 				settings.capabilitySystemEnabled = value;
 				await plugin.saveSettings();
 				// Refresh the section to show/hide capability toggles
-				refreshCapabilitySection(container, plugin, app);
+				refreshCapabilitySection(container, plugin);
 			}),
 		);
 
@@ -129,7 +127,7 @@ export function renderCapabilitySettings(
 	}
 
 	for (const [category, capabilities] of sortedCategories) {
-		renderCategorySection(container, category, capabilities, plugin, app);
+		renderCategorySection(container, category, capabilities, plugin);
 	}
 
 	// ── Reset to defaults ────────────────────────────────
@@ -148,7 +146,7 @@ export function renderCapabilitySettings(
 				settings.capabilitySystemEnabled = true;
 				await plugin.saveSettings();
 				// Rebuild the section
-				refreshCapabilitySection(container, plugin, app);
+				refreshCapabilitySection(container, plugin);
 			}),
 		);
 }
@@ -163,7 +161,6 @@ function renderCategorySection(
 	category: CapabilityCategory,
 	capabilities: Array<{ meta: { id: string; label: string; description: string; executionMode: string; aliases?: string[] }; enabled: boolean }>,
 	plugin: CapabilitySettingsHost,
-	app: App,
 ): void {
 	const categoryLabel = CATEGORY_LABELS[category] ?? category;
 	const categoryIcon = CATEGORY_ICONS[category] ?? 'bullet-list';
@@ -178,7 +175,7 @@ function renderCategorySection(
 
 	// Capability toggles
 	for (const capability of capabilities) {
-		renderCapabilityToggle(details, capability, plugin, app);
+		renderCapabilityToggle(details, capability, plugin);
 	}
 }
 
@@ -189,7 +186,6 @@ function renderCapabilityToggle(
 	container: HTMLElement,
 	capability: { meta: { id: string; label: string; description: string; executionMode: string; aliases?: string[] }; enabled: boolean },
 	plugin: CapabilitySettingsHost,
-	app: App,
 ): void {
 	const setting = new Setting(container)
 		.setName(capability.meta.label)
@@ -241,7 +237,6 @@ async function persistCapabilityPreferences(plugin: CapabilitySettingsHost): Pro
 function refreshCapabilitySection(
 	container: HTMLElement,
 	plugin: CapabilitySettingsHost,
-	app: App,
 ): void {
 	// Find the capability section within the container and rebuild it.
 	// We target the children after the first separator.
@@ -256,6 +251,6 @@ function refreshCapabilitySection(
 		.sort(([a], [b]) => a.localeCompare(b));
 
 	for (const [category, capabilities] of sortedCategories) {
-		renderCategorySection(container, category, capabilities, plugin, app);
+		renderCategorySection(container, category, capabilities, plugin);
 	}
 }

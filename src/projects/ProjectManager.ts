@@ -16,7 +16,7 @@
  */
 
 import { App, TFile, normalizePath } from 'obsidian';
-import type { ProviderId, TaskType } from '../providers/provider-types';
+import type { ProviderId } from '../providers/provider-types';
 
 /* ─── Types ─────────────────────────────────────────────── */
 
