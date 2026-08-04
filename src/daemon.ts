@@ -18,7 +18,7 @@ import * as crypto from 'crypto';
  * Center's multi-agent ReAct architecture; no shell command is built from vault
  * or model content, and the daemon is launched only from a validated Pi path.
  */
-import { spawn, execSync, type ChildProcess } from 'child_process';
+import { spawn, execFile, type ChildProcess } from 'child_process';
 /**
  * REVIEWER NOTE: Node fs access is required only to validate local Pi/Node
  * executable candidates before launching the ReAct daemon. Vault note content
@@ -90,7 +90,7 @@ export type AgentExecutionStateCallback = (state: AgentExecutionState) => void;
  * Returns the validated path (with .cmd on Windows), the bare `"pi"` string,
  * or null if nothing worked. String result is always truthy.
  */
-export function detectPiPath(candidate?: string): string | null {
+export async function detectPiPath(candidate?: string): Promise<string | null> {
 	// Helper: on Windows, ensure we have a .cmd path
 	const ensureCmd = (p: string): string => {
 		if (process.platform !== 'win32') return p;
@@ -122,16 +122,11 @@ export function detectPiPath(candidate?: string): string | null {
 		} catch { /* cache invalid, continue */ }
 	}
 
-	// ── Step 3: `where pi` / `which pi` — reliable PATH lookup ──
+	// ── Step 3: `where pi` / `which pi` — reliable PATH lookup (non-blocking) ──
 	try {
-		const cmd = process.platform === 'win32' ? 'where' : 'which';
-		const result = execSync(`${cmd} ${DEFAULT_PI_BINARY}`, {
-			encoding: 'utf-8',
-			timeout: 4000,
-		}).trim();
-		if (result && !result.includes('not found') && !result.includes('Could not find')) {
+		const lines = await lookupExecutable(DEFAULT_PI_BINARY);
+		if (lines.length && !lines.some(l => l.includes('not found') || l.includes('Could not find'))) {
 			// On Windows, iterate results and prefer the .cmd file
-			const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
 			for (const line of lines) {
 				const resolved = ensureCmd(line);
 				try {
@@ -160,21 +155,44 @@ function cacheResult(result: string): void {
 	_detectionCache = result;
 }
 
-/** Locate the real Node.js executable (process.execPath may be Obsidian.exe in Electron). */
-function detectNodeExecutable(): string | null {
+/**
+ * Non-blocking PATH lookup for a single executable, replacing the previous
+ * `execSync('where'/'which')` calls that blocked Obsidian's main thread for
+ * up to 4s each. Resolves to the trimmed stdout lines, or [] on any failure
+ * (not-found, timeout, etc.). Always async so the UI stays fluid while the
+ * OS process lookup runs off-thread.
+ */
+function lookupExecutable(name: string, timeoutMs = 4_000): Promise<string[]> {
+	const cmd = process.platform === 'win32' ? 'where' : 'which';
+	return new Promise(resolve => {
+		execFile(cmd, [name], { encoding: 'utf-8', timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
+			if (err || !stdout) return resolve([]);
+			const lines = stdout.split('\n').map(l => l.trim()).filter(Boolean);
+			resolve(lines);
+		});
+	});
+}
+
+/**
+ * Locate the real Node.js executable (process.execPath may be Obsidian.exe in Electron).
+ * Async + cached: the lookup is off-thread and the result is reused for the
+ * plugin's lifetime so repeated daemon starts never re-block.
+ */
+let _nodeExecutableCache: string | null | undefined = undefined;
+async function detectNodeExecutable(): Promise<string | null> {
+	if (_nodeExecutableCache !== undefined) return _nodeExecutableCache;
 	// In plain Node/test environments, process.execPath is already correct.
 	if (/node(?:\.exe)?$/i.test(process.execPath) && fs.existsSync(process.execPath)) {
-		return process.execPath;
+		_nodeExecutableCache = process.execPath;
+		return _nodeExecutableCache;
 	}
-
 	try {
-		const cmd = process.platform === 'win32' ? 'where node' : 'which node';
-		const result = execSync(cmd, { encoding: 'utf-8', timeout: 4000 }).trim();
-		for (const line of result.split('\n').map(v => v.trim()).filter(Boolean)) {
-			if (fs.existsSync(line)) return line;
+		const lines = await lookupExecutable('node');
+		for (const line of lines) {
+			if (fs.existsSync(line)) { _nodeExecutableCache = line; return line; }
 		}
 	} catch { /* fall through */ }
-
+	_nodeExecutableCache = null;
 	return null;
 }
 
@@ -253,6 +271,8 @@ export class PiAgentDaemon {
 	private activeSessionId: string | null = null;
 	private _workspacePath: string;
 	private _piPath: string;
+	/** Cached Node.js executable for launching JS entry points; resolved async. */
+	private _nodeExecutable: string | null | undefined = undefined;
 	/** Raw JSONL bytes retained between stdout chunks. */
 	private stdoutBuffer: Buffer = Buffer.alloc(8192);
 	private stdoutReadOffset = 0;
@@ -329,6 +349,17 @@ export class PiAgentDaemon {
 	}
 
 	/* ─── Lifecycle ─────────────────────────────────── */
+
+	/**
+	 * Resolve the Node.js executable off-thread before spawning Pi. Required
+	 * only when the pi path is a JS entry point or a Windows .cmd wrapper; for
+	 * other paths this is a fast no-op. The lookup is cached for the daemon's
+	 * lifetime so repeated starts never re-block. Call before start().
+	 */
+	async prepareNodeExecutable(): Promise<void> {
+		if (this._nodeExecutable !== undefined) return;
+		this._nodeExecutable = await detectNodeExecutable();
+	}
 
 	start(): void {
 		if (this.piProcess) return;
@@ -414,7 +445,12 @@ export class PiAgentDaemon {
 		// harness. Invoke them with Node rather than relying on executable bits,
 		// shebang handling, or platform-specific file associations.
 		if (/\.(?:c?js|mjs)$/i.test(this._piPath)) {
-			const nodeExecutable = detectNodeExecutable();
+			// Prefer the async-prepared cache; fall back to process.execPath when no
+			// preparation has run yet (e.g. a direct start() in tests) so JS entry
+			// points still launch without forcing every caller onto the async path.
+			const nodeExecutable = this._nodeExecutable !== undefined
+				? this._nodeExecutable
+				: (/node(?:\.exe)?$/i.test(process.execPath) ? process.execPath : null);
 			if (nodeExecutable) return { command: nodeExecutable, args: [this._piPath, ...rpcArgs] };
 		}
 		if (process.platform === 'win32' && /\.cmd$/i.test(this._piPath)) {
@@ -422,7 +458,9 @@ export class PiAgentDaemon {
 				path.dirname(this._piPath),
 				'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'cli.js',
 			);
-			const nodeExecutable = detectNodeExecutable();
+			const nodeExecutable = this._nodeExecutable !== undefined
+				? this._nodeExecutable
+				: (/node(?:\.exe)?$/i.test(process.execPath) ? process.execPath : null);
 			if (fs.existsSync(cliPath) && nodeExecutable) {
 				return { command: nodeExecutable, args: [cliPath, ...rpcArgs] };
 			}

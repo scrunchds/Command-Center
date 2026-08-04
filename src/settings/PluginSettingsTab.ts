@@ -359,7 +359,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 				btn.setDisabled(true);
 				btn.setButtonText('⏳ Detecting...');
 				try {
-					const detected = detectPiPath();
+					const detected = await detectPiPath();
 					if (detected) {
 						const wasRunning = this.plugin.daemon.isRunning();
 						const ok = this.plugin.setDaemonPath(detected);
