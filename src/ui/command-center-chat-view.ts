@@ -910,18 +910,12 @@ export class CommandCenterChatView extends ItemView {
 		try {
 			await navigator.clipboard.writeText(text);
 		} catch {
-			// Fallback for restricted clipboard contexts (e.g. some Electron builds).
-			try {
-				const area = document.body.createEl('textarea');
-				area.value = text;
-				area.className = 'cc-clipboard-fallback';
-				area.select();
-				document.execCommand('copy');
-				document.body.removeChild(area);
-			} catch {
-				new Notice('Copy failed — select the text and press Ctrl+C.');
-				return;
-			}
+			// navigator.clipboard is available on all supported Obsidian builds
+			// (minAppVersion 1.13.0 / modern Electron). If it rejects (e.g. a
+			// transient focus loss during reload), surface the failure rather
+			// than falling back to the deprecated legacy clipboard command.
+			new Notice('Copy failed — select the text and press Ctrl+C.');
+			return;
 		}
 		if (button && this.isOpen) {
 			const original = button.textContent;

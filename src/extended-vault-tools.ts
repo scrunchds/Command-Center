@@ -184,14 +184,10 @@ export function createDeleteFolderTool(app: App): ToolDefinition {
 				if (!ok) return errRsp(path);
 				const folder = app.vault.getAbstractFileByPath(path);
 				if (!folder || !(folder instanceof TFolder)) return errRsp('Folder not found.');
-				// Trash all files within the folder first, then delete the empty folder.
-				for (const child of folder.children) {
-					if (child instanceof TFile) {
-						await app.fileManager.trashFile(child);
-					}
-				}
-				// Delete the now-empty folder structure.
-				await app.vault.delete(folder, false);
+				// Trash the folder and all its contents in one operation. This respects
+				// the user's file-deletion preference (system trash vs. local trash)
+				// via FileManager.trashFile, matching the tool's 'moved to trash' contract.
+				await app.fileManager.trashFile(folder);
 				return okRsp('Folder deleted.', { path });
 			} catch (err) { return errRsp(sanitizeError(err)); }
 		},

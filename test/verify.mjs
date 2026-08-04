@@ -1313,6 +1313,42 @@ async function verifyObsidianGuidelines() {
 	assert.equal(adapterCount, 0, 'must use Vault API instead of vault.adapter for vault files');
 	pass('14s: no vault.adapter usage for vault file operations');
 
+	// No deprecated Vault.delete() for file/folder removal — use
+	// FileManager.trashFile() to respect the user's file-deletion preference.
+	(function scanVaultDelete(dir) {
+		for (const entry of readdirSync(dir)) {
+			const full = join(dir, entry);
+			const s = statSync(full);
+			if (s.isDirectory()) scanVaultDelete(full);
+			else if (entry.endsWith('.ts')) {
+				const text = readFileSync(full, 'utf8');
+				assert.ok(!/vault\.delete\(/.test(text), `must use FileManager.trashFile() instead of vault.delete(): ${full}`);
+			}
+		}
+	})(join(ROOT, 'src'));
+	pass('14s.1: no deprecated Vault.delete() — uses FileManager.trashFile()');
+
+	// No deprecated document.execCommand() (use the Clipboard API).
+	(function scanExecCommand(dir) {
+		for (const entry of readdirSync(dir)) {
+			const full = join(dir, entry);
+			const s = statSync(full);
+			if (s.isDirectory()) scanExecCommand(full);
+			else if (entry.endsWith('.ts')) {
+				const text = readFileSync(full, 'utf8');
+				assert.ok(!/document\.execCommand\(/.test(text), `must not use deprecated document.execCommand(): ${full}`);
+			}
+		}
+	})(join(ROOT, 'src'));
+	pass('14s.2: no deprecated document.execCommand() — uses the Clipboard API');
+
+	// No deprecated setWarning()/setDynamicTooltip() on Obsidian Setting/Button —
+	// use setDestructive() (1.13+) and the now-automatic inline slider value.
+	const capsUi = readFileSync(join(ROOT, 'src/capabilities/CapabilitySettingsUI.ts'), 'utf8');
+	assert.ok(!/\.setWarning\(\)/.test(capsUi), 'CapabilitySettingsUI must not use deprecated setWarning() — use setDestructive()');
+	assert.ok(!/\.setDynamicTooltip\(\)/.test(capsUi), 'CapabilitySettingsUI must not use deprecated setDynamicTooltip() — slider value is shown inline automatically');
+	pass('14s.3: no deprecated setWarning()/setDynamicTooltip() on capability settings');
+
 	// No getFiles().find() for path lookup
 	let findCount = 0;
 	(function scanFind(dir) {

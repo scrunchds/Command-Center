@@ -104,7 +104,6 @@ export function renderCapabilitySettings(
 		.addSlider(slider => slider
 			.setLimits(1, 32, 1)
 			.setValue(settings.capabilityMaxAutonomousCalls ?? 8)
-			.setDynamicTooltip()
 			.onChange(async (value) => {
 				settings.capabilityMaxAutonomousCalls = value;
 				await plugin.saveSettings();
@@ -137,7 +136,7 @@ export function renderCapabilitySettings(
 		.setDesc('Reset all capability toggles to their default states.')
 		.addButton(button => button
 			.setButtonText('Reset to defaults')
-			.setWarning()
+			.setDestructive()
 			.onClick(async () => {
 				// Re-register defaults by clearing and re-applying built-in tools
 				// This is handled by the plugin's initialization path.
