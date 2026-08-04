@@ -64,6 +64,18 @@ export interface CommandCenterSettings {
 	textToSpeechEnabled: boolean;
 	/** Selected browser/system TTS voice name; empty string uses the default voice. */
 	textToSpeechVoice: string;
+	/**
+	 * TTS source: 'browser' uses the built-in speechSynthesis (default, preserves
+	 * prior behavior); 'auto' or a ProviderId routes spoken output through a
+	 * provider's /audio/speech (or xAI /v1/tts) endpoint for higher-quality voices.
+	 */
+	textToSpeechProviderId: 'browser' | 'auto' | ProviderId;
+	/** Global TTS model slug fallback (per-provider overrides preferred). */
+	textToSpeechModel: string;
+	/** Per-provider TTS model overrides (STT/TTS slugs are not portable across providers). */
+	textToSpeechModels: Partial<Record<ProviderId, string>>;
+	/** Voice id for provider TTS (e.g. 'alloy', 'nova'); ignored for browser TTS. */
+	textToSpeechApiVoice: string;
 	/** Speaking rate for TTS output. */
 	textToSpeechRate: number;
 	/** Master toggle for speech-to-text capture and transcription fallback. */
@@ -74,6 +86,16 @@ export interface CommandCenterSettings {
 	speechToTextProviderId: 'auto' | ProviderId;
 	/** Preferred transcription model; empty string lets the provider choose automatically. */
 	speechToTextModel: string;
+	/**
+	 * Per-provider transcription model overrides. Each key is a ProviderId; the
+	 * value is the model slug that provider's STT endpoint accepts. Empty/missing
+	 * entries fall back to `speechToTextModel`, then the provider's built-in default.
+	 *
+	 * STT model IDs are NOT portable across providers (e.g. `openai/gpt-4o-mini-transcribe`
+	 * is an OpenRouter routing slug, `grok-stt` is xAI, `whisper-1` is OpenAI), so a
+	 * single global model can't be broadcast to every provider in the fallback chain.
+	 */
+	speechToTextModels: Partial<Record<ProviderId, string>>;
 	/** Where voice transcription output goes by default. */
 	voiceOutputTarget: 'chat' | 'note' | 'canvas' | 'note+audio' | 'canvas+audio' | 'all';
 	/** Chunk duration (ms) for live transcription; smaller = faster interim results, larger = cheaper. */
@@ -130,11 +152,16 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	audioCues: false,
 	textToSpeechEnabled: true,
 	textToSpeechVoice: '',
+	textToSpeechProviderId: 'browser',
+	textToSpeechModel: '',
+	textToSpeechModels: {},
+	textToSpeechApiVoice: '',
 	textToSpeechRate: 1,
 	speechToTextEnabled: true,
 	audioInputDeviceId: '',
 	speechToTextProviderId: 'auto',
 	speechToTextModel: '',
+	speechToTextModels: {},
 	voiceOutputTarget: 'chat',
 	liveTranscriptionChunkMs: 3000,
 	autoReadAiResponses: false,

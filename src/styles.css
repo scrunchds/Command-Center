@@ -656,6 +656,13 @@ Command Center — Agentic OS for Obsidian
 }
 .cc-section-body.cc-collapsed { display: none; }
 
+/* Per-provider STT/TTS model sub-groups in the audio settings section. */
+.cc-subsetting-label { margin-top: 0.75em; font-weight: var(--font-semibold); font-size: var(--font-small); color: var(--text-normal); }
+.cc-setting-hint { font-size: var(--font-smallest); color: var(--text-muted); }
+
+/* Hidden audio element used to play provider text-to-speech output. */
+.cc-tts-player { position: fixed; left: -9999px; width: 0; height: 0; opacity: 0; pointer-events: none; }
+
 /* Developer support */
 .cc-developer-support {
 	display: flex;

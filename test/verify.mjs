@@ -845,6 +845,56 @@ async function verifyProviderFallback() {
 	await defaultBackoff('fallback-immediate', { backoffMs: 40 } , 0, 3);
 	assert.ok(Date.now() - t < 30, '7g: defaultBackoff skips the wait on non-backoff actions');
 	pass('7g: defaultBackoff waits only for fallback-backoff and only mid-chain');
+
+	// 7h: per-provider STT model resolution — the global speechToTextModel must NOT
+	// be broadcast to every provider (STT slugs are provider-specific). buildTranscriptionCandidates
+	// must pick the per-provider override when present, and the provider's built-in default otherwise.
+	const { buildTranscriptionCandidates } = await import(pathToFileURL(join(SRC, 'audio/transcriber.ts')).href);
+	const perProviderSettings = {
+		speechToTextEnabled: true,
+		speechToTextProviderId: 'auto',
+		speechToTextModel: 'openai/gpt-4o-mini-transcribe', // OpenRouter slug — must NOT leak to xAI/openai
+		speechToTextModels: { xai: 'grok-stt', openai: 'gpt-4o-mini-transcribe' },
+		multiProvider: {
+			credentials: {
+				xai: { providerId: 'xai', apiKey: 'k', baseUrl: 'https://api.x.ai/v1', enabled: true },
+				openai: { providerId: 'openai', apiKey: 'k', baseUrl: 'https://api.openai.com/v1', enabled: true },
+			},
+			routing: {}, fallback: {}, defaults: {},
+		},
+	};
+	const sttCandidates = buildTranscriptionCandidates(perProviderSettings, { hasApiKey: () => true });
+	const xaiCandidate = sttCandidates.find(c => c.providerId === 'xai');
+	const openaiCandidate = sttCandidates.find(c => c.providerId === 'openai');
+	assert.equal(xaiCandidate?.model, 'grok-stt', '7h: xAI uses per-provider override, not the OpenRouter slug');
+	assert.equal(openaiCandidate?.model, 'gpt-4o-mini-transcribe', '7h: OpenAI uses per-provider override');
+	pass('7h: per-provider STT model overrides take precedence over the global model');
+
+	// 7i: when no per-provider model is set, the provider's built-in default is used
+	// (NOT the global speechToTextModel, which may be a foreign slug).
+	const noOverrideSettings = {
+		speechToTextEnabled: true,
+		speechToTextProviderId: 'auto',
+		speechToTextModel: 'openai/gpt-4o-mini-transcribe', // would be invalid on xAI
+		speechToTextModels: {},
+		multiProvider: {
+			credentials: {
+				xai: { providerId: 'xai', apiKey: 'k', baseUrl: 'https://api.x.ai/v1', enabled: true },
+			},
+			routing: {}, fallback: {}, defaults: {},
+		},
+	};
+	const noOverrideCandidates = buildTranscriptionCandidates(noOverrideSettings, { hasApiKey: () => true });
+	const xaiNoOverride = noOverrideCandidates.find(c => c.providerId === 'xai');
+	assert.equal(xaiNoOverride?.model, 'grok-stt', '7i: xAI falls back to its built-in default, not the OpenRouter slug');
+	pass('7i: STT providers use their built-in default when no override is configured');
+
+	// 7j: the OpenAI default STT model is whisper-1 (a real OpenAI model), not the
+	// nonexistent 'whisper-large-v3-turbo' (a HuggingFace/Groq slug).
+	const { DEFAULT_STT_MODELS } = await import(pathToFileURL(join(SRC, 'providers/provider-registry.ts')).href);
+	assert.equal(DEFAULT_STT_MODELS.openai, 'whisper-1', '7j: OpenAI default STT model is whisper-1');
+	assert.equal(DEFAULT_STT_MODELS.groq, 'whisper-large-v3', '7j: Groq default STT model is whisper-large-v3');
+	pass('7j: OpenAI STT default model corrected from the nonexistent whisper-large-v3-turbo to whisper-1');
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1833,6 +1883,108 @@ async function verifyAtMentionEngine() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   9. TTS Adapter — provider text-to-speech
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyTtsAdapter() {
+	console.log('\n─── 9. TTS Adapter (provider text-to-speech) ───');
+	const { TtsAdapter, TtsError, playTtsBlob } = await import(pathToFileURL(join(SRC, 'audio/tts-adapter.ts')).href);
+	const { DEFAULT_TTS_MODELS } = await import(pathToFileURL(join(SRC, 'providers/provider-registry.ts')).href);
+
+	// 9a: xAI uses the native /v1/tts endpoint (NOT /audio/speech), omits response_format.
+	let captured;
+	const xaiSettings = {
+		multiProvider: { credentials: { xai: { providerId: 'xai', apiKey: 'xai-key', baseUrl: 'https://api.x.ai/v1', enabled: true } }, routing: {}, fallback: {}, defaults: {} },
+		textToSpeechModels: {}, textToSpeechModel: '', textToSpeechApiVoice: '',
+	};
+	const xaiAdapter = new TtsAdapter({
+		providerId: 'xai', getSettings: () => xaiSettings, getApiKey: () => 'xai-key',
+		fetch: async (url, init) => {
+			captured = { url, init };
+			return new Response(new ArrayBuffer(8), { status: 200, headers: { 'content-type': 'audio/mpeg' } });
+		},
+	});
+	const xaiBlob = await xaiAdapter.synthesize('Hello world');
+	assert.ok(xaiBlob instanceof Blob, '9a: xAI synthesize returns a Blob');
+	assert.ok(captured.url.endsWith('/v1/tts'), `9a: xAI hits /v1/tts (got ${captured.url})`);
+	const xaiBody = JSON.parse(captured.init.body);
+	assert.equal(xaiBody.model, 'grok-tts', '9a: xAI uses grok-tts default model');
+	assert.equal(xaiBody.input, 'Hello world', '9a: xAI body has input text');
+	assert.equal(xaiBody.voice, 'alloy', '9a: xAI uses default voice');
+	assert.equal(xaiBody.response_format, undefined, '9a: xAI omits response_format');
+	assert.equal(captured.init.headers.Authorization, 'Bearer xai-key', '9a: xAI uses Bearer auth');
+	pass('9a: xAI TTS uses native /v1/tts endpoint without response_format');
+
+	// 9b: OpenAI-compatible providers use /audio/speech with response_format.
+	let openaiCaptured;
+	const openaiSettings = {
+		multiProvider: { credentials: { openai: { providerId: 'openai', apiKey: 'oai-key', baseUrl: 'https://api.openai.com/v1', enabled: true } }, routing: {}, fallback: {}, defaults: {} },
+		textToSpeechModels: {}, textToSpeechModel: '', textToSpeechApiVoice: 'nova',
+	};
+	const openaiAdapter = new TtsAdapter({
+		providerId: 'openai', getSettings: () => openaiSettings, getApiKey: () => 'oai-key',
+		fetch: async (url, init) => {
+			openaiCaptured = { url, init };
+			return new Response(new ArrayBuffer(4), { status: 200, headers: { 'content-type': 'audio/mpeg' } });
+		},
+	});
+	await openaiAdapter.synthesize('Spoken text', { speed: 1.5 });
+	assert.ok(openaiCaptured.url.endsWith('/audio/speech'), `9b: OpenAI hits /audio/speech (got ${openaiCaptured.url})`);
+	const openaiBody = JSON.parse(openaiCaptured.init.body);
+	assert.equal(openaiBody.model, 'gpt-4o-mini-tts', '9b: OpenAI uses gpt-4o-mini-tts default');
+	assert.equal(openaiBody.voice, 'nova', '9b: OpenAI uses configured voice override');
+	assert.equal(openaiBody.response_format, 'mp3', '9b: OpenAI-compatible includes response_format');
+	assert.equal(openaiBody.speed, 1.5, '9b: speed option passed through');
+	pass('9b: OpenAI-compatible TTS uses /audio/speech with response_format');
+
+	// 9c: per-provider TTS model override takes precedence over the global model.
+	const overrideSettings = {
+		multiProvider: { credentials: { openai: { providerId: 'openai', apiKey: 'k', baseUrl: 'https://api.openai.com/v1', enabled: true } }, routing: {}, fallback: {}, defaults: {} },
+		textToSpeechModels: { openai: 'tts-1-hd' }, textToSpeechModel: 'gpt-4o-mini-tts', textToSpeechApiVoice: '',
+	};
+	let overrideBody;
+	const overrideAdapter = new TtsAdapter({
+		providerId: 'openai', getSettings: () => overrideSettings, getApiKey: () => 'k',
+		fetch: async (_url, init) => { overrideBody = JSON.parse(init.body); return new Response(new ArrayBuffer(2), { status: 200, headers: { 'content-type': 'audio/mpeg' } }); },
+	});
+	await overrideAdapter.synthesize('text');
+	assert.equal(overrideBody.model, 'tts-1-hd', '9c: per-provider override wins over global model');
+	pass('9c: per-provider TTS model override takes precedence');
+
+	// 9d: HTTP errors surface as TtsError with status + retryable flag.
+	const errorAdapter = new TtsAdapter({
+		providerId: 'openai', getSettings: () => openaiSettings, getApiKey: () => 'oai-key',
+		fetch: async () => new Response(JSON.stringify({ error: { message: 'rate limited' } }), { status: 429 }),
+	});
+	await assert.rejects(() => errorAdapter.synthesize('text'), err => err instanceof TtsError && err.status === 429 && err.retryable === true);
+	pass('9d: TTS HTTP errors throw TtsError with status and retryable flag');
+
+	// 9e: empty text is rejected immediately.
+	await assert.rejects(() => xaiAdapter.synthesize('   '), /empty text/i);
+	pass('9e: TTS rejects empty text');
+
+	// 9f: disabled provider throws a clear error.
+	const disabledSettings = { multiProvider: { credentials: { openai: { providerId: 'openai', apiKey: '', baseUrl: '', enabled: false } }, routing: {}, fallback: {}, defaults: {} }, textToSpeechModels: {}, textToSpeechModel: '', textToSpeechApiVoice: '' };
+	const disabledAdapter = new TtsAdapter({ providerId: 'openai', getSettings: () => disabledSettings, getApiKey: () => '' });
+	await assert.rejects(() => disabledAdapter.synthesize('text'), /not enabled/i);
+	pass('9f: disabled provider TTS throws a clear error');
+
+	// 9g: DEFAULT_TTS_MODELS has correct slugs for each provider.
+	assert.equal(DEFAULT_TTS_MODELS.openai, 'gpt-4o-mini-tts', '9g: OpenAI TTS default is gpt-4o-mini-tts');
+	assert.equal(DEFAULT_TTS_MODELS.xai, 'grok-tts', '9g: xAI TTS default is grok-tts');
+	assert.equal(DEFAULT_TTS_MODELS.openrouter, 'openai/tts-1', '9g: OpenRouter TTS default is openai/tts-1');
+	pass('9g: DEFAULT_TTS_MODELS has correct per-provider TTS slugs');
+
+	// 9h: TtsAdapter.supportsProvider distinguishes TTS-capable providers.
+	assert.equal(TtsAdapter.supportsProvider('xai'), true, '9h: xAI supports TTS');
+	assert.equal(TtsAdapter.supportsProvider('openai'), true, '9h: OpenAI supports TTS');
+	assert.equal(TtsAdapter.supportsProvider('anthropic'), false, '9h: Anthropic does NOT support TTS');
+	assert.equal(TtsAdapter.supportsProvider('google-gemini'), false, '9h: Gemini does NOT support TTS');
+	pass('9h: supportsProvider identifies TTS-capable providers');
+}
+
+
+/* ═══════════════════════════════════════════════════════════
    Run New Tests
    ═══════════════════════════════════════════════════════════ */
 
@@ -1859,6 +2011,7 @@ async function main() {
 	await verifyTaskQueue();
 	await verifyRealDaemon();
 	await verifyProviderFallback();
+	await verifyTtsAdapter();
 	await verifyVersionSync();
 	await verifyDataNormalizer();
 	await verifyJsonRepair();
