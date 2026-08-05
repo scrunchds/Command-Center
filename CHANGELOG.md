@@ -4,7 +4,7 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.7.6] - 2026-08-05
 
 ### Added
 - **Mind map widget** (`src/ui/MindMapPanel.ts`, `src/ui/mindmap-model.ts`): maps the active note's heading structure from `metadataCache`, so it costs no tokens and no file reads. Nodes jump to their heading, branches collapse, and the map exports as an indented Markdown outline. Skipped heading levels and notes starting at a deep heading are handled by attaching to the nearest shallower parent rather than dropping the heading. No third-party mind map plugin required; hidden by default.
