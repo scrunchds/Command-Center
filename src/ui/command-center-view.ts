@@ -27,7 +27,6 @@ import { BrowserPanel } from './BrowserPanel';
 import { CommandDeck, type DeckEntry } from './CommandDeck';
 import { CalendarPanel } from './CalendarPanel';
 import { VaultNavigator } from './VaultNavigator';
-import { COMMAND_CENTER_BROWSER_VIEW_TYPE } from './browser-view';
 import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings/settings-model';
 import { DashboardOnboarding } from './DashboardOnboarding';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
@@ -602,7 +601,9 @@ export class CommandCenterView extends ItemView {
 		// Principle 6: the native Obsidian browser keeps documentation and web
 		// research inside the same operational surface.
 		const browser = actions.createEl('button', { text: 'Open browser' });
-		this.registerDomEvent(browser, 'click', () => void this.app.workspace.getLeaf('split').setViewState({ type: COMMAND_CENTER_BROWSER_VIEW_TYPE, active: true }));
+		// Route through the plugin so an already-open browser leaf is revealed and
+		// reused, rather than stacking a fresh empty split every click.
+		this.registerDomEvent(browser, 'click', () => void this.plugin.activateCommandCenterBrowserView());
 		const vault = actions.createEl('button', { text: 'Open secrets' });
 		this.registerDomEvent(vault, 'click', () => new CredentialVaultModal(this.app, this.plugin, () => this.renderTelemetry()).open());
 	}

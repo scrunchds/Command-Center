@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.13%2B-7C3AED?logo=obsidian)](https://obsidian.md/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022%20%7C%2024-339933?logo=node.js&logoColor=white)](package.json)
-[![Tests](https://img.shields.io/badge/tests-391%20passing-brightgreen)](#quality-security-and-release-controls)
+[![Tests](https://img.shields.io/badge/tests-394%20passing-brightgreen)](#quality-security-and-release-controls)
 [![Attestations](https://img.shields.io/badge/attestations-Sigstore-blue?logo=sigstore)](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20development-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/DustinS)
@@ -536,8 +536,13 @@ Computed from Obsidian's metadata cache only; no model calls, no token spend.
 
 On desktop this uses Electron's `<webview>`, the same mechanism as Obsidian's own Web viewer, so it browses the open web normally — including sites such as GitHub, MDN, Google, and Stack Overflow that send `X-Frame-Options` and would refuse to load in a plain iframe. Browsing state lives in its own isolated partition, separate from Obsidian's session. An **Open externally** button hands the current page to your system browser, which is the better route for logins, downloads, and anything needing a password manager.
 
+The widget and the full-pane view are the same component, so behavior and fixes never diverge between them. **Open browser** reuses an existing browser leaf rather than opening a new split each time.
+
 > [!NOTE]
 > Where `<webview>` is unavailable, the panel degrades to a sandboxed iframe and says so in the panel. In that limited mode only sites that permit framing will load; most major sites will not. Command Center is desktop-only, so this is an edge case rather than the normal path.
+
+> [!IMPORTANT]
+> This is a convenience reader, not a replacement for your browser. Sign-in flows are the weak spot: Google's login pages actively resist embedded browsers, and password managers and passkeys will not be available. Use **Open externally** for anything involving credentials — which is also the safer habit.
 
 ### Custom cards
 

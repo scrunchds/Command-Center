@@ -142,7 +142,10 @@ Command Center — Agentic OS for Obsidian
 .cc-browser-address { flex: 1 1 auto; min-width: 0; padding: 6px 10px; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-primary); color: var(--text-normal); font-family: var(--font-interface); }
 .cc-browser-status { margin-left: 6px; color: var(--text-muted); font-size: var(--font-smallest); white-space: nowrap; }
 .cc-browser-viewport { flex: 1 1 auto; min-height: 0; background: var(--background-primary); }
-.cc-browser-frame { width: 100%; height: 100%; min-height: 0; border: 0; background: var(--background-primary); }
+.cc-browser-viewport { display: flex; }
+/* A <webview> is a replaced element with an intrinsic 300x150px size, so it
+   ignores height:100% unless it is a flex item in a parent with real height. */
+.cc-browser-frame { display: flex; flex: 1 1 auto; width: 100%; height: 100%; min-height: 0; border: 0; background: var(--background-primary); }
 .cc-telemetry-card.is-ok { border-left: 3px solid var(--color-green); }
 .cc-telemetry-card.is-warning { border-left: 3px solid var(--color-orange); }
 .cc-telemetry-card.is-secure { border-left: 3px solid var(--color-blue); }
@@ -1559,11 +1562,21 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 	min-height: min(70vh, 46rem);
 }
 
-/* Webview and iframe share the viewport styling. */
-.cc-browser-panel-viewport webview.cc-browser-panel-frame {
+/* A <webview> is a replaced element with an intrinsic 300x150px size. Without
+   display:flex plus a flex-sized parent it renders at 150px tall, filling only
+   the top portion of the viewport regardless of height:100%. */
+.cc-browser-panel-viewport {
 	display: flex;
+	flex-direction: column;
+}
+
+.cc-browser-panel-viewport webview.cc-browser-panel-frame,
+.cc-browser-panel-viewport iframe.cc-browser-panel-frame {
+	display: flex;
+	flex: 1 1 auto;
 	width: 100%;
 	height: 100%;
+	min-height: 0;
 }
 
 /* Shown only in limited mode, where framing restrictions really do apply. */
@@ -1573,4 +1586,40 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 	background-color: var(--background-modifier-error-hover);
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
+}
+
+/* ─── Browser pane shell ──────────────────────────────────── */
+
+/* The pane hosts a BrowserPanel, so the wrapper must pass its full height
+   down or the panel collapses to the toolbar and nothing renders. */
+.cc-browser-view-host {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+	padding: var(--size-4-2);
+}
+
+.cc-browser-view-host .cc-browser-panel {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* In a docked side panel the viewport should fill the pane rather than sit at
+   the inline widget's fixed minimum height. */
+.cc-browser-view-host .cc-browser-panel-viewport {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* Narrow side docks cannot fit six controls and an address box on one row. */
+@media (max-width: 480px) {
+	.cc-browser-panel-bar {
+		flex-wrap: wrap;
+	}
+
+	.cc-browser-panel-address {
+		order: -1;
+		flex-basis: 100%;
+	}
 }

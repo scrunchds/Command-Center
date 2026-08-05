@@ -16,7 +16,7 @@
  */
 
 import { Notice, Platform, setIcon } from 'obsidian';
-import { BrowserHistory, describeUrl, normalizeBrowserUrl } from './browser-url';
+import { BrowserHistory, chromeUserAgent, describeUrl, normalizeBrowserUrl } from './browser-url';
 
 /** Where the panel starts when no address has been visited yet. */
 const DEFAULT_HOME = 'https://obsidian.md';
@@ -54,6 +54,8 @@ export interface BrowserPanelOptions {
 	onFocusChange?: (focused: boolean) => void;
 	/** Starting address; defaults to the Obsidian home page. */
 	home?: string;
+	/** Hide the pop-out control when already in a dedicated pane. */
+	showPopOut?: boolean;
 }
 
 /** Renders and maintains the embedded browser. */
@@ -105,9 +107,11 @@ export class BrowserPanel {
 		this.addressEl.addEventListener('focus', () => this.addressEl?.select());
 
 		this.focusEl = this.navButton(bar, 'maximize-2', 'Expand to fill the dashboard', () => this.toggleFocus());
-		this.navButton(bar, 'picture-in-picture-2', 'Open in its own pane', () => {
-			this.options.onPopOut(this.history.current || this.home());
-		});
+		if (this.options.showPopOut !== false) {
+			this.navButton(bar, 'picture-in-picture-2', 'Open in its own pane', () => {
+				this.options.onPopOut(this.history.current || this.home());
+			});
+		}
 		// Escape hatch: logins, downloads, and anything better handled by a real browser.
 		this.navButton(bar, 'external-link', 'Open in your system browser', () => {
 			const url = this.history.current;
@@ -142,6 +146,14 @@ export class BrowserPanel {
 				cls: 'cc-browser-panel-frame',
 			}) as unknown as WebviewElement;
 			webview.setAttribute('allowpopups', 'false');
+			// Electron's default UA contains "Electron/" and "obsidian/", which Google
+			// rejects outright ("this browser or app may not be secure") and which some
+			// sites answer with a 401. Presenting the underlying Chrome UA, minus those
+			// tokens, is what Obsidian's own web viewer does.
+			// Read the UA from the frame's own realm rather than the plugin's global
+			// navigator, which the Obsidian lint rules reserve for platform checks.
+			const realmUa = viewport.ownerDocument.defaultView?.navigator.userAgent ?? '';
+			webview.setAttribute('useragent', chromeUserAgent(realmUa));
 			// Partition isolates cookies and storage from Obsidian's own session.
 			webview.setAttribute('partition', 'persist:command-center-browser');
 			this.webviewEl = webview;

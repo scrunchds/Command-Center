@@ -2414,6 +2414,24 @@ async function verifyBrowserUrl() {
 	assert.ok(describeUrl(`https://example.com/${'x'.repeat(80)}`).length < 45, 'long paths are trimmed');
 	assert.equal(describeUrl('not a url'), 'not a url');
 	pass('24l: summarizes URLs for a compact status line');
+
+	// 24m: the Electron and Obsidian tokens are removed from the user agent
+	const { chromeUserAgent } = mod;
+	const electronUa = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) obsidian/1.8.10 Chrome/126.0.6478.234 Electron/31.7.7 Safari/537.36';
+	const clean = chromeUserAgent(electronUa);
+	assert.ok(!/electron/i.test(clean), 'Electron token must be gone');
+	assert.ok(!/obsidian/i.test(clean), 'Obsidian token must be gone');
+	pass('24m: strips Electron and Obsidian tokens from the user agent');
+
+	// 24n: the real Chrome version survives, so the UA stays truthful
+	assert.match(clean, /Chrome\/126\.0\.6478\.234/);
+	assert.match(clean, /Safari\/537\.36$/);
+	assert.ok(!/ {2,}/.test(clean), 'no double spaces left behind');
+	pass('24n: preserves the true Chrome version and collapses gaps');
+
+	// 24o: an empty or unusable UA still yields a valid Chrome UA
+	assert.match(chromeUserAgent(''), /^Mozilla\/5\.0 .*Chrome\/[\d.]+ Safari\/537\.36$/);
+	pass('24o: falls back to a valid Chrome user agent');
 }
 
 async function main() {

@@ -116,3 +116,20 @@ export function describeUrl(url: string): string {
 		return url;
 	}
 }
+
+/**
+ * Build a plain Chrome user agent from the runtime's own UA.
+ *
+ * Derived from the runtime UA rather than hardcoded, so the Chrome version stays
+ * truthful as Obsidian updates Electron; only the identifying Electron and
+ * Obsidian tokens are removed.
+ */
+export function chromeUserAgent(ua: string): string {
+	const stripped = ua
+		.replace(/\s*Electron\/[^\s]+/gi, '')
+		.replace(/\s*obsidian\/[^\s]+/gi, '')
+		.replace(/\s{2,}/g, ' ')
+		.trim();
+	// Fall back to a known-good UA if the runtime string was unexpectedly empty.
+	return stripped || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+}

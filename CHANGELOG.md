@@ -4,6 +4,16 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- The full-pane browser opened an empty split: it was a second, diverged implementation of the browser, and its `<webview>` had no resolved height. The pane is now a thin shell around the same `BrowserPanel` as the dashboard widget, so both surfaces share one implementation and any fix applies to both.
+- The browser widget rendered only in the top portion of its card. A `<webview>` is a replaced element with an intrinsic 300x150px size, so it ignored `height: 100%`; it now uses `display: flex` inside a flex-sized viewport.
+- Google properties (`gmail.com`, `mail.google.com`, `youtube.com`) returned 401 or refused to load because Electron's default user agent advertises `Electron/` and `obsidian/`. The webview now presents the underlying Chrome user agent, derived from the runtime so the version stays truthful.
+- "Open browser" on the dashboard created a fresh split leaf on every click, bypassing leaf reuse and the address handoff. It now routes through `activateCommandCenterBrowserView()`.
+- The browser pane's host element had no styling and would collapse; the toolbar now wraps in narrow side docks instead of overflowing.
+- `scripts/release.mjs` called `execSync` with an argument array, which always threw, so changelog generation silently fell back to an unexpanded `- Release ${targetVersion}.` placeholder.
+
 ## [1.7.5] - 2026-08-04
 
 ### Added
