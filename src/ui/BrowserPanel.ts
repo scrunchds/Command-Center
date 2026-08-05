@@ -15,21 +15,37 @@
  *   popped out — opens the full browser view in a split leaf
  */
 
-import { Notice, setIcon } from 'obsidian';
+import { Notice, Platform, setIcon } from 'obsidian';
 import { BrowserHistory, describeUrl, normalizeBrowserUrl } from './browser-url';
 
 /** Where the panel starts when no address has been visited yet. */
 const DEFAULT_HOME = 'https://obsidian.md';
 
 /**
- * Sandbox for embedded pages.
+ * Sandbox for the iframe fallback.
  *
  * `allow-same-origin` is deliberately withheld: granting it alongside
  * `allow-scripts` would let a page reach into the plugin's own origin, and with
- * it the vault. Forms, scripts, and popups are permitted so real documentation
- * sites remain usable.
+ * it the vault.
  */
 const FRAME_SANDBOX = 'allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts allow-downloads';
+
+/**
+ * Minimal surface of Electron's <webview> tag.
+ *
+ * Typed locally because it is a runtime element provided by Electron, not part
+ * of the DOM or Obsidian type definitions.
+ */
+interface WebviewElement extends HTMLElement {
+	src: string;
+	canGoBack?: () => boolean;
+	canGoForward?: () => boolean;
+	goBack?: () => void;
+	goForward?: () => void;
+	reload?: () => void;
+	getURL?: () => string;
+	stop?: () => void;
+}
 
 export interface BrowserPanelOptions {
 	/** Opens the full browser view in a split leaf, at the given address. */
@@ -43,7 +59,11 @@ export interface BrowserPanelOptions {
 /** Renders and maintains the embedded browser. */
 export class BrowserPanel {
 	private hostEl: HTMLElement | null = null;
+	/** Electron <webview> on desktop; null when falling back to an iframe. */
+	private webviewEl: WebviewElement | null = null;
+	/** Sandboxed iframe fallback, used only when <webview> is unavailable. */
 	private frameEl: HTMLIFrameElement | null = null;
+	private noticeEl: HTMLElement | null = null;
 	private addressEl: HTMLInputElement | null = null;
 	private statusEl: HTMLElement | null = null;
 	private backEl: HTMLButtonElement | null = null;
@@ -88,25 +108,82 @@ export class BrowserPanel {
 		this.navButton(bar, 'picture-in-picture-2', 'Open in its own pane', () => {
 			this.options.onPopOut(this.history.current || this.home());
 		});
+		// Escape hatch: logins, downloads, and anything better handled by a real browser.
+		this.navButton(bar, 'external-link', 'Open in your system browser', () => {
+			const url = this.history.current;
+			if (!url) {
+				new Notice('Enter an address first.');
+				return;
+			}
+			window.open(url, '_blank');
+		});
 
 		const viewport = host.createDiv({ cls: 'cc-browser-panel-viewport' });
-		this.frameEl = viewport.createEl('iframe', {
-			cls: 'cc-browser-panel-frame',
-			attr: { title: 'Embedded browser', sandbox: FRAME_SANDBOX, referrerpolicy: 'no-referrer' },
-		});
-		// Some sites refuse framing; say so rather than showing a blank rectangle.
-		this.frameEl.addEventListener('load', () => this.setStatus(describeUrl(this.history.current)));
+		this.mountViewport(viewport);
 
 		this.statusEl = host.createDiv({ cls: 'cc-browser-panel-status' });
 		this.setStatus('Enter an address to begin.');
 		this.syncControls();
 	}
 
-	/** Remove listeners and clear the frame so no page keeps running. */
+	/**
+	 * Build the actual web surface.
+	 *
+	 * Electron's <webview> is a real browser view: it ignores `X-Frame-Options`
+	 * and `frame-ancestors`, so sites that refuse framing (GitHub, MDN, Google,
+	 * Stack Overflow) load normally. It is the same mechanism Obsidian's own Web
+	 * viewer uses. An iframe cannot browse the open web, so it is only a fallback
+	 * for environments without <webview>, and it says so plainly.
+	 */
+	private mountViewport(viewport: HTMLElement): void {
+		if (Platform.isDesktopApp) {
+			// createEl types against HTMLElementTagNameMap, which has no webview.
+			const webview = viewport.createEl('webview' as keyof HTMLElementTagNameMap, {
+				cls: 'cc-browser-panel-frame',
+			}) as unknown as WebviewElement;
+			webview.setAttribute('allowpopups', 'false');
+			// Partition isolates cookies and storage from Obsidian's own session.
+			webview.setAttribute('partition', 'persist:command-center-browser');
+			this.webviewEl = webview;
+			webview.addEventListener('did-stop-loading', () => {
+				const url = webview.getURL?.() ?? this.history.current;
+				// The page may have redirected or followed a link internally.
+				if (url && url !== 'about:blank') {
+					this.history.push(url);
+					if (this.addressEl) this.addressEl.value = url;
+				}
+				this.setStatus(describeUrl(url));
+				this.syncControls();
+			});
+			webview.addEventListener('did-fail-load', () => {
+				this.setStatus('That page could not be loaded.');
+			});
+			return;
+		}
+
+		// Fallback path: honest about what it cannot do.
+		this.frameEl = viewport.createEl('iframe', {
+			cls: 'cc-browser-panel-frame',
+			attr: { title: 'Embedded browser', sandbox: FRAME_SANDBOX, referrerpolicy: 'no-referrer' },
+		});
+		this.frameEl.addEventListener('load', () => this.setStatus(describeUrl(this.history.current)));
+		this.noticeEl = viewport.createDiv({
+			cls: 'cc-browser-panel-fallback',
+			text: 'Limited mode: this platform has no embedded browser, so sites that refuse framing will not load. Use "Open externally" instead.',
+		});
+	}
+
+	/** Remove listeners and clear the view so no page keeps running. */
 	dispose(): void {
 		// Blanking src stops timers, media, and network activity in the page.
+		if (this.webviewEl) {
+			this.webviewEl.stop?.();
+			this.webviewEl.src = 'about:blank';
+		}
+		this.webviewEl = null;
 		if (this.frameEl) this.frameEl.src = 'about:blank';
 		this.frameEl = null;
+		this.noticeEl = null;
 		this.addressEl = null;
 		this.statusEl = null;
 		this.backEl = null;
@@ -166,28 +243,50 @@ export class BrowserPanel {
 		return button;
 	}
 
+	/**
+	 * Step through history.
+	 *
+	 * The webview keeps its own authoritative history, including in-page
+	 * navigations we never saw, so delegate to it and only fall back to the
+	 * tracked stack for the iframe path.
+	 */
 	private step(direction: 'back' | 'forward'): void {
+		const webview = this.webviewEl;
+		if (webview) {
+			if (direction === 'back' && webview.canGoBack?.()) webview.goBack?.();
+			else if (direction === 'forward' && webview.canGoForward?.()) webview.goForward?.();
+			this.syncControls();
+			return;
+		}
 		const url = direction === 'back' ? this.history.back() : this.history.forward();
 		if (url) this.load(url);
 	}
 
 	private reload(): void {
+		if (this.webviewEl) {
+			this.webviewEl.reload?.();
+			return;
+		}
 		const url = this.history.current;
 		if (!url) return;
 		this.load(url);
 	}
 
-	/** Point the frame at a URL and resynchronize the toolbar. */
+	/** Point the active web surface at a URL and resynchronize the toolbar. */
 	private load(url: string): void {
 		if (this.addressEl) this.addressEl.value = url;
+		if (this.webviewEl) this.webviewEl.src = url;
 		if (this.frameEl) this.frameEl.src = url;
 		this.setStatus(`Loading ${describeUrl(url)}…`);
 		this.syncControls();
 	}
 
 	private syncControls(): void {
-		if (this.backEl) this.backEl.disabled = !this.history.canGoBack;
-		if (this.forwardEl) this.forwardEl.disabled = !this.history.canGoForward;
+		// Prefer the webview's real history; it knows about in-page navigation.
+		const back = this.webviewEl?.canGoBack?.() ?? this.history.canGoBack;
+		const forward = this.webviewEl?.canGoForward?.() ?? this.history.canGoForward;
+		if (this.backEl) this.backEl.disabled = !back;
+		if (this.forwardEl) this.forwardEl.disabled = !forward;
 	}
 
 	private setStatus(text: string): void {

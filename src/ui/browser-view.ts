@@ -64,14 +64,12 @@ export class CommandCenterBrowserView extends ItemView {
 		this.statusEl = header.createDiv({ cls: 'cc-browser-status', text: 'Ready' });
 
 		const viewport = container.createDiv({ cls: 'cc-browser-viewport' });
-		this.frameEl = viewport.createEl('iframe', {
+		// Electron's <webview> ignores X-Frame-Options and CSP frame-ancestors, so
+		// sites that refuse framing still load. An iframe cannot browse the open web.
+		this.frameEl = viewport.createEl('webview' as keyof HTMLElementTagNameMap, {
 			cls: 'cc-browser-frame',
-			attr: {
-				title: 'Command center browser',
-				sandbox: 'allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts allow-downloads',
-				referrerpolicy: 'no-referrer',
-			},
-		});
+		}) as unknown as HTMLIFrameElement;
+		this.frameEl.setAttribute('partition', 'persist:command-center-browser');
 
 		this.registerDomEvent(this.backButton, 'click', () => void this.goBack());
 		this.registerDomEvent(this.forwardButton, 'click', () => void this.goForward());

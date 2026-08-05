@@ -1558,3 +1558,19 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 .cc-browser-panel.is-focused .cc-browser-panel-viewport {
 	min-height: min(70vh, 46rem);
 }
+
+/* Webview and iframe share the viewport styling. */
+.cc-browser-panel-viewport webview.cc-browser-panel-frame {
+	display: flex;
+	width: 100%;
+	height: 100%;
+}
+
+/* Shown only in limited mode, where framing restrictions really do apply. */
+.cc-browser-panel-fallback {
+	padding: var(--size-2-2) var(--size-4-2);
+	border-top: 1px solid var(--background-modifier-border);
+	background-color: var(--background-modifier-error-hover);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}

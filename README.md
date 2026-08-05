@@ -532,7 +532,12 @@ Computed from Obsidian's metadata cache only; no model calls, no token spend.
 
 **Command deck** — a vertical rail built from your vault's workflow files (`.md`, `.canvas`, and generated `.json`). Labels, descriptions, and icons come from native frontmatter, and new workflows hot-register without an Obsidian restart.
 
-**Browser** — an embedded web view for documentation, API references, and research. Use it inline, expand it to fill the dashboard for close reading, or pop it out into its own pane. Bare hosts and `localhost:3000` resolve as addresses, free text becomes a search, and non-web schemes (`javascript:`, `data:`, `file:`) are refused. Pages are sandboxed without `allow-same-origin`, so an embedded page cannot reach the plugin's origin or your vault. Hidden by default — enable it in **Customize dashboard**.
+**Browser** — a real embedded web view for documentation, API references, and research. Use it inline, expand it to fill the dashboard for close reading, or pop it out into its own pane. Bare hosts and `localhost:3000` resolve as addresses, free text becomes a search, and non-web schemes (`javascript:`, `data:`, `file:`) are refused. Hidden by default — enable it in **Customize dashboard**.
+
+On desktop this uses Electron's `<webview>`, the same mechanism as Obsidian's own Web viewer, so it browses the open web normally — including sites such as GitHub, MDN, Google, and Stack Overflow that send `X-Frame-Options` and would refuse to load in a plain iframe. Browsing state lives in its own isolated partition, separate from Obsidian's session. An **Open externally** button hands the current page to your system browser, which is the better route for logins, downloads, and anything needing a password manager.
+
+> [!NOTE]
+> Where `<webview>` is unavailable, the panel degrades to a sandboxed iframe and says so in the panel. In that limited mode only sites that permit framing will load; most major sites will not. Command Center is desktop-only, so this is an edge case rather than the normal path.
 
 ### Custom cards
 
