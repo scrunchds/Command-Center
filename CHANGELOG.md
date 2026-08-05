@@ -4,6 +4,36 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Absolute write gate** (`src/security/WriteGate.ts`): a single authority for every vault mutation. `gateTools()` wraps each capability so authorization runs inside `execute`, making bypass structurally impossible. New `autoWriteEnabled` and `protectedWritePaths` settings, an append-only decision log on the dashboard, and a live gate-posture banner.
+- **Zero-cost intelligence bridge** (`src/intelligence/VaultDataBridge.ts`): deterministic vault analysis from Obsidian's `metadataCache` only, with no provider or token cost. Surfaces daily-note state, tracked metrics, evaluated capacity rules, capture entries, checkbox and property-driven tasks, inline/emoji due dates, managed folders, and native `.base` views.
+- **Four “Happening now” dashboard cards**: Daily intelligence, Capture, Action items, and Workspaces, with Kanban-style task lanes (Overdue / Due today / Scheduled / Undated) derived from dates already present in the vault.
+- **Calendar panel** (`src/ui/CalendarPanel.ts`): month grid marking days with notes and scheduled work. Create, complete, edit, reschedule, and delete dated tasks, and open or create any day's note — every write routed through the write gate.
+- **Task mutation layer** (`src/intelligence/TaskWriter.ts` and pure `task-syntax.ts`): standard Markdown checkbox output compatible with Dataview, Tasks, Kanban, and Bases. Atomic `Vault.process` writes, heading-targeted insertion, CRLF preservation, path-traversal rejection, and concurrent-edit detection.
+- **Vault doorway** (`src/ui/VaultNavigator.ts`): one ranked filter across note titles, folders, tags, canvases, and `.base` views, defaulting to recently edited notes. Folders reveal in the native file explorer; tags hand off to Obsidian's global search.
+- **Command deck** (`src/ui/CommandDeck.ts`): a vertical launcher built from vault workflow files (`.md`, `.canvas`, generated `.json`), reading labels/descriptions/icons from native frontmatter and hot-registering on vault events without a restart.
+- **Declarative REST connectors** (`src/connectors/ApiConnectorManager.ts`): user-approved HTTP connectors exposed as `api:<connector>:<endpoint>` tools, using Obsidian `requestUrl`, HTTPS-only base URLs, credential references resolved from Secret Storage, and confirmation gates on non-GET calls.
+- **Conversational connector approval**: the onboarding orchestrator can propose an `action-api-connector` block from public API documentation; an explicit approval click registers it and refreshes the capability registry.
+- **Global chat interaction style** (`src/prompts/interaction-style.ts`) plus a live capability inventory injected at every shared provider boundary, so all chat surfaces know exactly which tools exist.
+- Per-section UX descriptions across the whole dashboard: each panel states what it shows and what to do with it.
+- Obsidian's built-in browser is now reachable from the dashboard header.
+- 25 new tests covering write-gate enforcement and Markdown task transforms (193 in the core suite; 368 total).
+
+### Changed
+- Onboarding is now optional: Command Center no longer force-opens the setup interview on first run. Chat, tools, and the dashboard work immediately, and guided setup can be started at any time.
+- Live external capability refresh recreates MCP and REST connector tools after settings changes, unregistering stale entries.
+- Setup input redaction now permits links, paths, hosts, ports, and endpoint values, blocking only credential-like material.
+- Dashboard layout gained `deck`, `navigator`, `intelligence`, and `calendar` widgets, all reorderable and hideable.
+
+### Fixed
+- Layout editor did not collapse when “Done customizing” was clicked: the `.cc-dashboard-layout-editor.is-hidden` rule was missing entirely, so the panel was permanently expanded. Visibility is now explicit state, with a `Done` button inside the panel and correct `aria-expanded` reporting.
+- HTTP 400 after successful tool execution: the assistant tool-call message is now inserted before tool results, with `toolCallId` forced on each result, for both streaming and non-streaming providers.
+- Onboarding now closes and returns to the dashboard on completion.
+- Removed the hardcoded `vault-setup.ts` scaffold, keeping the plugin methodology-agnostic.
+- Replaced `fetch` with Obsidian's `requestUrl` in the REST connector transport.
+
 ## [1.7.4] - 2026-08-04
 
 ### Changed

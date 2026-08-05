@@ -1,6 +1,7 @@
 import { App, Component, MarkdownRenderer, Notice, TFile } from 'obsidian';
 import type CommandCenterPlugin from '../main';
 import type { OnboardingConfig } from '../onboarding/OnboardingTypes';
+import type { ApiConnectorConfig } from '../connectors/ApiConnectorManager';
 import {
 	containsProtectedSetupInput,
 	type InterviewEngine,
@@ -9,6 +10,7 @@ import {
 
 export interface DashboardOnboardingOptions {
 	onComplete?: (config: OnboardingConfig) => void | Promise<void>;
+	onConnectorApproved?: (connector: ApiConnectorConfig) => void | Promise<void>;
 	onClose?: () => void;
 }
 
@@ -120,7 +122,7 @@ export class DashboardOnboarding {
 		if (!text || this.busy) return;
 		if (containsProtectedSetupInput(text)) {
 			this.input.value = '';
-			this.setStatus('Protected setup input was blocked locally. Use Settings → Command Center.', true);
+			this.setStatus('Credential-like setup input was blocked locally. Links, paths, hosts, ports, and endpoint values are allowed; use Settings for credentials.', true);
 			new Notice('Protected setup input was blocked and not submitted.');
 			return;
 		}
@@ -133,10 +135,18 @@ export class DashboardOnboarding {
 			await this.render('assistant', reply.message);
 			this.updatePhase();
 			if (reply.synthesis) this.renderApproval(reply.synthesis);
+			if (reply.workflowApproval) this.renderWorkflowApproval(reply.workflowApproval.workflows);
+			if (reply.connectorApproval) this.renderConnectorApproval(reply.connectorApproval.connector);
+			if (reply.complete) {
+				if (reply.config) await this.options.onComplete?.(reply.config);
+				this.options.onClose?.();
+				new Notice('Command center onboarding complete.');
+			}
 			else this.setStatus(reply.redacted ? 'Credential-like content was not sent.' : '');
 		} catch (error) {
 			this.setStatus((error as Error).message, true);
 		} finally {
+			this.persistProgress();
 			this.setBusy(false);
 			this.input.focus();
 		}
@@ -162,6 +172,7 @@ export class DashboardOnboarding {
 	private async skipCurrentPhase(): Promise<void> {
 		if (this.busy) return;
 		this.engine.skipPhase();
+		this.persistProgress();
 		this.updatePhase();
 		await this.submit('Skip this topic entirely; record no invented values for this section and continue.');
 	}
@@ -223,15 +234,67 @@ export class DashboardOnboarding {
 			try {
 				const result = await this.engine.completeSynthesis(selected(templates), selected(workflows));
 				await this.options.onComplete?.(result.config);
-				this.approval?.empty();
-				this.approval?.createEl('h3', { text: 'Command center initialized' });
-				this.approval?.createEl('p', { text: `Created ${result.templatePaths.length} template(s) and ${result.workflowPaths.length} workflow(s).` });
-				this.renderNextSteps();
-				this.setStatus('Approved configuration and assets initialized.');
-				new Notice('Command center initialized.');
+				// Setup is complete: leave the onboarding surface immediately so the
+				// dashboard cannot continue to suggest that setup is pending.
+				this.options.onClose?.();
+				new Notice(`Command center initialized. Created ${result.templatePaths.length} template(s) and ${result.workflowPaths.length} workflow(s).`);
 			} catch (error) {
 				create.disabled = revise.disabled = false;
 				this.setStatus((error as Error).message, true);
+			}
+		})());
+	}
+
+	private renderConnectorApproval(connector: ApiConnectorConfig): void {
+		this.approval?.remove();
+		this.approval = this.host.createDiv({ cls: 'cc-onboarding-approval' });
+		this.approval.createEl('h3', { text: `Review ${connector.label} connector` });
+		this.approval.createEl('p', { text: `Base URL: ${connector.baseUrl}. Credentials are configured separately in Settings and are not stored in chat.` });
+		for (const endpoint of connector.endpoints) {
+			this.approval.createDiv({ text: `${endpoint.method} ${endpoint.path} — ${endpoint.description}`, cls: 'cc-onboarding-asset-option' });
+		}
+		const approve = this.approval.createEl('button', { text: 'Approve connector', cls: 'mod-cta' });
+		this.renderer.registerDomEvent(approve, 'click', () => void (async () => {
+			approve.disabled = true;
+			try {
+				await this.options.onConnectorApproved?.({ ...connector, enabled: true });
+				this.engine.approvePendingConnector();
+				this.approval?.remove();
+				this.approval = null;
+				this.setStatus('Connector approved and registered. Configure its credential reference in Settings if required.');
+				new Notice('Connector registered.');
+			} catch (error) { approve.disabled = false; this.setStatus((error as Error).message, true); }
+		})());
+	}
+
+	/** Show an explicit approval gate for orchestrator-proposed workflows. */
+	private renderWorkflowApproval(workflows: InterviewSynthesis['workflows']): void {
+		this.approval?.remove();
+		this.composer.removeClass('is-hidden');
+		this.approval = this.host.createDiv({ cls: 'cc-onboarding-approval' });
+		this.approval.createEl('h3', { text: 'Review proposed workflows' });
+		this.approval.createEl('p', { text: 'These workflows map to the templates just created. Nothing is written until you explicitly approve them.' });
+		for (const workflow of workflows) {
+			const row = this.approval.createDiv({ cls: 'cc-onboarding-asset-option' });
+			row.createEl('strong', { text: workflow.name });
+			row.createDiv({ text: workflow.description });
+		}
+		const approve = this.approval.createEl('button', { text: 'Approve and create workflows', cls: 'mod-cta' });
+		this.renderer.registerDomEvent(approve, 'click', () => void (async () => {
+			approve.disabled = true;
+			this.setBusy(true);
+			this.setStatus('Creating approved workflows…');
+			try {
+				const result = await this.engine.approvePendingWorkflows();
+				await this.options.onComplete?.(result.config);
+				this.options.onClose?.();
+				new Notice(`Command center initialized. Created ${result.workflowPaths.length} workflow(s).`);
+			} catch (error) {
+				approve.disabled = false;
+				this.setStatus((error as Error).message, true);
+			} finally {
+				this.persistProgress();
+				this.setBusy(false);
 			}
 		})());
 	}

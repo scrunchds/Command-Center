@@ -30,6 +30,10 @@ export interface DashboardWidgetLayout {
 
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardWidgetLayout[] = [
 	{ id: 'workspace', hidden: false, collapsed: false, size: 'expanded' },
+	{ id: 'deck', hidden: false, collapsed: false, size: 'compact' },
+	{ id: 'navigator', hidden: false, collapsed: false, size: 'standard' },
+	{ id: 'intelligence', hidden: false, collapsed: false, size: 'expanded' },
+	{ id: 'calendar', hidden: false, collapsed: false, size: 'standard' },
 	{ id: 'approvals', hidden: false, collapsed: false, size: 'expanded' },
 	{ id: 'orchestrator', hidden: false, collapsed: false, size: 'expanded' },
 	{ id: 'queue', hidden: false, collapsed: false, size: 'standard' },
@@ -122,6 +126,21 @@ export interface CommandCenterSettings {
 	uiMode: UiMode;
 	/** MCP server configurations for dynamic tool discovery. */
 	mcpServers: import('../mcp/MCPToolManager').MCPServerConfig[];
+	/** Declarative, user-approved REST connectors; credentials remain in Secret Storage. */
+	apiConnectors: import('../connectors/ApiConnectorManager').ApiConnectorConfig[];
+	/**
+	 * Global write-gate bypass. When false (default) every capability that
+	 * mutates the vault is staged as a proposal and requires an explicit UI
+	 * approval click. When true the operator has deliberately delegated write
+	 * authority and mutations execute without a per-action click.
+	 */
+	autoWriteEnabled: boolean;
+	/**
+	 * Vault-relative folders under absolute write protection. Mutations inside
+	 * these paths always require an explicit approval click, even when
+	 * `autoWriteEnabled` is true. Paths are user-supplied; nothing is assumed.
+	 */
+	protectedWritePaths: string[];
 	/** Per-vault dashboard widget order, visibility, collapse, and width. */
 	dashboardLayout: DashboardWidgetLayout[];
 	/** Capability system master toggle. */
@@ -175,6 +194,9 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	chatHistoryEnabled: true,
 	uiMode: 'normal',
 	mcpServers: [],
+	apiConnectors: [],
+	autoWriteEnabled: false,
+	protectedWritePaths: [],
 	dashboardLayout: DEFAULT_DASHBOARD_LAYOUT.map(widget => ({ ...widget })),
 	capabilitySystemEnabled: true,
 	capabilityPreferences: [],

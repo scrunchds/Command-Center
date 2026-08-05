@@ -2013,6 +2013,242 @@ async function verifyNewCapabilities() {
 	await verifyAtMentionEngine();
 }
 
+
+/* ═══════════════════════════════════════════════════════════
+   21. Write Gate (Principle 1: Absolute Write-Gate Authority)
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyWriteGate() {
+	console.log('\n─── 21. Write Gate ───');
+
+	const { WriteGate, gateTools } = await import(pathToFileURL(join(SRC, 'security', 'WriteGate.ts')).href);
+
+	const mutatingTool = (paths) => {
+		let executed = false;
+		return {
+			tool: {
+				name: 'write_file',
+				label: 'Write file',
+				description: 'Writes a file',
+				parameters: { type: 'object', properties: {}, required: [] },
+				confirmation: async () => ({ toolName: 'write_file', targetPaths: paths, proposedChanges: 'content' }),
+				execute: async () => { executed = true; return { content: [{ type: 'text', text: 'ok' }], details: {} }; },
+			},
+			didExecute: () => executed,
+		};
+	};
+	const readTool = {
+		name: 'read_file',
+		label: 'Read file',
+		description: 'Reads a file',
+		parameters: { type: 'object', properties: {}, required: [] },
+		execute: async () => ({ content: [{ type: 'text', text: 'ok' }], details: {} }),
+	};
+
+	// 21a: read-only tools never require approval
+	let asked = 0;
+	let gate = new WriteGate({
+		autoWriteEnabled: () => false,
+		protectedPaths: () => [],
+		requestApproval: async () => { asked++; return 'approved'; },
+	});
+	let verdict = await gate.authorize(readTool, {});
+	assert.equal(verdict.allowed, true, 'read-only tool should be allowed');
+	assert.equal(asked, 0, 'read-only tool must not prompt');
+	pass('21a: read-only capability bypasses the gate without prompting');
+
+	// 21b: gate blocks execution when rejected
+	asked = 0;
+	gate = new WriteGate({
+		autoWriteEnabled: () => false,
+		protectedPaths: () => [],
+		requestApproval: async () => { asked++; return 'rejected'; },
+	});
+	let subject = mutatingTool(['Notes/a.md']);
+	verdict = await gate.authorize(subject.tool, {});
+	assert.equal(verdict.allowed, false, 'rejected mutation must not be allowed');
+	assert.equal(asked, 1, 'gate must prompt exactly once');
+	pass('21b: rejected mutation is denied');
+
+	// 21c: gateTools physically prevents execution
+	subject = mutatingTool(['Notes/a.md']);
+	let gated = gateTools([subject.tool], gate);
+	await assert.rejects(() => gated[0].execute('id', {}), /not approved/i, 'gated execute must throw');
+	assert.equal(subject.didExecute(), false, 'underlying tool must never run');
+	pass('21c: gateTools blocks the underlying execute on denial');
+
+	// 21d: approval allows execution
+	gate = new WriteGate({
+		autoWriteEnabled: () => false,
+		protectedPaths: () => [],
+		requestApproval: async () => 'approved',
+	});
+	subject = mutatingTool(['Notes/a.md']);
+	gated = gateTools([subject.tool], gate);
+	await gated[0].execute('id', {});
+	assert.equal(subject.didExecute(), true, 'approved tool must run');
+	pass('21d: approved mutation executes');
+
+	// 21e: Auto Write bypasses the prompt
+	asked = 0;
+	gate = new WriteGate({
+		autoWriteEnabled: () => true,
+		protectedPaths: () => [],
+		requestApproval: async () => { asked++; return 'approved'; },
+	});
+	subject = mutatingTool(['Notes/a.md']);
+	verdict = await gate.authorize(subject.tool, {});
+	assert.equal(verdict.allowed, true, 'auto write should allow');
+	assert.equal(asked, 0, 'auto write must not prompt');
+	pass('21e: Auto Write bypass skips the approval click');
+
+	// 21f: protected paths override Auto Write
+	asked = 0;
+	gate = new WriteGate({
+		autoWriteEnabled: () => true,
+		protectedPaths: () => ['00 Human'],
+		requestApproval: async () => { asked++; return 'rejected'; },
+	});
+	subject = mutatingTool(['00 Human/journal.md']);
+	verdict = await gate.authorize(subject.tool, {});
+	assert.equal(asked, 1, 'protected path must still prompt under Auto Write');
+	assert.equal(verdict.allowed, false, 'protected path rejection must deny');
+	pass('21f: protected paths always require an explicit click');
+
+	// 21g: nested and sibling path matching
+	gate = new WriteGate({ autoWriteEnabled: () => true, protectedPaths: () => ['Vault/Private'], requestApproval: async () => 'approved' });
+	assert.equal(gate.isProtected(['Vault/Private/deep/note.md']), true, 'nested path is protected');
+	assert.equal(gate.isProtected(['Vault/PrivateNotes/note.md']), false, 'sibling prefix must not match');
+	assert.equal(gate.isProtected(['Vault/Private']), true, 'exact root is protected');
+	pass('21g: protected-path matching is prefix-exact, not substring');
+
+	// 21h: audit trail records every decision
+	const records = [];
+	gate = new WriteGate({
+		autoWriteEnabled: () => false,
+		protectedPaths: () => [],
+		requestApproval: async () => 'approved',
+		onRecord: r => records.push(r),
+	});
+	subject = mutatingTool(['Notes/a.md']);
+	await gate.authorize(subject.tool, {});
+	assert.equal(records.length, 1, 'one record expected');
+	assert.equal(records[0].decision, 'approved', 'decision recorded');
+	assert.equal(gate.getHistory().length, 1, 'history retained');
+	pass('21h: every gate decision is recorded for the transparency log');
+
+	// 21i: a tool reporting no mutation for these params is allowed
+	asked = 0;
+	gate = new WriteGate({ autoWriteEnabled: () => false, protectedPaths: () => [], requestApproval: async () => { asked++; return 'approved'; } });
+	verdict = await gate.authorize({ ...readTool, confirmation: async () => null }, {});
+	assert.equal(verdict.allowed, true, 'null confirmation means non-mutating');
+	assert.equal(asked, 0, 'no prompt for non-mutating invocation');
+	pass('21i: null confirmation is treated as non-mutating');
+}
+
+
+
+/* ═══════════════════════════════════════════════════════════
+   22. Task Syntax (pure transforms behind every dashboard write)
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyTaskSyntax() {
+	console.log('\n─── 22. Task Syntax ───');
+
+	const mod = await import(pathToFileURL(join(SRC, 'intelligence', 'task-syntax.ts')).href);
+	const {
+		renderTaskLine, insertTaskLine, toggleTaskLine, editTaskLine,
+		deleteTaskLine, rescheduleTaskLine, safeTaskPath, isTaskLine,
+	} = mod;
+
+	// 22a: standard Markdown checkbox with an inline due field
+	assert.equal(renderTaskLine({ text: 'Ship release', due: '2026-01-05' }), '- [ ] Ship release [due:: 2026-01-05]');
+	assert.equal(renderTaskLine({ text: 'No date' }), '- [ ] No date');
+	pass('22a: renders standard Markdown checkbox syntax');
+
+	// 22b: empty text is refused
+	assert.throws(() => renderTaskLine({ text: '   ' }), /needs text/i);
+	pass('22b: refuses an empty task');
+
+	// 22c: newlines are collapsed so one task stays one line
+	assert.equal(renderTaskLine({ text: 'a\nb' }), '- [ ] a b');
+	pass('22c: collapses newlines into a single task line');
+
+	// 22d: append at end of file
+	assert.equal(insertTaskLine('# Day\n\nnotes\n', '- [ ] x'), '# Day\n\nnotes\n- [ ] x\n');
+	assert.equal(insertTaskLine('', '- [ ] x'), '- [ ] x\n');
+	assert.equal(insertTaskLine('no trailing newline', '- [ ] x'), 'no trailing newline\n- [ ] x\n');
+	pass('22d: appends at end of file and normalizes the trailing newline');
+
+	// 22e: heading-targeted insert lands inside the right section
+	const doc = '## Tasks\n\n- [ ] existing\n\n## Notes\n\nprose\n';
+	const inserted = insertTaskLine(doc, '- [ ] added', 'Tasks');
+	assert.ok(inserted.indexOf('- [ ] added') < inserted.indexOf('## Notes'), 'must land inside Tasks');
+	assert.ok(inserted.includes('prose'), 'other sections preserved');
+	pass('22e: inserts under the requested heading, not at end of file');
+
+	// 22f: a missing heading is created rather than guessed
+	const created = insertTaskLine('body\n', '- [ ] x', 'Later');
+	assert.match(created, /## Later\n\n- \[ ] x/, 'heading created');
+	pass('22f: creates a missing heading instead of guessing a location');
+
+	// 22g: toggle affects only the target line
+	assert.equal(toggleTaskLine('- [ ] a\n- [ ] b\n', 2, true), '- [ ] a\n- [x] b\n');
+	assert.equal(toggleTaskLine('- [x] a\n', 1, false), '- [ ] a\n');
+	pass('22g: toggles the correct line and leaves others byte-identical');
+
+	// 22h: non-task lines are refused
+	assert.throws(() => toggleTaskLine('plain\n', 1, true), /no longer a task/i);
+	assert.throws(() => toggleTaskLine('- [ ] a\n', 9, true), /no longer a task/i);
+	pass('22h: refuses to mutate a line that is not a task');
+
+	// 22i: edit preserves completion state
+	assert.equal(editTaskLine('- [x] old [due:: 2026-01-01]\n', 1, 'new'), '- [x] new\n');
+	assert.throws(() => editTaskLine('- [ ] a\n', 1, '  '), /needs text/i);
+	pass('22i: edits text while preserving completion state');
+
+	// 22j: delete removes exactly one line
+	assert.equal(deleteTaskLine('- [ ] a\n- [ ] b\n- [ ] c\n', 2), '- [ ] a\n- [ ] c\n');
+	pass('22j: deletes exactly one task line');
+
+	// 22k: a concurrent edit aborts the delete
+	assert.throws(() => deleteTaskLine('- [ ] changed\n', 1, '- [ ] original'), /changed before/i);
+	pass('22k: aborts deletion when the line changed during approval');
+
+	// 22l: reschedule replaces rather than duplicates
+	assert.equal(rescheduleTaskLine('- [ ] t [due:: 2026-01-01]\n', 1, '2026-02-02'), '- [ ] t [due:: 2026-02-02]\n');
+	assert.equal(rescheduleTaskLine('- [ ] t [due:: 2026-01-01]\n', 1, null), '- [ ] t\n');
+	pass('22l: replaces and clears due dates without duplication');
+
+	// 22m: emoji and alternate field names are normalized
+	assert.equal(rescheduleTaskLine('- [ ] t 📅 2026-01-01\n', 1, '2026-03-03'), '- [ ] t [due:: 2026-03-03]\n');
+	assert.equal(rescheduleTaskLine('- [ ] t [scheduled:: 2026-01-01]\n', 1, null), '- [ ] t\n');
+	assert.equal(rescheduleTaskLine('- [ ] t [deadline:: 2026-01-01]\n', 1, null), '- [ ] t\n');
+	pass('22m: normalizes emoji, scheduled, and deadline due syntax');
+
+	// 22n: CRLF documents keep their line endings
+	assert.equal(toggleTaskLine('- [ ] a\r\n- [ ] b\r\n', 1, true), '- [x] a\r\n- [ ] b\r\n');
+	pass('22n: preserves CRLF line endings');
+
+	// 22o: path safety
+	assert.equal(safeTaskPath('Daily/2026-01-05'), 'Daily/2026-01-05.md');
+	assert.equal(safeTaskPath('  Daily/note.md '), 'Daily/note.md');
+	assert.equal(safeTaskPath('Daily\\note.md'), 'Daily/note.md');
+	for (const bad of ['../outside.md', 'a/../../b.md', '', '   ', '..', 'a/..']) {
+		assert.throws(() => safeTaskPath(bad), /unsafe/i, `must reject ${JSON.stringify(bad)}`);
+	}
+	pass('22o: normalizes paths and rejects traversal');
+
+	// 22p: task detection covers all bullet styles
+	for (const line of ['- [ ] a', '* [x] a', '+ [X] a', '   - [ ] indented']) {
+		assert.equal(isTaskLine(line), true, `${line} should be a task`);
+	}
+	for (const line of ['- not a task', '# heading', '', '- [] missing space']) {
+		assert.equal(isTaskLine(line), false, `${line} should not be a task`);
+	}
+	pass('22p: detects every Markdown checkbox bullet style');
+}
+
 async function main() {
 	console.log('═══════════════════════════════════════════');
 	console.log('  Command Center — Verification Suite');
@@ -2036,6 +2272,8 @@ async function main() {
 	await verifyReleaseTag();
 	await verifyObsidianGuidelines();
 	await verifyNewCapabilities();
+	await verifyWriteGate();
+	await verifyTaskSyntax();
 
 	console.log('\n═══════════════════════════════════════════');
 	console.log(`  Results:  ${results.pass} passed, ${results.fail} failed, ${results.skip} skipped`);

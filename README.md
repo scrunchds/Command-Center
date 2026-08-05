@@ -3,12 +3,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.13%2B-7C3AED?logo=obsidian)](https://obsidian.md/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022%20%7C%2024-339933?logo=node.js&logoColor=white)](package.json)
-[![Tests](https://img.shields.io/badge/tests-343%20passing-brightgreen)](#quality-security-and-release-controls)
+[![Tests](https://img.shields.io/badge/tests-368%20passing-brightgreen)](#quality-security-and-release-controls)
 [![Attestations](https://img.shields.io/badge/attestations-Sigstore-blue?logo=sigstore)](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20development-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/DustinS)
 
-**Command Center is a personal operational OS for Obsidian — a local-first AI multi-agent orchestrator that transforms your vault into an intelligent workspace.** It combines interview-driven onboarding, a 13-provider model routing layer, a local Pi ReAct engine with Orchestrator–Worker loops, hybrid vault RAG (BM25 + semantic retrieval), persistent agent memory, native Markdown/Canvas workflows with Bases queue integration, voice input/dictation/live transcription, a daily operations engine, and headless automation — all without imposing a productivity framework on your notes.
+**Command Center is a personal operational OS for Obsidian — a local-first AI multi-agent orchestrator that turns your vault into a single, navigable control room.** One dashboard gives you a zero-token “happening now” snapshot of today's note, unfiled captures, open tasks, and managed workspaces; a calendar for creating and completing dated work; a doorway that jumps to any note, folder, tag, or Bases view; and a Markdown-backed Command Deck that turns your workflow files into one-click buttons. Behind it sits a 13-provider routing layer, a local Pi ReAct engine with Orchestrator–Worker loops, hybrid vault RAG (BM25 + semantic retrieval), persistent agent memory, native Markdown/Canvas workflows with Bases queue integration, voice input and live transcription, extensible MCP and REST connectors, and headless automation — all behind an absolute write gate, and all without imposing a productivity framework on your notes.
 
 > [!IMPORTANT]
 > Command Center can modify vault files when you approve or run mutating operations. Keep backups, review destructive action cards, and test workflows on non-critical notes first.
@@ -23,7 +23,9 @@ Most AI integrations add a chat box. Command Center adds an operational layer:
 - **Token-efficient stationary indexing** — protected `_index.md` files describe folder purpose and direct-child contents so agents can route work without repeatedly scanning the whole vault.
 - **Built-in Obsidian Secrets** — API keys are managed through Obsidian's native Secret Storage, so they persist with your vault instead of a custom encrypted file. Keys are edited from a dedicated settings modal, and keyed cloud providers remain available whenever their secrets are present.
 - **Local-first options** — Pi, Ollama, LM Studio, custom OpenAI-compatible endpoints, local embeddings, and deterministic fallback retrieval support private or disconnected workflows.
-- **Human control at mutation boundaries** — destructive and bulk changes pause on approval cards with collapsible, syntax-colored diff previews.
+- **Human control at mutation boundaries** — an absolute write gate wraps every capability, so no agent can touch a file without your explicit click. Approval cards show target paths and syntax-colored diffs, an append-only log records every decision, and you may delegate write authority with a global Auto write toggle while keeping chosen folders permanently click-gated.
+- **Zero-cost intelligence** — the four dashboard cards, the calendar, and the vault doorway are computed entirely from Obsidian's own metadata cache. They populate instantly and cost no API tokens, reserving model spend for actual reasoning.
+- **A hub, not another chat box** — dates, tasks, notes, folders, tags, Bases views, and workflows are all reachable and actionable from one responsive grid, so recording and finding information never means hunting through folders.
 
 ## Contents
 
@@ -33,6 +35,7 @@ Most AI integrations add a chat box. Command Center adds an operational layer:
 - [First-run onboarding](#first-run-onboarding)
 - [Configuration](#configuration)
 - [Everyday usage](#everyday-usage)
+- [Write gate and approvals](#write-gate-and-approvals)
 - [Workflows and Bases](#workflows-and-bases)
 - [Voice and automation](#voice-and-automation)
 - [Privacy and security model](#privacy-and-security-model)
@@ -466,15 +469,36 @@ Review provider state, test one provider, refresh all providers, and inspect act
 
 ### Dashboard
 
-Open Command Center from the ribbon or command palette. The dashboard includes:
+Open Command Center from the ribbon or command palette. Every panel carries a one-line description of what it shows and what to do with it, so nothing needs to be guessed.
 
-- Embedded Socratic discovery and onboarding
+**Happening now — four zero-token intelligence cards**
+
+Computed from Obsidian's metadata cache only; no model calls, no token spend.
+
+| Card | What it shows | What to do |
+|---|---|---|
+| Daily intelligence | Today's note, its sections, tracked metrics, and any capacity rule that tripped | Click to open today's note |
+| Capture | Notes you dropped in but have not filed | Open one to process it, or ask for triage |
+| Action items | Open tasks vault-wide, in Kanban-style lanes (Overdue / Due today / Scheduled / Undated) | Click a row to jump to that exact line |
+| Workspaces | Managed folders with live note counts, freshness, and index state, plus nested `.base` views | Click to open a folder index or Bases view |
+
+**Calendar** — a month grid marking which days have notes and how much work is scheduled. Click a date to open or create its daily note, tick tasks complete, reschedule them, delete them, or add new dated tasks. Every write is a proposal that passes the write gate first.
+
+**Vault doorway** — one filter box across note titles, folders, tags, canvases, and `.base` views, ranked by prefix, word-boundary, then substring match. Press Enter to open the top hit. Left empty it lists your most recently edited notes. Folders reveal in the native file explorer; tags hand off to Obsidian's own global search.
+
+**Command deck** — a vertical rail built from your vault's workflow files (`.md`, `.canvas`, and generated `.json`). Labels, descriptions, and icons come from native frontmatter, and new workflows hot-register without an Obsidian restart.
+
+**Also on the dashboard**
+
+- Embedded Socratic discovery and onboarding, entirely optional
+- Mutation approvals with target paths, diffs, live gate posture, and an append-only decision log
+- Orchestrator chat with capability-aware tool calling
 - Daemon Start / Stop / Restart controls
 - Pending, running, completed, and failed queue counts
 - Provider-normalized orchestrator output and per-task live output
 - Task history, ReAct filters, debug stepping, and session export
-- Dashboard-owned approval cards for destructive or bulk mutations
 - Daily-cycle controls and consolidated silent-start summaries
+- Obsidian's built-in browser, opened in a split pane for documentation and research
 - Per-vault widget ordering, sizing, collapse/visibility controls, and responsive layout persistence
 - Review-before-send dictation plus opt-in audio cues, speech-to-text, and AI read-aloud
 
@@ -491,6 +515,37 @@ Use `@Note Name`, `@folder/note.md`, an active editor selection, or a `.base` re
 ### Local task
 
 Open a Markdown note and run **Execute agent task on current note**. This command explicitly routes through the local Pi daemon and starts it automatically when possible.
+
+## Write gate and approvals
+
+The write gate is the boundary between the model and your vault. It is not advisory: every capability handed to an agent is wrapped so the gate runs *inside* the tool's execution path. A missed check at a call site cannot bypass it.
+
+```text
+Capability wants to write
+  → gate describes the change as a proposal
+  → proposal appears in Mutation approvals
+  → you click Approve
+  → only then does the write occur
+```
+
+**Defaults and controls**
+
+| Setting | Default | Effect |
+|---|---|---|
+| Auto write (global bypass) | Off | Off: every mutation waits for your click. On: approved capabilities write immediately. |
+| Protected paths | Empty | Vault-relative folders that always require an explicit click, even when Auto write is on. |
+
+Protected-path matching is prefix-exact, so `Vault/Private` never accidentally captures `Vault/PrivateNotes`. Paths are yours to define; the plugin assumes no folder names.
+
+**Guarantees**
+
+- Read-only capabilities never prompt.
+- A capability reporting no mutation for its arguments never prompts.
+- Rejection, timeout, and failure all leave files untouched.
+- Dashboard task edits abort if the underlying line changed while awaiting approval.
+- Writes use `Vault.process`, so they are atomic and compatible with native File Recovery.
+- Every decision — approved, rejected, timed out, or auto-approved — is recorded in the on-dashboard log.
+- Success is reported only after the write actually completes.
 
 ## Workflows and Bases
 

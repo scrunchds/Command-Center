@@ -14,6 +14,7 @@ import { getWorkerProfile } from './workers';
 import type { AgentMemoryStore } from './memory/memory-store';
 import type { HybridRetriever } from './rag/hybrid-retriever';
 import { injectRagContext } from './rag/rag-tool';
+import { withGlobalChatInteractionStyle } from './prompts/interaction-style';
 
 export interface Turn {
 	id: string;
@@ -136,7 +137,7 @@ export class ConversationManager {
 			const context = await this.buildContext(conv.id, message);
 			const styleGuide = this.getStyleGuide?.() ?? '';
 			const response = await dispatcher.dispatch({
-				systemPrompt: `You are Command Center operating inside an Obsidian vault. Follow the user-authored style guide below; do not substitute a built-in tone.\n\n<style-guide>\n${styleGuide}\n</style-guide>${context}`,
+				systemPrompt: withGlobalChatInteractionStyle(`You are Command Center operating inside an Obsidian vault. Follow the user-authored style guide below; do not substitute a built-in tone.\n\n<style-guide>\n${styleGuide}\n</style-guide>${context}`),
 				userPrompt: message,
 				history,
 				onStream,

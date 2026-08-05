@@ -19,6 +19,13 @@ import type { StoredTask } from '../persistence';
 import type { ReActTraceEvent, TraceEventCallback } from '../react/react-trace';
 import type { InterviewEngine } from '../onboarding/InterviewEngine';
 import type { OnboardingConfig } from '../onboarding/OnboardingTypes';
+import type { ApiConnectorConfig } from '../connectors/ApiConnectorManager';
+import type { WriteGateRecord } from '../security/WriteGate';
+import { renderIntelligenceCards } from './IntelligenceCards';
+import { CommandDeck, type DeckEntry } from './CommandDeck';
+import { CalendarPanel } from './CalendarPanel';
+import { VaultNavigator } from './VaultNavigator';
+import { COMMAND_CENTER_BROWSER_VIEW_TYPE } from './browser-view';
 import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings/settings-model';
 import { DashboardOnboarding } from './DashboardOnboarding';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
@@ -117,8 +124,17 @@ export class CommandCenterView extends ItemView {
 	private telemetryEl: HTMLElement | null = null;
 	private basesTelemetryEl: HTMLElement | null = null;
 	private approvalQueueEl: HTMLElement | null = null;
+	private writeGateLogEl: HTMLElement | null = null;
+	private intelligenceEl: HTMLElement | null = null;
+	private deckEl: HTMLElement | null = null;
+	private commandDeck: CommandDeck | null = null;
+	private calendarPanel: CalendarPanel | null = null;
+	private vaultNavigator: VaultNavigator | null = null;
+	private intelligenceTimer: number | null = null;
 	private widgetHostEl: HTMLElement | null = null;
 	private layoutEditorEl: HTMLElement | null = null;
+	private layoutEditorOpen = false;
+	private customizeButtonEl: HTMLButtonElement | null = null;
 	private readonly approvalCards = new Set<ChatActionCard>();
 	private viewEventRefs: EventRef[] = [];
 	private monitorTimer: number | null = null;
@@ -170,11 +186,20 @@ export class CommandCenterView extends ItemView {
 		this.renderHeader(title);
 		this.telemetryEl = container.createDiv({ cls: 'cc-dashboard-telemetry' });
 		this.renderTelemetry();
-		this.layoutEditorEl = container.createDiv({ cls: 'cc-dashboard-layout-editor is-hidden' });
+		// Created hidden; the Customize dashboard button is the only way to open it.
+		this.layoutEditorOpen = false;
+		this.layoutEditorEl = container.createDiv({
+			cls: 'cc-dashboard-layout-editor is-hidden',
+			attr: { id: 'cc-dashboard-layout-editor' },
+		});
 		this.widgetHostEl = container.createDiv({ cls: 'cc-dashboard-widget-grid' });
 		const widgetHost = this.widgetHostEl;
 		this.dashboardWorkspaceEl = widgetHost.createEl('section', { cls: 'command-center-section cc-dashboard-workspace' });
 		this.renderDashboardWorkspace();
+		this.renderCommandDeck(widgetHost);
+		this.renderNavigator(widgetHost);
+		this.renderIntelligence(widgetHost);
+		this.renderCalendar(widgetHost);
 		this.renderApprovalQueue(widgetHost);
 		this.renderBasesController(widgetHost);
 		this.renderDailyControls(widgetHost);
@@ -185,7 +210,12 @@ export class CommandCenterView extends ItemView {
 		const daemonSection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
-		daemonSection.createEl('h3', { text: 'Daemon' });
+		this.sectionHeading(
+			daemonSection,
+			'Daemon',
+			'The background agent process that runs multi-step reasoning and tool loops.',
+			'Leave it running. Start it if the dot reads stopped, or restart it after changing providers or connectors.',
+		);
 
 		const controls = daemonSection.createDiv({
 			cls: 'command-center-daemon-controls',
@@ -239,7 +269,12 @@ export class CommandCenterView extends ItemView {
 		const statsSection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
-		statsSection.createEl('h3', { text: 'Task queue' });
+		this.sectionHeading(
+			statsSection,
+			'Task queue',
+			'Live counts of agent work that is waiting, running, finished, or failed.',
+			'Watch this while a workflow runs. A rising failed count means check Live output for the error.',
+		);
 		const grid = statsSection.createDiv({
 			cls: 'command-center-stats-grid',
 		});
@@ -254,10 +289,12 @@ export class CommandCenterView extends ItemView {
 		const historySection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
-		const histHeader = historySection.createDiv({
-			cls: 'command-center-section-header',
-		});
-		histHeader.createEl('h3', { text: 'Task history' });
+		const histHeader = this.sectionHeading(
+			historySection,
+			'Task history',
+			'A record of recently completed and failed agent tasks with their duration.',
+			'Use this to confirm something actually ran. Click Clear once you have reviewed the list.',
+		);
 		const clearBtn = histHeader.createEl('button', { text: 'Clear' });
 		this.registerDomEvent(clearBtn, 'click', () => {
 			this.taskListEl.empty();
@@ -279,10 +316,12 @@ export class CommandCenterView extends ItemView {
 		const streamSection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
-		const streamHeader = streamSection.createDiv({
-			cls: 'command-center-section-header',
-		});
-		streamHeader.createEl('h3', { text: 'Live output' });
+		const streamHeader = this.sectionHeading(
+			streamSection,
+			'Live output',
+			'Raw text streaming from agents and tools as it is produced.',
+			'Read this when a task stalls or fails; the last lines usually name the cause.',
+		);
 		const clearStreamBtn = streamHeader.createEl('button', {
 			text: 'Clear all',
 		});
@@ -300,11 +339,13 @@ export class CommandCenterView extends ItemView {
 		const reactSection = widgetHost.createEl('section', {
 			cls: 'command-center-section',
 		});
-		const reactHeader = reactSection.createDiv({
-			cls: 'command-center-section-header',
-		});
-		reactHeader.createEl('h3', { text: 'React monitor' });
-		const reactActions = reactHeader.createDiv({ cls: 'cc-react-actions' });
+		const reactHeaderActions = this.sectionHeading(
+			reactSection,
+			'ReAct monitor',
+			'Step-by-step trace of multi-step reasoning: each thought, tool call, observation, and correction.',
+			'Ignore it for simple requests. Open it when you want to see why an agent chose an action, or turn on Debug / step mode to advance one step at a time. Click any row for full detail.',
+		);
+		const reactActions = reactHeaderActions.createDiv({ cls: 'cc-react-actions' });
 		this.debugToggleBtn = reactActions.createEl('button', {
 			text: 'Debug / step mode',
 		});
@@ -395,6 +436,7 @@ export class CommandCenterView extends ItemView {
 	async openOnboarding(
 		engine: InterviewEngine,
 		onComplete: (config: OnboardingConfig) => void | Promise<void>,
+		onConnectorApproved?: (connector: ApiConnectorConfig) => void | Promise<void>,
 	): Promise<void> {
 		if (!this.dashboardWorkspaceEl) throw new Error('Command Center dashboard workspace is unavailable.');
 		const onboarding = new DashboardOnboarding(
@@ -405,6 +447,7 @@ export class CommandCenterView extends ItemView {
 			engine,
 			{
 				onComplete,
+				onConnectorApproved,
 				onClose: () => this.renderDashboardWorkspace(),
 			},
 		);
@@ -416,7 +459,8 @@ export class CommandCenterView extends ItemView {
 		this.dashboardWorkspaceEl.empty();
 		this.dashboardWorkspaceEl.removeClass('cc-dashboard-onboarding');
 
-		// First-run setup hint: no providers configured yet
+		// Optional setup hint: no providers configured yet. Users can dismiss
+		// onboarding entirely and use the dashboard/chat directly.
 		const mp = this.plugin.settings.multiProvider;
 		const hasProviders = Object.values(mp.credentials).some(c => c?.enabled);
 		if (!hasProviders) {
@@ -426,6 +470,8 @@ export class CommandCenterView extends ItemView {
 			text.createEl('strong', { text: 'No providers configured yet' });
 			text.createDiv({ text: 'Enable at least one provider in Settings → Command Center → Providers to start using Command Center. Add an API key via the "Set API key" button on each provider card.' });
 			const actions = banner.createDiv({ cls: 'cc-setup-banner-actions' });
+			const dismiss = actions.createEl('button', { text: 'Continue without setup' });
+			this.registerDomEvent(dismiss, 'click', () => banner.remove());
 			const openSettings = actions.createEl('button', { text: 'Open settings', cls: 'mod-cta' });
 			this.registerDomEvent(openSettings, 'click', () => {
 				const appWithSetting = this.plugin.app as App & { setting: { open: () => void; openTab: (id: string) => void } };
@@ -441,21 +487,35 @@ export class CommandCenterView extends ItemView {
 		const heading = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-heading' });
 		heading.createDiv( { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
 		heading.createEl('h2', { text: 'Operational overview' });
-		heading.createEl('p', { text: 'Observe, understand, propose, approve, execute, evaluate, and remember.' });
+		heading.createEl('p', {
+			text: 'One place to see what needs attention, ask for work in plain language, and approve anything that changes your vault. Nothing is written without your click.',
+		});
+		// Orientation tiles: each one names a concrete next action rather than a
+		// feature, so a new operator knows where to begin.
 		const cards = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-cards' });
 		for (const [title, copy] of [
-			['Agents', 'Multi-agent plans and active work'],
-			['Queue', 'Pending and running operations'],
-			['Memory', 'Vault context and semantic retrieval'],
-			['Providers', 'Local-first routing and health'],
+			['1 · Review', 'Check Happening now for today’s note, captures, and overdue items.'],
+			['2 · Ask', 'Describe an outcome in the Orchestrator; it will pick the tools it needs.'],
+			['3 · Approve', 'Proposed file changes wait in Mutation approvals until you accept them.'],
+			['4 · Automate', 'Turn anything you repeat into a workflow; it appears in the Command deck.'],
 		] as const) {
 			const card = cards.createDiv({ cls: 'cc-dashboard-workspace-card' });
 			card.createEl('strong', { text: title });
 			card.createDiv({ text: copy });
 		}
 		const actions = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-actions' });
-		const discovery = actions.createEl('button', { text: 'Start or revise discovery', cls: 'mod-cta' });
+		const configured = this.plugin.configManager.isInitialized();
+		const discovery = actions.createEl('button', {
+			text: configured ? 'Revise discovery' : 'Start guided setup (optional)',
+			cls: 'mod-cta',
+		});
 		this.registerDomEvent(discovery, 'click', () => this.plugin.openOnboarding());
+		actions.createSpan({
+			cls: 'cc-widget-caption',
+			text: configured
+				? 'Re-run the interview to change folders, metrics, or tone.'
+				: 'Optional. Chat and tools already work; setup tailors the daily cards to how you work.',
+		});
 	}
 
 	async onClose(): Promise<void> {
@@ -486,8 +546,23 @@ export class CommandCenterView extends ItemView {
 		this.telemetryEl = null;
 		this.basesTelemetryEl = null;
 		this.approvalQueueEl = null;
+		this.writeGateLogEl = null;
+		this.intelligenceEl = null;
+		this.commandDeck?.dispose();
+		this.commandDeck = null;
+		this.deckEl = null;
+		this.calendarPanel?.dispose();
+		this.calendarPanel = null;
+		this.vaultNavigator?.dispose();
+		this.vaultNavigator = null;
+		if (this.intelligenceTimer !== null) {
+			window.clearTimeout(this.intelligenceTimer);
+			this.intelligenceTimer = null;
+		}
 		this.widgetHostEl = null;
 		this.layoutEditorEl = null;
+		this.layoutEditorOpen = false;
+		this.customizeButtonEl = null;
 		for (const card of this.approvalCards) card.dispose();
 		this.approvalCards.clear();
 		this.pendingTraceEvents.length = 0;
@@ -506,8 +581,16 @@ export class CommandCenterView extends ItemView {
 		const actions = title.createDiv({ cls: 'command-center-header-actions' });
 		const exportWorkflowBtn = actions.createEl('button', { text: 'Export workflow to canvas' });
 		this.registerDomEvent(exportWorkflowBtn, 'click', () => void this.plugin.exportActiveWorkflowToCanvas());
-		const customize = actions.createEl('button', { text: 'Customize dashboard' });
+		const customize = actions.createEl('button', {
+			text: 'Customize dashboard',
+			attr: { 'aria-expanded': 'false', 'aria-controls': 'cc-dashboard-layout-editor' },
+		});
+		this.customizeButtonEl = customize;
 		this.registerDomEvent(customize, 'click', () => this.toggleLayoutEditor(customize));
+		// Principle 6: the native Obsidian browser keeps documentation and web
+		// research inside the same operational surface.
+		const browser = actions.createEl('button', { text: 'Open browser' });
+		this.registerDomEvent(browser, 'click', () => void this.app.workspace.getLeaf('split').setViewState({ type: COMMAND_CENTER_BROWSER_VIEW_TYPE, active: true }));
 		const vault = actions.createEl('button', { text: 'Open secrets' });
 		this.registerDomEvent(vault, 'click', () => new CredentialVaultModal(this.app, this.plugin, () => this.renderTelemetry()).open());
 	}
@@ -551,25 +634,59 @@ export class CommandCenterView extends ItemView {
 		}
 	}
 
+	/**
+	 * Show or hide the layout editor. Visibility is tracked in explicit state
+	 * rather than inferred from a class, so the panel and the button label can
+	 * never disagree.
+	 */
 	private toggleLayoutEditor(button: HTMLButtonElement): void {
-		if (!this.layoutEditorEl) return;
-		const opening = this.layoutEditorEl.hasClass('is-hidden');
-		this.layoutEditorEl.toggleClass('is-hidden', !opening);
-		button.setText(opening ? 'Done customizing' : 'Customize dashboard');
-		if (opening) this.renderLayoutEditor();
+		this.setLayoutEditorOpen(!this.layoutEditorOpen, button);
 	}
 
-	private renderLayoutEditor(): void {
+	private setLayoutEditorOpen(open: boolean, button: HTMLButtonElement): void {
+		if (!this.layoutEditorEl) return;
+		this.layoutEditorOpen = open;
+		this.layoutEditorEl.toggleClass('is-hidden', !open);
+		button.setText(open ? 'Done customizing' : 'Customize dashboard');
+		button.toggleClass('mod-cta', open);
+		button.setAttribute('aria-expanded', String(open));
+		if (open) {
+			this.renderLayoutEditor(button);
+			this.layoutEditorEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		} else {
+			this.layoutEditorEl.empty();
+		}
+	}
+
+	private renderLayoutEditor(customizeButton?: HTMLButtonElement): void {
 		if (!this.layoutEditorEl) return;
 		this.layoutEditorEl.empty();
+		this.layoutEditorEl.id = 'cc-dashboard-layout-editor';
 		const heading = this.layoutEditorEl.createDiv({ cls: 'command-center-section-header' });
-		heading.createEl('h3', { text: 'Dashboard layout' });
-		const reset = heading.createEl('button', { text: 'Reset default layout' });
+		const group = heading.createDiv({ cls: 'cc-widget-title-group' });
+		group.createEl('h3', { text: 'Dashboard layout' });
+		group.createSpan({
+			cls: 'cc-widget-caption',
+			text: 'Reorder, resize, collapse, or hide any panel. Mutation approvals cannot be hidden.',
+		});
+		const headerActions = heading.createDiv({ cls: 'cc-widget-header-actions' });
+		const reset = headerActions.createEl('button', { text: 'Reset default layout' });
 		this.registerDomEvent(reset, 'click', () => {
 			this.plugin.settings.dashboardLayout = DEFAULT_DASHBOARD_LAYOUT.map(widget => ({ ...widget }));
 			void this.plugin.saveSettings();
 			this.applyDashboardLayout();
-			this.renderLayoutEditor();
+			this.renderLayoutEditor(customizeButton);
+		});
+		// A Done button inside the panel: changes save instantly, so this only
+		// closes the editor. It mirrors the header button so either one works.
+		const done = headerActions.createEl('button', { text: 'Done', cls: 'mod-cta' });
+		this.registerDomEvent(done, 'click', () => {
+			const button = customizeButton ?? this.customizeButtonEl;
+			if (button) this.setLayoutEditorOpen(false, button);
+		});
+		this.layoutEditorEl.createDiv({
+			cls: 'cc-widget-hint',
+			text: 'Changes apply and save immediately. Click Done when you have finished arranging panels.',
 		});
 		const list = this.layoutEditorEl.createDiv({ cls: 'cc-layout-list' });
 		for (const widget of this.normalizedLayout()) {
@@ -618,7 +735,28 @@ export class CommandCenterView extends ItemView {
 	}
 
 	private markWidget(element: HTMLElement, id: string): void { element.dataset.widgetId = id; }
-	private widgetLabel(id: string): string { return ({ workspace: 'Dashboard workspace', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id; }
+
+	/**
+	 * Standard widget header: what the panel is, what it is for, and what to do
+	 * with it. Every dashboard section uses this so the operator never has to
+	 * guess a panel's purpose or its next action.
+	 *
+	 * @param host     Section element the header belongs to.
+	 * @param title    Short panel name.
+	 * @param purpose  One sentence describing what the panel shows.
+	 * @param action   One sentence describing what the operator should do here.
+	 * @returns The header row, so callers can append buttons beside the title.
+	 */
+	private sectionHeading(host: HTMLElement, title: string, purpose: string, action: string): HTMLElement {
+		const header = host.createDiv({ cls: 'command-center-section-header' });
+		const group = header.createDiv({ cls: 'cc-widget-title-group' });
+		group.createEl('h3', { text: title });
+		group.createSpan({ text: purpose, cls: 'cc-widget-caption' });
+		const actions = header.createDiv({ cls: 'cc-widget-header-actions' });
+		host.createDiv({ text: action, cls: 'cc-widget-hint' });
+		return actions;
+	}
+	private widgetLabel(id: string): string { return ({ workspace: 'Dashboard workspace', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id; }
 	private updateWidget(id: string, patch: Partial<DashboardWidgetLayout>): void {
 		this.plugin.settings.dashboardLayout = this.normalizedLayout().map(widget => widget.id === id ? { ...widget, ...patch, ...(id === 'approvals' ? { hidden: false, collapsed: false } : {}) } : widget);
 		void this.plugin.saveSettings();
@@ -640,11 +778,170 @@ export class CommandCenterView extends ItemView {
 	private renderApprovalQueue(container: HTMLElement): void {
 		const section = container.createEl('section', { cls: 'command-center-section cc-dashboard-approvals' });
 		this.markWidget(section, 'approvals');
-		const heading = section.createDiv({ cls: 'command-center-section-header' });
-		heading.createEl('h3', { text: 'Mutation approvals' });
-		heading.createSpan( { text: 'Destructive and bulk operations stop here before any file is touched.', cls: 'cc-widget-caption' });
+		this.sectionHeading(
+			section,
+			'Mutation approvals',
+			'Every proposed change to your vault stops here before any file is touched.',
+			'Read the target paths and the diff, then click Approve or Reject. Nothing is written until you approve.',
+		);
+		// Principle 1: state the live gate posture so the operator always knows
+		// whether a click is required before anything touches the vault.
+		const posture = section.createDiv({ cls: 'cc-write-gate-posture' });
+		const auto = this.plugin.settings.autoWriteEnabled;
+		posture.toggleClass('is-bypassed', auto);
+		posture.createEl('strong', { text: auto ? 'Auto Write enabled' : 'Write gate active' });
+		posture.createSpan({
+			text: auto
+				? 'Mutations execute without a per-action click, except inside protected paths.'
+				: 'Every vault mutation is staged as a proposal and requires an explicit approval click.',
+		});
+		const protectedPaths = this.plugin.settings.protectedWritePaths;
+		if (protectedPaths.length > 0) {
+			posture.createSpan({ text: `Protected: ${protectedPaths.join(', ')}`, cls: 'cc-widget-caption' });
+		}
 		this.approvalQueueEl = section.createDiv({ cls: 'cc-dashboard-approval-queue' });
 		this.approvalQueueEl.createEl('p', { text: 'No operations awaiting approval.', cls: 'command-center-empty' });
+		// Principle 4: an append-only record of every gate decision.
+		const log = section.createEl('details', { cls: 'cc-write-gate-log' });
+		log.createEl('summary', { text: 'Write-gate decision log' });
+		this.writeGateLogEl = log.createDiv({ cls: 'cc-write-gate-log-body' });
+		this.renderWriteGateLog();
+	}
+
+	/** Append one gate decision to the transparency log. */
+	recordWriteGateDecision(_record: WriteGateRecord): void {
+		this.renderWriteGateLog();
+	}
+
+	private renderWriteGateLog(): void {
+		if (!this.writeGateLogEl) return;
+		this.writeGateLogEl.empty();
+		const history = [...this.plugin.writeGate.getHistory()].reverse().slice(0, 20);
+		if (history.length === 0) {
+			this.writeGateLogEl.createDiv({ text: 'No mutations have been proposed yet.', cls: 'command-center-empty' });
+			return;
+		}
+		for (const record of history) {
+			const row = this.writeGateLogEl.createDiv({ cls: `cc-write-gate-entry is-${record.decision}` });
+			row.createSpan({ text: record.decision, cls: 'cc-write-gate-decision' });
+			row.createSpan({ text: record.toolName, cls: 'cc-write-gate-tool' });
+			row.createSpan({ text: record.targetPaths.join(', ') || '—', cls: 'cc-write-gate-targets' });
+			row.createSpan({ text: new Date(record.at).toLocaleTimeString(), cls: 'cc-write-gate-time' });
+		}
+	}
+
+	/**
+	 * Principle 2: the four intelligence cards, populated from the local data
+	 * bridge only. Re-rendered on vault events; never triggers a model call.
+	 */
+	private renderIntelligence(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-intelligence' });
+		this.markWidget(section, 'intelligence');
+		this.sectionHeading(
+			section,
+			'Happening now',
+			"Today's note, unprocessed captures, open action items, and your workspaces — read locally from vault metadata, with no model calls.",
+			'Start your day here. Click any row to jump straight to that note or line.',
+		);
+		this.intelligenceEl = section.createDiv({ cls: 'cc-intel-host' });
+		this.intelligenceEl.createDiv({ text: 'Scanning vault metadata…', cls: 'command-center-empty' });
+		void this.refreshIntelligence(true);
+	}
+
+	/** Recompute and repaint the intelligence cards. */
+	private async refreshIntelligence(force = false): Promise<void> {
+		if (!this.intelligenceEl) return;
+		try {
+			const snapshot = await this.plugin.vaultData.snapshot(force);
+			if (!this.intelligenceEl || !this.isViewOpen) return;
+			renderIntelligenceCards(this.intelligenceEl, this.app, snapshot);
+			// One snapshot feeds every zero-cost surface.
+			this.calendarPanel?.update(snapshot);
+			this.vaultNavigator?.refresh();
+		} catch (error) {
+			// Principle 4: degrade visibly, never freeze or blank silently.
+			if (!this.intelligenceEl) return;
+			this.intelligenceEl.empty();
+			this.intelligenceEl.createDiv({
+				cls: 'cc-intel-error',
+				text: `Local vault scan failed: ${error instanceof Error ? error.message : String(error)}`,
+			});
+		}
+	}
+
+	/**
+	 * Principle 3: the Markdown-backed Command Deck. Buttons are a reflection of
+	 * the vault's workflow files and hot-register on any vault change.
+	 */
+	private renderCommandDeck(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-deck-section' });
+		this.markWidget(section, 'deck');
+		this.deckEl = section.createDiv();
+		this.commandDeck = new CommandDeck(this.app, {
+			onLaunch: entry => void this.launchDeckEntry(entry),
+			onCreate: () => {
+				this.chatInputEl?.focus();
+				new Notice('Describe the automation you want; the orchestrator will propose a workflow for approval.');
+			},
+		});
+		this.commandDeck.mount(this.deckEl);
+	}
+
+	/**
+	 * Principle 6: the vault doorway. One filter box over notes, folders, tags,
+	 * and Bases views, defaulting to recently edited notes.
+	 */
+	private renderNavigator(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-navigator-section' });
+		this.markWidget(section, 'navigator');
+		this.sectionHeading(
+			section,
+			'Vault doorway',
+			'Jump to any note, folder, tag, or Bases view without leaving the dashboard.',
+			'Start typing to filter, then press Enter to open the first match. Leave it empty to see what you edited most recently.',
+		);
+		const host = section.createDiv();
+		this.vaultNavigator = new VaultNavigator(this.app);
+		this.vaultNavigator.mount(host);
+	}
+
+	/**
+	 * Principle 6 + Principle 1: a month view that doubles as a task surface.
+	 * Every mutation it offers is a proposal routed through the write gate.
+	 */
+	private renderCalendar(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-calendar-section' });
+		this.markWidget(section, 'calendar');
+		this.sectionHeading(
+			section,
+			'Calendar',
+			'Your month with daily notes and scheduled tasks marked on each day.',
+			'Click a date to open its note or add work to it. Adding, completing, and deleting tasks all go through approval first.',
+		);
+		const host = section.createDiv();
+		this.calendarPanel = new CalendarPanel(this.app, {
+			dailyNotePathFor: date => this.plugin.vaultData.dailyNotePathFor(date),
+			tasks: this.plugin.taskWriter,
+			onChanged: async () => {
+				this.plugin.vaultData.invalidate();
+				await this.refreshIntelligence(true);
+			},
+		});
+		this.calendarPanel.mount(host);
+	}
+
+	private async launchDeckEntry(entry: DeckEntry): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(entry.path);
+		if (!(file instanceof TFile)) {
+			new Notice(`${entry.path} is no longer in the vault.`);
+			return;
+		}
+		try {
+			await this.plugin.runWorkflowFile(file);
+		} catch (error) {
+			// Principle 4: surface exactly where the breakdown occurred.
+			new Notice(`${entry.label} failed: ${error instanceof Error ? error.message : String(error)}`, 12_000);
+		}
 	}
 
 	async requestMutationApproval(request: ToolConfirmationRequest): Promise<ToolConfirmationDecision> {
@@ -663,9 +960,12 @@ export class CommandCenterView extends ItemView {
 	private renderBasesController(container: HTMLElement): void {
 		const section = container.createEl('section', { cls: 'command-center-section cc-bases-controller' });
 		this.markWidget(section, 'bases');
-		const heading = section.createDiv({ cls: 'command-center-section-header' });
-		heading.createEl('h3', { text: 'Bases queue controller' });
-		heading.createSpan( { text: 'Native .base views remain the queue definition and execution surface.', cls: 'cc-widget-caption' });
+		this.sectionHeading(
+			section,
+			'Bases queue controller',
+			'Batch progress for work queued from a native Obsidian .base view.',
+			'Define which notes to process in a .base view, then queue them from there; this panel reports how the batch is moving.',
+		);
 		this.basesTelemetryEl = section.createDiv({ cls: 'cc-bases-telemetry' });
 		this.refreshBasesTelemetry();
 	}
@@ -689,7 +989,12 @@ export class CommandCenterView extends ItemView {
 			cls: 'command-center-section cc-daily-controls',
 		});
 		this.markWidget(section, 'daily');
-		section.createEl('h3', { text: 'Daily cycle' });
+		this.sectionHeading(
+			section,
+			'Daily cycle',
+			'One-click touchpoints that assemble and update your daily note.',
+			'Run Morning start to open the day, midday append to log progress, and Evening close to review and roll over unfinished work.',
+		);
 		const controls = section.createDiv({
 			cls: 'command-center-daemon-controls',
 		});
@@ -722,7 +1027,12 @@ export class CommandCenterView extends ItemView {
 			cls: 'command-center-section cc-system-monitor',
 		});
 		this.markWidget(section, 'system');
-		section.createEl('h3', { text: 'System & workflow state' });
+		this.sectionHeading(
+			section,
+			'System & workflow state',
+			'Your active configuration and the current health of the workflow queue.',
+			'Check here if behavior looks wrong. If it reads “Configuration required”, run discovery from the workspace panel above.',
+		);
 		this.configStateEl = section.createDiv({ cls: 'cc-config-state' });
 		this.workflowStateEl = section.createDiv({ cls: 'cc-workflow-state' });
 	}
@@ -732,9 +1042,12 @@ export class CommandCenterView extends ItemView {
 			cls: 'command-center-section cc-orchestrator-chat',
 		});
 		this.markWidget(section, 'orchestrator');
-		const header = section.createDiv({ cls: 'command-center-section-header' });
-		header.createEl('h3', { text: 'Orchestrator' });
-		header.createSpan( { text: 'Dashboard agent workspace', cls: 'cc-widget-caption' });
+		this.sectionHeading(
+			section,
+			'Orchestrator',
+			'The main conversation. Ask questions, request changes, and build workflows in plain language.',
+			'Describe an outcome rather than a command — for example “review my open projects and propose a plan”. Any vault change it proposes appears in Mutation approvals for your click.',
+		);
 		this.chatMessagesEl = section.createDiv({
 			cls: 'cc-dashboard-orchestrator-messages',
 			attr: { role: 'log', 'aria-live': 'polite' },
@@ -1057,10 +1370,24 @@ export class CommandCenterView extends ItemView {
 			this.renderTelemetry();
 			this.refreshBasesTelemetry();
 		};
+		// Vault mutations invalidate the zero-cost snapshot. Recompute on a debounce
+		// so a bulk operation cannot trigger one scan per file.
+		const refreshIntel = () => {
+			this.plugin.vaultData.invalidate();
+			if (this.intelligenceTimer !== null) window.clearTimeout(this.intelligenceTimer);
+			this.intelligenceTimer = window.setTimeout(() => {
+				this.intelligenceTimer = null;
+				void this.refreshIntelligence(true);
+			}, 400);
+		};
 		this.viewEventRefs.push(
 			this.app.vault.on('create', refresh),
 			this.app.vault.on('delete', refresh),
 			this.app.vault.on('rename', refresh),
+			this.app.vault.on('create', refreshIntel),
+			this.app.vault.on('delete', refreshIntel),
+			this.app.vault.on('rename', refreshIntel),
+			this.app.vault.on('modify', refreshIntel),
 		);
 		this.monitorTimer = this.registerInterval(window.setInterval(refresh, 5_000));
 	}

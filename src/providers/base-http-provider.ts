@@ -159,6 +159,7 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 					model,
 					toolResults,
 					request,
+					{ output: parsed.output, toolCalls: parsed.toolCalls ?? [] },
 				);
 			}
 			return parsed;
@@ -224,6 +225,7 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 				const finalResponse = await this._sendToolResults(
 					this.buildMessages(request.systemPrompt, request.userPrompt, request.history),
 					model, toolResults, request,
+					{ output: fullOutput, toolCalls },
 				);
 				fullOutput = finalResponse.output;
 				usage = finalResponse.usage;
@@ -246,7 +248,10 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 	): Promise<ProviderToolResult[]> {
 		return Promise.all(toolCalls.map(async tc => {
 			try {
-				return await request.onToolCall!(tc.name, tc.arguments);
+				const result = await request.onToolCall!(tc.name, tc.arguments);
+				// Providers require the tool result ID to match the preceding
+				// assistant tool call. UI callbacks do not need to know provider IDs.
+				return { ...result, toolCallId: tc.id };
 			} catch (err) {
 				return { toolCallId: tc.id, content: '', error: (err as Error).message };
 			}
@@ -256,11 +261,20 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 	private async _sendToolResults(
 		messages: ProviderMessage[], model: string,
 		toolResults: ProviderToolResult[], request: ProviderRequest,
+		assistantToolTurn: { output: string; toolCalls: ProviderToolCall[] },
 	): Promise<ProviderResponse> {
 		const toolMsgs: ProviderMessage[] = toolResults.map(tr => ({
 			role: 'tool' as const, content: tr.error ?? tr.content, toolCallId: tr.toolCallId,
 		}));
-		const allMessages = [...messages, ...toolMsgs];
+		// OpenAI-compatible APIs require the assistant tool-call turn immediately
+		// before tool results. Sending only tool messages produces HTTP 400 after
+		// the tool has already completed (the mutation is not rolled back).
+		const assistantMessage: ProviderMessage = {
+			role: 'assistant',
+			content: assistantToolTurn.output || '',
+			toolCalls: assistantToolTurn.toolCalls,
+		};
+		const allMessages = [...messages, assistantMessage, ...toolMsgs];
 		const config = { ...DEFAULT_PROVIDER_CONFIG, ...request.config };
 		const body = this.applyJitPayloadFields(
 			this.buildRequestBody(allMessages, model, config, request.tools, request.images), config,

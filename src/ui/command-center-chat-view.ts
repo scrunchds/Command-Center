@@ -6,7 +6,6 @@ import { loadWorkflowFromCanvas, loadWorkflowFromNote } from '../workflows/nativ
 import { workflowForBase } from '../commands';
 import { collectWorkflowInputs } from './workflow-modal';
 import { resolveChatContext, type ChatContextAttachment, type ResolvedChatContext } from './chat-context';
-import { getCapabilityRegistry } from '../capabilities';
 import { DEFAULT_REACT_CONFIG } from '../react';
 import type { ReActTraceEvent } from '../react/react-trace';
 import { AudioRecorder } from '../audio/audio-recorder';
@@ -1096,7 +1095,7 @@ export class CommandCenterChatView extends ItemView {
 			return;
 		}
 		let streamed = '';
-		const tools = getCapabilityRegistry().getEnabledToolDefinitions(true);
+		const tools = this.plugin.getGatedTools();
 		console.debug('[Command Center] Chat tools available:', tools.map(tool => tool.name));
 		const result = await this.plugin.conversations.executeProviderTurn(
 			this.plugin.dispatcher,
@@ -1150,7 +1149,7 @@ export class CommandCenterChatView extends ItemView {
 				this.plugin.daemon.executeReActSession(
 					prompt,
 					this.contextFile?.path,
-					getCapabilityRegistry().getEnabledToolDefinitions(true),
+					this.plugin.getGatedTools(),
 					DEFAULT_REACT_CONFIG,
 					event => {
 						if (!this.isOpen) return;

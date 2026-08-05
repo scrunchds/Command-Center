@@ -179,6 +179,9 @@ export class PluginSettingsTab extends PluginSettingTab {
 			this.renderCoreSettings(content);
 			this.renderMetacognitiveDepth(content);
 		}
+		if (this.selectedTab === 'all' || this.selectedTab === 'core') {
+			this.renderWriteGateSettings(content);
+		}
 		if (this.selectedTab === 'all' || this.selectedTab === 'features') {
 			this.renderFeatureToggles(content);
 			this.renderCapabilitySettingsSection(content);
@@ -524,6 +527,60 @@ export class PluginSettingsTab extends PluginSettingTab {
 	}
 
 	/** Feature subsystem toggles — keeps the plugin agnostic per user. */
+	/**
+	 * Principle 1 (Absolute Write-Gate Authority). The gate is on by default;
+	 * this is the only place the operator can delegate write authority, and
+	 * protected paths remain click-gated regardless.
+	 */
+	private renderWriteGateSettings(containerEl: HTMLElement): void {
+		this.renderSectionHeader(
+			containerEl,
+			'write-gate',
+			'🔒 Write gate',
+			'The boundary between the model and your vault. By default every mutation is staged as a proposal and needs one explicit approval click.',
+		);
+		const body = this.getSectionBody(containerEl, 'write-gate');
+
+		new Setting(body)
+			.setName('Auto write (global bypass)')
+			.setDesc(
+				'Off (recommended): every vault mutation waits for your click. On: approved capabilities write immediately, except inside protected paths below.',
+			)
+			.addToggle(toggle =>
+				toggle.setValue(this.plugin.settings.autoWriteEnabled).onChange(async value => {
+					this.plugin.settings.autoWriteEnabled = value;
+					await this.plugin.saveSettings();
+					this.showSaved();
+					new Notice(
+						value
+							? 'Auto write is on. Mutations outside protected paths will not ask first.'
+							: 'Write gate restored. Every mutation now requires explicit approval.',
+					);
+				}),
+			);
+
+		new Setting(body)
+			.setName('Protected paths')
+			.setDesc(
+				'One vault-relative folder per line. Mutations inside these folders always require an explicit approval click, even when auto write is on. Leave empty to rely on the global gate alone.',
+			)
+			.addTextArea(area => {
+				area.inputEl.rows = 4;
+				area.inputEl.addClass('cc-protected-paths-input');
+				area
+					.setPlaceholder('Folder/subfolder')
+					.setValue(this.plugin.settings.protectedWritePaths.join('\n'))
+					.onChange(async value => {
+						this.plugin.settings.protectedWritePaths = value
+							.split(/\r?\n/)
+							.map(line => line.trim().replace(/^\/+|\/+$/g, ''))
+							.filter(line => line.length > 0);
+						await this.plugin.saveSettings();
+						this.showSaved();
+					});
+			});
+	}
+
 	private renderFeatureToggles(containerEl: HTMLElement): void {
 		this.renderSectionHeader(
 			containerEl,

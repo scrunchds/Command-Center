@@ -80,6 +80,9 @@ import { InboxTriager } from './daily/InboxTriager';
 import { CapacityEngine } from './daily/CapacityEngine';
 import { DailyEngine } from './daily/DailyEngine';
 import { ConfigManager } from './engine/ConfigManager';
+import { VaultDataBridge } from './intelligence/VaultDataBridge';
+import { WriteGate, gateTools } from './security/WriteGate';
+import { TaskWriter } from './intelligence/TaskWriter';
 import { InterviewEngine } from './engine/InterviewEngine';
 import { CommandCenterCommandBridge } from './cli/command-bridge';
 import { NativeAutoRouter } from './routing/NativeAutoRouter';
@@ -93,6 +96,9 @@ import { SemanticDatabase } from './metacognition/SemanticDatabase';
 import { DialecticRAG } from './metacognition/DialecticRAG';
 import { ShadowTestHarness } from './testing/ShadowTestHarness';
 import { AccessibilityAudio } from './audio/AccessibilityAudio';
+import { MCPToolManager } from './mcp/MCPToolManager';
+import { ingestMcpCapabilities, wrapToolAsCapability } from './capabilities/CapabilityToolAdapter';
+import { ApiConnectorManager } from './connectors/ApiConnectorManager';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
@@ -114,7 +120,16 @@ export default class CommandCenterPlugin extends Plugin {
 	capacityEngine!: CapacityEngine;
 	dailyEngine!: DailyEngine;
 	configManager!: ConfigManager;
+	/** Deterministic, model-free vault intelligence for the dashboard cards. */
+	vaultData!: VaultDataBridge;
+	/** Single authority for every vault mutation proposed by a capability. */
+	writeGate!: WriteGate;
+	/** Gated task create/toggle/edit/delete used by the calendar and cards. */
+	taskWriter!: TaskWriter;
 	commandCenterBrowserView: CommandCenterBrowserView | null = null;
+	private mcpToolManager: MCPToolManager | null = null;
+	private capabilityRefreshPromise: Promise<void> | null = null;
+	private apiConnectorManager: ApiConnectorManager | null = null;
 
 	/** Resolve the active Command Center dashboard view (guideline: no stored view refs). */
 	getCommandCenterView(): CommandCenterView | null {
@@ -187,6 +202,16 @@ export default class CommandCenterPlugin extends Plugin {
 		}
 		this.taskHistory = data.history;
 		this.configManager = new ConfigManager(this.app);
+		this.vaultData = new VaultDataBridge(this.app, this.configManager);
+		// Principle 1: the gate is constructed before any capability is registered so
+		// no tool surface can ever exist outside its authority.
+		this.writeGate = new WriteGate({
+			autoWriteEnabled: () => this.settings.autoWriteEnabled,
+			protectedPaths: () => this.settings.protectedWritePaths,
+			requestApproval: request => this.requestDashboardApproval(request),
+			onRecord: record => this.getCommandCenterView()?.recordWriteGateDecision(record),
+		});
+		this.taskWriter = new TaskWriter(this.app, this.writeGate);
 		this.folderIndexer = new FolderIndexer(this.app);
 		const onboardingConfig = await this.configManager.load();
 		if (onboardingConfig?.managedFolders.length)
@@ -306,6 +331,10 @@ export default class CommandCenterPlugin extends Plugin {
 			if (this.settings.capabilityPreferences?.length) {
 				applyCapabilityPreferences(this.settings.capabilityPreferences);
 			}
+			// Discover external tools after the built-ins exist. Discovery is
+			// best-effort: a broken MCP/API integration must never prevent the
+			// native vault tools or chat from starting.
+			void this.refreshExternalCapabilities();
 			void registry;
 		}
 
@@ -315,7 +344,7 @@ export default class CommandCenterPlugin extends Plugin {
 			() => {
 				// Use the capability registry so user-configurable tool settings
 				// are honored across all model interactions.
-				return getCapabilityRegistry().getEnabledToolDefinitions(true);
+				return this.getGatedTools();
 			},
 			{
 				vaultPath,
@@ -348,7 +377,7 @@ export default class CommandCenterPlugin extends Plugin {
 						this.daemon,
 						// Use the capability registry so user-configurable tools are honored
 						// (enabled/disabled capabilities filter the tool surface).
-						getCapabilityRegistry().getEnabledToolDefinitions(true),
+						this.getGatedTools(),
 						task,
 						this.memoryBank,
 						this.router,
@@ -525,14 +554,13 @@ export default class CommandCenterPlugin extends Plugin {
 			callback: () => { void this.activateCommandCenterBrowserView(); },
 		});
 
-		// Defer first-run discovery until Obsidian's workspace is ready. The
-		// vault configuration file is the durable completion marker.
+		// Onboarding is optional. The dashboard and chat remain available without
+		// an interview; users can start discovery from the dashboard or command
+		// palette whenever they want a guided configuration.
 		this.app.workspace.onLayoutReady(() => {
-			if (
-				!this.configManager.isInitialized() ||
-				!this.app.vault.getAbstractFileByPath(CONFIG_PATH)
-			)
-				this.openOnboarding();
+			if (!this.configManager.isInitialized() && !this.app.vault.getAbstractFileByPath(CONFIG_PATH)) {
+				console.debug('[CC] Optional onboarding available from the dashboard.');
+			}
 		});
 
 		// Auto-fetch live models (chat + STT + TTS) from every enabled provider's
@@ -568,6 +596,36 @@ export default class CommandCenterPlugin extends Plugin {
 		);
 	}
 
+	/**
+	 * The only sanctioned way to obtain tools. Every returned capability has the
+	 * write-gate embedded in its `execute`, so no call site can mutate the vault
+	 * without passing Principle 1's approval boundary.
+	 */
+	/**
+	 * Launch a workflow from its backing vault file. Supports the three surfaces
+	 * the Command Deck can discover: Markdown notes, Canvas graphs, and the
+	 * generated JSON produced by the approved workflow generator.
+	 */
+	async runWorkflowFile(file: TFile): Promise<void> {
+		if (file.extension === 'json') {
+			const definition: unknown = JSON.parse(await this.app.vault.read(file));
+			if (!definition || typeof definition !== 'object' || !Array.isArray((definition as { steps?: unknown }).steps)) {
+				throw new Error(`${file.path} is not an executable workflow definition.`);
+			}
+			await this.executeWorkflow(definition as WorkflowDefinition, {}, file);
+			return;
+		}
+		const workflow = file.extension === 'canvas'
+			? await loadWorkflowFromCanvas(file, this.app)
+			: loadWorkflowFromNote(file, this.app);
+		if (!workflow.steps.length) throw new Error(`${file.path} has no executable steps.`);
+		await this.executeWorkflow(workflow, {}, file);
+	}
+
+	getGatedTools(): ToolDefinition[] {
+		return gateTools(getCapabilityRegistry().getEnabledToolDefinitions(true), this.writeGate);
+	}
+
 	/** Route every destructive mutation decision through the full-page dashboard. */
 	async requestDashboardApproval(request: ToolConfirmationRequest): Promise<ToolConfirmationDecision> {
 		await this.activateCommandCenterView();
@@ -591,7 +649,7 @@ export default class CommandCenterPlugin extends Plugin {
 				this.app,
 				this.dispatcher,
 				this.configManager,
-				() => getCapabilityRegistry().getEnabledToolDefinitions(true),
+				() => this.getGatedTools(),
 				async (tool, params) => {
 					if (!tool.confirmation) return true;
 					const request = await tool.confirmation(params);
@@ -603,6 +661,11 @@ export default class CommandCenterPlugin extends Plugin {
 				await this.folderIndexer.initialize(config.managedFolders);
 				this.configureDailyEngines(config);
 				await this.dailyEngine.ready();
+			}, async (connector) => {
+				const connectors = [...(this.settings.apiConnectors ?? []).filter(item => item.id !== connector.id), connector];
+				this.settings.apiConnectors = connectors;
+				await this.saveSettings();
+				await this.refreshExternalCapabilities();
 			});
 		})().catch((error: unknown) => {
 			console.error('[CC] Dashboard onboarding failed:', error);
@@ -723,6 +786,10 @@ export default class CommandCenterPlugin extends Plugin {
 
 	onunload(): void {
 		this.credentialVault.lock();
+		this.mcpToolManager?.dispose();
+		this.mcpToolManager = null;
+		this.apiConnectorManager?.dispose();
+		this.apiConnectorManager = null;
 		this.accessibilityAudio?.dispose();
 		// Clear the capability registry so stale tool references are not
 		// retained across plugin reloads.
@@ -893,6 +960,52 @@ export default class CommandCenterPlugin extends Plugin {
 		});
 	}
 
+	async refreshExternalCapabilities(): Promise<void> {
+		if (!this.settings.mcpEnabled || !this.settings.mcpServers?.length) {
+			this.mcpToolManager?.dispose();
+			this.mcpToolManager = null;
+			return;
+		}
+		if (this.capabilityRefreshPromise) return this.capabilityRefreshPromise;
+		this.capabilityRefreshPromise = (async () => {
+			const registry = getCapabilityRegistry();
+			// Remove stale MCP registrations before replacing the discovered
+			// snapshot. Built-in capabilities are never touched.
+			for (const id of registry.ids.filter(value => value.startsWith('mcp:'))) registry.unregister(id);
+			this.mcpToolManager?.dispose();
+			const manager = new MCPToolManager({ servers: this.settings.mcpServers });
+			const tools = await manager.discoverTools();
+			this.mcpToolManager = manager;
+			if (tools.length) {
+				this.daemon.registerTools(tools);
+				for (const server of this.settings.mcpServers.filter(item => item.enabled)) {
+					const serverTools = tools.filter(tool => tool.name.startsWith(`${server.id}:`));
+					ingestMcpCapabilities(server.id, server.label, serverTools);
+				}
+			}
+			for (const id of registry.ids.filter(value => value.startsWith('api:'))) registry.unregister(id);
+			this.apiConnectorManager?.dispose();
+			this.apiConnectorManager = new ApiConnectorManager({
+				connectors: this.settings.apiConnectors ?? [],
+				getSecret: ref => this.credentialVault.get(ref),
+			});
+			for (const tool of this.apiConnectorManager.discoverTools()) {
+				this.daemon.registerTools([tool]);
+				wrapToolAsCapability(tool, {
+					id: tool.name,
+					label: tool.label,
+					description: tool.description,
+					category: 'custom', executionMode: 'autonomous',
+					confirmationPolicy: tool.confirmation ? 'always' : 'never', requiresVault: false,
+				});
+			}
+			console.debug('[CC] External capabilities refreshed:', [...tools.map(tool => tool.name), ...this.apiConnectorManager.getTools().map(tool => tool.name)]);
+		})().catch(error => {
+			console.warn('[CC] External capability refresh failed:', error);
+		}).finally(() => { this.capabilityRefreshPromise = null; });
+		return this.capabilityRefreshPromise;
+	}
+
 	async saveSettings(): Promise<void> {
 		// Deep-clone settings so the mutation below never corrupts the live state.
 		const clone = JSON.parse(JSON.stringify(this.settings)) as CommandCenterSettings;
@@ -907,6 +1020,9 @@ export default class CommandCenterPlugin extends Plugin {
 		console.debug('[CC] Saving settings (strip apiKey from clone, live object untouched)');
 		this.persist.setSettings(clone as unknown as Record<string, unknown>);
 		await this.persist.forceFlush();
+		// Settings changes take effect without a plugin reload. The registry is
+		// the live tool surface used by all future provider turns.
+		void this.refreshExternalCapabilities();
 	}
 
 	/* ─── Task history ──────────────────────────────── */
@@ -1364,7 +1480,7 @@ export default class CommandCenterPlugin extends Plugin {
 		}
 
 		await this.activateCommandCenterView();
-		const voiceTools = getCapabilityRegistry().getEnabledToolDefinitions(true);
+		const voiceTools = this.getGatedTools();
 		const streamId = `voice-${mode}-${Date.now().toString(36)}`;
 		this.getCommandCenterView()?.startTaskStream(
 			streamId,
@@ -1410,7 +1526,7 @@ export default class CommandCenterPlugin extends Plugin {
 					? `${prompt}\n\nActive vault context: [[${activeFile.path}]]`
 					: prompt;
 				let streamed = '';
-				const tools = getCapabilityRegistry().getEnabledToolDefinitions(true);
+				const tools = this.getGatedTools();
 				const result = await this.conversations.executeProviderTurn(
 					this.dispatcher,
 					request,

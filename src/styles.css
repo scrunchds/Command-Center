@@ -118,6 +118,8 @@ Command Center — Agentic OS for Obsidian
 .command-center-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .cc-dashboard-telemetry { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 8px; margin-bottom: 18px; }
 .cc-dashboard-layout-editor { margin-bottom: 14px; padding: 12px; border: 1px solid var(--interactive-accent); border-radius: var(--radius-l); background: var(--background-secondary); }
+/* The editor is created hidden and toggled by the Customize dashboard button. */
+.cc-dashboard-layout-editor.is-hidden { display: none; }
 .cc-layout-list { display: flex; flex-direction: column; gap: 6px; }
 .cc-layout-row { display: grid; grid-template-columns: minmax(150px, 1fr) auto auto minmax(100px, auto) auto auto; gap: 6px; align-items: center; }
 .cc-layout-row button { padding: 3px 8px; }
@@ -1234,3 +1236,149 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 .cc-settings-description { margin-bottom: 1em; color: var(--text-muted); }
 .cc-settings-empty { color: var(--text-muted); font-style: italic; }
 .cc-settings-separator { border-bottom: 1px solid var(--background-modifier-border); margin: 1em 0; }
+
+/* ── Command Deck (Principle 3) ─────────────────────────────────────── */
+/* Vertical rail; buttons are a reflection of vault workflow files. */
+.cc-command-deck { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cc-deck-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cc-deck-header h3 { margin: 0; }
+.cc-deck-count { color: var(--text-muted); font-size: var(--font-smallest); white-space: nowrap; }
+.cc-deck-list { display: flex; flex-direction: column; gap: 5px; max-height: min(420px, 50vh); overflow-y: auto; }
+.cc-deck-button { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 8px 10px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); text-align: left; cursor: pointer; }
+.cc-deck-button:hover { background: var(--background-modifier-hover); border-color: var(--interactive-accent); }
+.cc-deck-icon { flex: 0 0 auto; display: inline-flex; color: var(--text-muted); }
+.cc-deck-icon svg { width: 16px; height: 16px; }
+.cc-deck-text { min-width: 0; }
+.cc-deck-label { font-size: var(--font-small); font-weight: var(--font-semibold); overflow-wrap: anywhere; }
+.cc-deck-desc { margin-top: 2px; color: var(--text-muted); font-size: var(--font-smallest); overflow-wrap: anywhere; }
+.cc-deck-button[data-kind="canvas"] .cc-deck-icon { color: var(--color-purple); }
+.cc-deck-button[data-kind="generated"] .cc-deck-icon { color: var(--interactive-accent); }
+.cc-deck-empty { padding: 10px; color: var(--text-muted); font-size: var(--font-smallest); line-height: 1.5; }
+.cc-deck-create { margin-top: 2px; font-size: var(--font-smallest); }
+
+/* ── Intelligence cards (Principle 2) ───────────────────────────────── */
+/* Responsive CSS Grid using native theme variables (Principle 5). */
+.cc-intel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.cc-intel-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); overflow: hidden; }
+.cc-intel-card-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--background-modifier-border); background: var(--background-secondary); }
+.cc-intel-card-header h4 { margin: 0; font-size: var(--font-small); font-weight: var(--font-semibold); }
+.cc-intel-card-source { color: var(--text-muted); font-size: calc(var(--font-smallest) * 0.87); white-space: nowrap; }
+.cc-intel-card-body { display: flex; flex-direction: column; gap: 4px; padding: 8px; }
+.cc-intel-empty { color: var(--text-muted); font-size: var(--font-smallest); line-height: 1.5; }
+.cc-intel-row { display: flex; align-items: flex-start; gap: 7px; padding: 5px 7px; border-radius: var(--radius-s); cursor: pointer; }
+.cc-intel-row:hover, .cc-intel-row:focus-visible { background: var(--background-modifier-hover); outline: none; }
+.cc-intel-row-icon { flex: 0 0 auto; display: inline-flex; color: var(--text-muted); }
+.cc-intel-row-icon svg { width: 14px; height: 14px; }
+.cc-intel-row-text { flex: 1; min-width: 0; }
+.cc-intel-row-primary { font-size: var(--font-smallest); overflow-wrap: anywhere; }
+.cc-intel-row-secondary { margin-top: 1px; color: var(--text-muted); font-size: calc(var(--font-smallest) * 0.87); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-intel-row-badge { flex: 0 0 auto; color: var(--text-faint); font-size: calc(var(--font-smallest) * 0.8); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cc-intel-row.is-overdue .cc-intel-row-icon, .cc-intel-row.is-overdue .cc-intel-row-badge { color: var(--color-red); }
+.cc-intel-row.is-ok .cc-intel-row-icon { color: var(--color-green); }
+.cc-intel-row.is-pending .cc-intel-row-icon { color: var(--color-orange); }
+.cc-intel-metrics { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.cc-intel-metric { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 7px; border-radius: 10px; background: var(--background-secondary); font-size: calc(var(--font-smallest) * 0.87); }
+.cc-intel-metric-key { color: var(--text-muted); }
+.cc-intel-metric-value { font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
+.cc-intel-alert { display: flex; flex-direction: column; gap: 1px; padding: 5px 7px; border-left: 3px solid var(--color-orange); border-radius: var(--radius-s); background: hsla(var(--color-orange-hsl), 0.09); font-size: calc(var(--font-smallest) * 0.92); }
+.cc-intel-footnote { margin-top: 2px; color: var(--text-faint); font-size: calc(var(--font-smallest) * 0.8); overflow-wrap: anywhere; }
+.cc-intel-error { padding: 9px; border: 1px solid hsla(var(--color-red-hsl), 0.35); border-radius: var(--radius-m); background: hsla(var(--color-red-hsl), 0.07); color: var(--color-red); font-size: var(--font-smallest); }
+.cc-intel-provenance { margin-top: 8px; color: var(--text-faint); font-size: calc(var(--font-smallest) * 0.8); text-align: right; }
+
+/* ── Write gate (Principle 1) + transparency log (Principle 4) ─────── */
+.cc-write-gate-posture { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 9px; padding: 7px 10px; border-left: 3px solid var(--color-green); border-radius: var(--radius-s); background: hsla(var(--color-green-hsl), 0.07); font-size: var(--font-smallest); }
+.cc-write-gate-posture.is-bypassed { border-left-color: var(--color-orange); background: hsla(var(--color-orange-hsl), 0.09); }
+.cc-write-gate-log { margin-top: 10px; font-size: var(--font-smallest); }
+.cc-write-gate-log summary { cursor: pointer; color: var(--text-muted); }
+.cc-write-gate-log-body { display: flex; flex-direction: column; gap: 2px; max-height: 200px; margin-top: 6px; overflow-y: auto; }
+.cc-write-gate-entry { display: grid; grid-template-columns: 82px minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 8px; align-items: baseline; padding: 3px 6px; border-radius: var(--radius-s); font-size: calc(var(--font-smallest) * 0.87); }
+.cc-write-gate-entry:nth-child(odd) { background: var(--background-secondary); }
+.cc-write-gate-decision { font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: 0.03em; }
+.cc-write-gate-entry.is-approved .cc-write-gate-decision { color: var(--color-green); }
+.cc-write-gate-entry.is-auto-approved .cc-write-gate-decision { color: var(--color-orange); }
+.cc-write-gate-entry.is-rejected .cc-write-gate-decision, .cc-write-gate-entry.is-timed-out .cc-write-gate-decision { color: var(--color-red); }
+.cc-write-gate-tool { font-family: var(--font-monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-write-gate-targets { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-write-gate-time { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) { .cc-write-gate-entry { grid-template-columns: 76px minmax(0, 1fr); } .cc-write-gate-targets, .cc-write-gate-time { grid-column: 2; } }
+
+/* Kanban-style lanes inside the Action Items card. */
+.cc-intel-lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.cc-intel-lane { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 6px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); background: var(--background-secondary); }
+.cc-intel-lane-header { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; margin-bottom: 2px; color: var(--text-muted); font-size: calc(var(--font-smallest) * 0.8); font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: 0.04em; }
+.cc-intel-lane-count { padding: 0 5px; border-radius: 8px; background: var(--background-primary); font-variant-numeric: tabular-nums; }
+.cc-intel-lane.is-overdue { border-left: 3px solid var(--color-red); }
+.cc-intel-lane.is-pending { border-left: 3px solid var(--color-orange); }
+.cc-protected-paths-input { width: 100%; }
+.cc-intel-base .cc-intel-row-icon { color: var(--color-cyan); }
+.cc-intel-base.is-nested { margin-left: 14px; }
+.cc-intel-base .cc-intel-row-badge { text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ── Section header UX: title + purpose + actionable hint ───────────── */
+.cc-widget-title-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cc-widget-title-group h3 { margin: 0; }
+.cc-widget-header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; margin-left: auto; }
+.command-center-section-header .cc-widget-caption { text-transform: none; letter-spacing: normal; font-weight: var(--font-normal); line-height: 1.45; }
+.cc-widget-hint { margin: 0 0 9px; padding: 6px 9px; border-left: 2px solid var(--background-modifier-border); border-radius: var(--radius-s); background: var(--background-secondary); color: var(--text-muted); font-size: var(--font-smallest); line-height: 1.5; }
+.cc-intel-card-hint { padding: 6px 10px; border-bottom: 1px solid var(--background-modifier-border); color: var(--text-muted); font-size: calc(var(--font-smallest) * 0.92); line-height: 1.45; }
+.cc-dashboard-workspace-actions { flex-wrap: wrap; align-items: center; }
+.cc-dashboard-workspace-actions .cc-widget-caption { flex: 1 1 220px; }
+.cc-deck-header .cc-widget-title-group h3 { font-size: var(--font-ui-medium); }
+@media (max-width: 600px) { .cc-widget-hint { font-size: calc(var(--font-smallest) * 0.92); } }
+
+/* ── Calendar (Principle 6: dates as doorways) ──────────────────────── */
+.cc-calendar { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cc-calendar-header { display: flex; align-items: center; gap: 6px; }
+.cc-calendar-header button { display: inline-flex; align-items: center; justify-content: center; padding: 3px 8px; }
+.cc-calendar-header button svg { width: 15px; height: 15px; }
+.cc-calendar-title { flex: 1; font-size: var(--font-small); font-weight: var(--font-semibold); text-align: center; }
+.cc-calendar-weekdays, .cc-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.cc-calendar-weekdays > div { padding: 2px 0; color: var(--text-muted); font-size: calc(var(--font-smallest) * 0.8); font-weight: var(--font-semibold); text-align: center; text-transform: uppercase; letter-spacing: 0.04em; }
+.cc-calendar-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 40px; padding: 3px 2px; border: 1px solid transparent; border-radius: var(--radius-s); background: var(--background-secondary); cursor: pointer; }
+.cc-calendar-cell.is-empty { background: transparent; cursor: default; }
+.cc-calendar-cell:not(.is-empty):hover, .cc-calendar-cell:focus-visible { border-color: var(--interactive-accent); outline: none; }
+.cc-calendar-cell.is-today { border-color: var(--interactive-accent); font-weight: var(--font-bold); }
+.cc-calendar-cell.is-selected { background: hsla(var(--interactive-accent-hsl), 0.18); border-color: var(--interactive-accent); }
+.cc-calendar-cell.is-overdue { box-shadow: inset 0 -2px 0 var(--color-red); }
+.cc-calendar-day { font-size: var(--font-smallest); font-variant-numeric: tabular-nums; }
+.cc-calendar-marks { display: flex; align-items: center; gap: 3px; min-height: 8px; }
+.cc-calendar-dot { width: 5px; height: 5px; border-radius: 50%; }
+.cc-calendar-dot.is-note { background: var(--color-green); }
+.cc-calendar-count { padding: 0 4px; border-radius: 7px; background: var(--interactive-accent); color: var(--text-on-accent); font-size: calc(var(--font-smallest) * 0.7); font-weight: var(--font-bold); font-variant-numeric: tabular-nums; }
+.cc-calendar-detail { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--background-modifier-border); }
+.cc-calendar-detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cc-calendar-detail-header strong { flex: 1 1 auto; font-size: var(--font-small); }
+.cc-calendar-detail-header button { font-size: var(--font-smallest); padding: 2px 9px; }
+.cc-calendar-tasks { display: flex; flex-direction: column; gap: 3px; max-height: 190px; overflow-y: auto; }
+.cc-calendar-task { display: flex; align-items: flex-start; gap: 7px; padding: 4px 6px; border-radius: var(--radius-s); }
+.cc-calendar-task:hover { background: var(--background-modifier-hover); }
+.cc-calendar-task.is-done .cc-calendar-task-text > div:first-child { color: var(--text-faint); text-decoration: line-through; }
+.cc-calendar-task > input[type="checkbox"] { margin-top: 3px; flex: 0 0 auto; }
+.cc-calendar-task-text { flex: 1; min-width: 0; font-size: var(--font-smallest); overflow-wrap: anywhere; }
+.cc-calendar-task button { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; background: transparent; border: 0; box-shadow: none; color: var(--text-muted); cursor: pointer; }
+.cc-calendar-task button:hover { color: var(--text-normal); background: var(--background-modifier-hover); border-radius: var(--radius-s); }
+.cc-calendar-task button svg { width: 13px; height: 13px; }
+.cc-calendar-add { display: flex; gap: 6px; }
+.cc-calendar-add input { flex: 1; min-width: 0; }
+.cc-calendar-add button { flex: 0 0 auto; }
+
+/* ── Vault navigator (Principle 6: one doorway to everything) ───────── */
+.cc-navigator { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.cc-navigator-search { display: flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); }
+.cc-navigator-search:focus-within { border-color: var(--interactive-accent); box-shadow: 0 0 0 2px hsla(var(--interactive-accent-hsl), 0.2); }
+.cc-navigator-search-icon { display: inline-flex; color: var(--text-muted); }
+.cc-navigator-search-icon svg { width: 14px; height: 14px; }
+.cc-navigator-search input { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none; }
+.cc-navigator-search input:focus { box-shadow: none; }
+.cc-navigator-search button { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--text-muted); cursor: pointer; }
+.cc-navigator-search button svg { width: 12px; height: 12px; }
+.cc-navigator-results { display: flex; flex-direction: column; gap: 2px; max-height: min(320px, 42vh); overflow-y: auto; }
+.cc-navigator-group { padding: 4px 2px 2px; color: var(--text-muted); font-size: calc(var(--font-smallest) * 0.8); font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: 0.04em; }
+.cc-navigator-row { display: flex; align-items: center; gap: 7px; padding: 4px 7px; border-radius: var(--radius-s); cursor: pointer; }
+.cc-navigator-row:hover, .cc-navigator-row:focus-visible { background: var(--background-modifier-hover); outline: none; }
+.cc-navigator-icon { flex: 0 0 auto; display: inline-flex; color: var(--text-muted); }
+.cc-navigator-icon svg { width: 14px; height: 14px; }
+.cc-navigator-text { flex: 1; min-width: 0; }
+.cc-navigator-label { font-size: var(--font-smallest); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-navigator-detail { color: var(--text-muted); font-size: calc(var(--font-smallest) * 0.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-navigator-kind { flex: 0 0 auto; padding: 0 5px; border-radius: 7px; background: var(--background-secondary); color: var(--text-faint); font-size: calc(var(--font-smallest) * 0.7); text-transform: uppercase; letter-spacing: 0.04em; }
