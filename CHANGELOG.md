@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **Mind map widget** (`src/ui/MindMapPanel.ts`, `src/ui/mindmap-model.ts`): maps the active note's heading structure from `metadataCache`, so it costs no tokens and no file reads. Nodes jump to their heading, branches collapse, and the map exports as an indented Markdown outline. Skipped heading levels and notes starting at a deep heading are handled by attaching to the nearest shallower parent rather than dropping the heading. No third-party mind map plugin required; hidden by default.
+
 ### Fixed
 - The full-pane browser opened an empty split: it was a second, diverged implementation of the browser, and its `<webview>` had no resolved height. The pane is now a thin shell around the same `BrowserPanel` as the dashboard widget, so both surfaces share one implementation and any fix applies to both.
 - The browser widget rendered only in the top portion of its card. A `<webview>` is a replaced element with an intrinsic 300x150px size, so it ignored `height: 100%`; it now uses `display: flex` inside a flex-sized viewport.

@@ -24,6 +24,7 @@ import type { WriteGateRecord } from '../security/WriteGate';
 import { renderIntelligenceCards } from './IntelligenceCards';
 import { CUSTOM_WIDGET_PREFIX, CustomCards } from './CustomCards';
 import { BrowserPanel } from './BrowserPanel';
+import { MindMapPanel } from './MindMapPanel';
 import { CommandDeck, type DeckEntry } from './CommandDeck';
 import { CalendarPanel } from './CalendarPanel';
 import { VaultNavigator } from './VaultNavigator';
@@ -134,6 +135,7 @@ export class CommandCenterView extends ItemView {
 	private customCards: CustomCards | null = null;
 	private customCardsEl: HTMLElement | null = null;
 	private browserPanel: BrowserPanel | null = null;
+	private mindMapPanel: MindMapPanel | null = null;
 	private intelligenceTimer: number | null = null;
 	private widgetHostEl: HTMLElement | null = null;
 	private layoutEditorEl: HTMLElement | null = null;
@@ -205,6 +207,7 @@ export class CommandCenterView extends ItemView {
 		this.renderIntelligence(widgetHost);
 		this.renderCalendar(widgetHost);
 		this.renderBrowser(widgetHost);
+		this.renderMindMap(widgetHost);
 		this.renderCustomCards(widgetHost);
 		this.renderApprovalQueue(widgetHost);
 		this.renderBasesController(widgetHost);
@@ -566,6 +569,8 @@ export class CommandCenterView extends ItemView {
 		this.customCardsEl = null;
 		this.browserPanel?.dispose();
 		this.browserPanel = null;
+		this.mindMapPanel?.dispose();
+		this.mindMapPanel = null;
 		if (this.intelligenceTimer !== null) {
 			window.clearTimeout(this.intelligenceTimer);
 			this.intelligenceTimer = null;
@@ -787,7 +792,7 @@ export class CommandCenterView extends ItemView {
 			const label = this.customCards?.labelFor(id);
 			return label ? `${label} (custom card)` : id.slice(CUSTOM_WIDGET_PREFIX.length);
 		}
-		return ({ workspace: 'Dashboard workspace', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', browser: 'Browser', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id;
+		return ({ workspace: 'Dashboard workspace', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', browser: 'Browser', mindmap: 'Mind map', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id;
 	}
 	private updateWidget(id: string, patch: Partial<DashboardWidgetLayout>): void {
 		this.plugin.settings.dashboardLayout = this.normalizedLayout().map(widget => widget.id === id ? { ...widget, ...patch, ...(id === 'approvals' ? { hidden: false, collapsed: false } : {}) } : widget);
@@ -917,6 +922,42 @@ export class CommandCenterView extends ItemView {
 			},
 		});
 		this.commandDeck.mount(this.deckEl);
+	}
+
+	/**
+	 * Principle 2: a mind map of the active note's headings, built from the
+	 * metadata cache Obsidian has already parsed, so it costs nothing to keep
+	 * open. Nodes jump to their heading, making it a navigation aid rather than
+	 * just a picture.
+	 */
+	private renderMindMap(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-mindmap-section' });
+		this.markWidget(section, 'mindmap');
+		this.sectionHeading(
+			section,
+			'Mind map',
+			"Visualize the structure of the note you are working on, derived from its headings.",
+			'Click a node to jump to that heading. Collapse branches to focus, or copy the map as an outline.',
+		);
+		const host = section.createDiv();
+		this.mindMapPanel = new MindMapPanel(this.app, {
+			onJump: (file, line) => void this.openFileAtLine(file, line),
+		});
+		this.mindMapPanel.mount(host);
+
+		// Track whatever note the user moves to, and any heading edits to it.
+		this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.mindMapPanel?.refresh()));
+		this.registerEvent(this.app.metadataCache.on('changed', file => {
+			if (file.path === this.app.workspace.getActiveFile()?.path) this.mindMapPanel?.refresh();
+		}));
+	}
+
+	/** Open a note and place the cursor on a specific zero-based line. */
+	private async openFileAtLine(file: TFile, line: number): Promise<void> {
+		const leaf = this.app.workspace.getLeaf(false);
+		await leaf.openFile(file);
+		const view = leaf.view as { editor?: { setCursor: (pos: { line: number; ch: number }) => void } };
+		view.editor?.setCursor({ line: Math.max(0, line), ch: 0 });
 	}
 
 	/**

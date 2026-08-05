@@ -2434,6 +2434,88 @@ async function verifyBrowserUrl() {
 	pass('24o: falls back to a valid Chrome user agent');
 }
 
+
+/* ═══════════════════════════════════════════════════════════
+   25. Mind map heading tree
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyMindMap() {
+	console.log('\n─── 25. Mind map model ───');
+
+	const mod = await import(pathToFileURL(join(SRC, 'ui', 'mindmap-model.ts')).href);
+	const { buildMindMap, countNodes, maxDepth, toOutline } = mod;
+
+	const h = (heading, level, line) => ({ heading, level, line });
+
+	// 25a: nesting follows heading levels
+	const simple = buildMindMap([h('Top', 1, 0), h('Sub', 2, 5), h('Deep', 3, 8), h('Other', 2, 12)]);
+	assert.equal(simple.length, 1);
+	assert.equal(simple[0].children.length, 2);
+	assert.equal(simple[0].children[0].children[0].text, 'Deep');
+	pass('25a: nests headings by level');
+
+	// 25b: several top-level headings become siblings, not a chain
+	const twoRoots = buildMindMap([h('One', 1, 0), h('Two', 1, 4)]);
+	assert.equal(twoRoots.length, 2);
+	assert.equal(twoRoots[1].children.length, 0);
+	pass('25b: keeps multiple h1 headings as siblings');
+
+	// 25c: a skipped level attaches to the nearest shallower parent
+	const skipped = buildMindMap([h('Top', 1, 0), h('Jumped', 3, 2)]);
+	assert.equal(skipped.length, 1, 'must not become a second root');
+	assert.equal(skipped[0].children[0].text, 'Jumped');
+	pass('25c: attaches skipped levels to the nearest parent');
+
+	// 25d: a note starting at h3 still renders rather than vanishing
+	const deepStart = buildMindMap([h('Deep first', 3, 0), h('Sibling', 3, 4)]);
+	assert.equal(deepStart.length, 2);
+	pass('25d: handles notes that start at a deep heading');
+
+	// 25e: returning to a shallower level closes the deeper branch
+	const back = buildMindMap([h('A', 1, 0), h('B', 2, 1), h('C', 3, 2), h('D', 2, 3)]);
+	assert.equal(back[0].children.length, 2, 'B and D are siblings');
+	assert.equal(back[0].children[1].text, 'D');
+	pass('25e: unwinds correctly when depth decreases');
+
+	// 25f: line numbers survive for jump-to-heading
+	assert.equal(back[0].children[1].line, 3);
+	pass('25f: preserves source line numbers');
+
+	// 25g: markdown in heading text is reduced to a plain label
+	const fancy = buildMindMap([
+		h('**Bold** and `code`', 1, 0),
+		h('[[Note|Alias]]', 2, 1),
+		h('[Link](https://example.com)', 2, 2),
+	]);
+	assert.equal(fancy[0].text, 'Bold and code');
+	assert.equal(fancy[0].children[0].text, 'Alias');
+	assert.equal(fancy[0].children[1].text, 'Link');
+	pass('25g: strips markdown from node labels');
+
+	// 25h: headings with no visible text are dropped
+	const empty = buildMindMap([h('Real', 1, 0), h('   ', 2, 1), h('**', 2, 2)]);
+	assert.equal(countNodes(empty), 1);
+	pass('25h: drops headings with no visible label');
+
+	// 25i: an empty note yields an empty map, not a crash
+	assert.deepEqual(buildMindMap([]), []);
+	assert.equal(countNodes([]), 0);
+	assert.equal(maxDepth([]), 0);
+	pass('25i: handles a note with no headings');
+
+	// 25j: counts and depth describe the whole forest
+	assert.equal(countNodes(simple), 4);
+	assert.equal(maxDepth(simple), 3);
+	pass('25j: reports node count and depth');
+
+	// 25k: outline export indents with tabs for pasting into Markdown
+	const outline = toOutline(simple);
+	assert.equal(outline.split('\n')[0], '- Top');
+	assert.ok(outline.includes('\t- Sub'), 'children indent one tab');
+	assert.ok(outline.includes('\t\t- Deep'), 'grandchildren indent two tabs');
+	pass('25k: exports an indented markdown outline');
+}
+
 async function main() {
 	console.log('═══════════════════════════════════════════');
 	console.log('  Command Center — Verification Suite');
@@ -2461,6 +2543,7 @@ async function main() {
 	await verifyTaskSyntax();
 	await verifyCustomCards();
 	await verifyBrowserUrl();
+	await verifyMindMap();
 
 	console.log('\n═══════════════════════════════════════════');
 	console.log(`  Results:  ${results.pass} passed, ${results.fail} failed, ${results.skip} skipped`);

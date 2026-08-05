@@ -34,6 +34,8 @@ export const DEFAULT_DASHBOARD_LAYOUT: DashboardWidgetLayout[] = [
 	{ id: 'navigator', hidden: false, collapsed: false, size: 'standard' },
 	{ id: 'intelligence', hidden: false, collapsed: false, size: 'expanded' },
 	{ id: 'calendar', hidden: false, collapsed: false, size: 'standard' },
+	// Mind map and browser start hidden: both are opt-in focus surfaces.
+	{ id: 'mindmap', hidden: true, collapsed: false, size: 'standard' },
 	// Browser starts hidden: it is opt-in reading space, not everyday signal.
 	{ id: 'browser', hidden: true, collapsed: false, size: 'expanded' },
 	{ id: 'approvals', hidden: false, collapsed: false, size: 'expanded' },
