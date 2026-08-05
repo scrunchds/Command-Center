@@ -1,5 +1,6 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import type CommandCenterPlugin from '../main';
+import { normalizeBrowserUrl } from './browser-url';
 
 export const COMMAND_CENTER_BROWSER_VIEW_TYPE = 'command-center-browser';
 export const COMMAND_CENTER_BROWSER_DISPLAY_TEXT = 'Command Center Browser';
@@ -162,17 +163,11 @@ export class CommandCenterBrowserView extends ItemView {
 		if (this.statusEl) this.statusEl.setText(text);
 	}
 
+	/**
+	 * Delegate to the shared normalizer so the pane and the dashboard widget
+	 * agree on what is a URL, what is a search, and which schemes are refused.
+	 */
 	private normalizeUrl(input: string): string {
-		const trimmed = input.trim();
-		if (!trimmed) return '';
-		try {
-			return new URL(trimmed).toString();
-		} catch {
-			try {
-				return new URL(`https://${trimmed}`).toString();
-			} catch {
-				return '';
-			}
-		}
+		return normalizeBrowserUrl(input);
 	}
 }

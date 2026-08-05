@@ -1382,3 +1382,179 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 .cc-navigator-label { font-size: var(--font-smallest); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-navigator-detail { color: var(--text-muted); font-size: calc(var(--font-smallest) * 0.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-navigator-kind { flex: 0 0 auto; padding: 0 5px; border-radius: 7px; background: var(--background-secondary); color: var(--text-faint); font-size: calc(var(--font-smallest) * 0.7); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* ─── Custom cards (Principle 3: Markdown-backed extensibility) ───────── */
+
+/* The mount point itself must not affect layout: the dashboard grid reparents
+   each card section out of it, so a visible wrapper would leave a gap. */
+.cc-custom-card-host {
+	display: contents;
+}
+
+.cc-custom-card .cc-custom-card-icon {
+	display: inline-flex;
+	align-items: center;
+	margin-right: var(--size-4-2);
+	color: var(--text-accent);
+	vertical-align: middle;
+}
+
+.cc-custom-card .cc-custom-card-icon svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.cc-custom-card-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+/* Rendered Markdown inherits theme typography but must not add page margins. */
+.cc-custom-card-markdown > :first-child {
+	margin-top: 0;
+}
+
+.cc-custom-card-markdown > :last-child {
+	margin-bottom: 0;
+}
+
+/* Embedded bases and tables should scroll rather than stretch the widget. */
+.cc-custom-card-markdown .block-language-base,
+.cc-custom-card-markdown .markdown-embed {
+	max-height: 24rem;
+	overflow: auto;
+}
+
+.cc-custom-card-tasks {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+}
+
+.cc-custom-task {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--size-4-2);
+	padding: var(--size-2-2) var(--size-4-2);
+	border-radius: var(--radius-s);
+	transition: background-color 120ms ease-in-out;
+}
+
+.cc-custom-task:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.cc-custom-task input[type='checkbox'] {
+	margin-top: 0.15em;
+	flex-shrink: 0;
+}
+
+.cc-custom-task-text {
+	flex: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/* Completed work stays visible but visually recedes. */
+.cc-custom-task.is-done .cc-custom-task-text {
+	color: var(--text-muted);
+	text-decoration: line-through;
+}
+
+.cc-custom-task button {
+	flex-shrink: 0;
+	padding: var(--size-2-1);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	opacity: 0;
+	transition: opacity 120ms ease-in-out;
+}
+
+.cc-custom-task:hover button,
+.cc-custom-task button:focus-visible {
+	opacity: 1;
+}
+
+.cc-custom-task button:hover {
+	color: var(--text-accent);
+}
+
+/* ─── Embedded browser widget (Principle 6: one operational hub) ───────── */
+
+.cc-browser-panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+	min-height: 0;
+}
+
+.cc-browser-panel-bar {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	flex-wrap: nowrap;
+}
+
+.cc-browser-panel-nav {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	padding: var(--size-2-2);
+	color: var(--text-muted);
+}
+
+.cc-browser-panel-nav:hover:not(:disabled) {
+	color: var(--text-accent);
+}
+
+.cc-browser-panel-nav:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.cc-browser-panel-nav[aria-pressed='true'] {
+	color: var(--text-accent);
+}
+
+.cc-browser-panel-address {
+	flex: 1;
+	min-width: 0;
+	font-family: var(--font-interface);
+}
+
+.cc-browser-panel-viewport {
+	flex: 1;
+	min-height: 18rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	overflow: hidden;
+	background-color: var(--background-primary);
+}
+
+.cc-browser-panel-frame {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border: 0;
+}
+
+.cc-browser-panel-status {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Focused mode: the browser takes the full grid width and a tall viewport so
+   long documentation can be read without popping out to a separate pane. */
+.cc-dashboard-widget-grid .cc-browser-section.is-browser-focused {
+	grid-column: 1 / -1;
+}
+
+.cc-browser-panel.is-focused .cc-browser-panel-viewport {
+	min-height: min(70vh, 46rem);
+}

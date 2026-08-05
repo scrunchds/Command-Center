@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+- **Custom dashboard cards** (`src/ui/CustomCards.ts`, `src/ui/card-syntax.ts`): any note carrying `cc-card: true` becomes a dashboard card, discovered rather than registered and hot-registering on vault events. Bodies render through `MarkdownRenderer`, so embedded `.base` views, Dataview blocks, callouts, and transclusions work unchanged. Checkbox lines become interactive rows that write back through the write gate, with fenced code blocks correctly excluded. Optional `cc-card-title`, `cc-card-hint`, `cc-card-icon`, and `cc-card-order` frontmatter keys.
+- **Embedded browser widget** (`src/ui/BrowserPanel.ts`, `src/ui/browser-url.ts`): read documentation and API references inline, expand to fill the dashboard, or pop out into a dedicated pane with the current address handed across. Bare hosts and `host:port` resolve as addresses, free text becomes a search, and `javascript:`, `data:`, `file:`, and other non-web schemes are refused. Frames are sandboxed without `allow-same-origin`. Hidden by default.
 - **Absolute write gate** (`src/security/WriteGate.ts`): a single authority for every vault mutation. `gateTools()` wraps each capability so authorization runs inside `execute`, making bypass structurally impossible. New `autoWriteEnabled` and `protectedWritePaths` settings, an append-only decision log on the dashboard, and a live gate-posture banner.
 - **Zero-cost intelligence bridge** (`src/intelligence/VaultDataBridge.ts`): deterministic vault analysis from Obsidian's `metadataCache` only, with no provider or token cost. Surfaces daily-note state, tracked metrics, evaluated capacity rules, capture entries, checkbox and property-driven tasks, inline/emoji due dates, managed folders, and native `.base` views.
 - **Four “Happening now” dashboard cards**: Daily intelligence, Capture, Action items, and Workspaces, with Kanban-style task lanes (Overdue / Due today / Scheduled / Undated) derived from dates already present in the vault.
@@ -19,13 +21,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Global chat interaction style** (`src/prompts/interaction-style.ts`) plus a live capability inventory injected at every shared provider boundary, so all chat surfaces know exactly which tools exist.
 - Per-section UX descriptions across the whole dashboard: each panel states what it shows and what to do with it.
 - Obsidian's built-in browser is now reachable from the dashboard header.
-- 25 new tests covering write-gate enforcement and Markdown task transforms (193 in the core suite; 368 total).
+- 48 new tests covering write-gate enforcement, Markdown task transforms, card parsing, and browser URL handling (216 in the core suite; 391 total).
 
 ### Changed
 - Onboarding is now optional: Command Center no longer force-opens the setup interview on first run. Chat, tools, and the dashboard work immediately, and guided setup can be started at any time.
 - Live external capability refresh recreates MCP and REST connector tools after settings changes, unregistering stale entries.
 - Setup input redaction now permits links, paths, hosts, ports, and endpoint values, blocking only credential-like material.
-- Dashboard layout gained `deck`, `navigator`, `intelligence`, and `calendar` widgets, all reorderable and hideable.
+- Dashboard layout gained `deck`, `navigator`, `intelligence`, `calendar`, and `browser` widgets, all reorderable and hideable. Custom cards participate in the same ordering.
+- The full-pane browser view now shares the hardened URL normalizer with the dashboard widget, so both agree on addresses, searches, and refused schemes.
+- README documents the six core principles and names the code enforcing each one.
 
 ### Fixed
 - Layout editor did not collapse when “Done customizing” was clicked: the `.cc-dashboard-layout-editor.is-hidden` rule was missing entirely, so the panel was permanently expanded. Visibility is now explicit state, with a `Done` button inside the panel and correct `aria-expanded` reporting.
@@ -33,6 +37,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Onboarding now closes and returns to the dashboard on completion.
 - Removed the hardcoded `vault-setup.ts` scaffold, keeping the plugin methodology-agnostic.
 - Replaced `fetch` with Obsidian's `requestUrl` in the REST connector transport.
+- Layout reconciliation discarded any widget id absent from the built-in roster, which would have silently stripped custom cards on the next save.
+- `localhost:3000` in the browser address bar was parsed as a `localhost:` scheme and rejected; `host:port` input is now correctly treated as an address.
+- Corrected UI text capitalization to sentence case in the write-gate settings and command deck.
 
 ## [1.7.4] - 2026-08-04
 

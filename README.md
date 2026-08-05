@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.13%2B-7C3AED?logo=obsidian)](https://obsidian.md/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022%20%7C%2024-339933?logo=node.js&logoColor=white)](package.json)
-[![Tests](https://img.shields.io/badge/tests-368%20passing-brightgreen)](#quality-security-and-release-controls)
+[![Tests](https://img.shields.io/badge/tests-391%20passing-brightgreen)](#quality-security-and-release-controls)
 [![Attestations](https://img.shields.io/badge/attestations-Sigstore-blue?logo=sigstore)](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20development-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/DustinS)
@@ -29,6 +29,7 @@ Most AI integrations add a chat box. Command Center adds an operational layer:
 
 ## Contents
 
+- [The six core principles](#the-six-core-principles)
 - [Feature overview](#feature-overview)
 - [Architecture](#architecture)
 - [Installation](#installation)
@@ -44,6 +45,49 @@ Most AI integrations add a chat box. Command Center adds an operational layer:
 - [Quality, security, and release controls](#quality-security-and-release-controls)
 - [Community and support](#community-and-support)
 - [License and attribution](#license-and-attribution)
+
+## The six core principles
+
+Every feature in Command Center answers to one of six principles. They are design constraints, not slogans: each one names the code that enforces it, so a claim in this README can be checked against the implementation.
+
+### 1. Absolute write-gate authority
+
+**No agent writes to your vault without your explicit approval.**
+
+Implemented in `src/security/WriteGate.ts`. `gateTools()` wraps every capability handed to a model so authorization happens *inside* the tool's `execute` path — a forgotten check at a call site cannot bypass it, because there is no ungated route to a tool. `getGatedTools()` is the only sanctioned way to obtain capabilities. Mutations surface as proposals with target paths and diffs; protected paths override even the global Auto write toggle, matched prefix-exactly so `Vault/Private` never captures `Vault/PrivateNotes`. Every decision — approved, rejected, timed out, or auto-approved — lands in an append-only log on the dashboard. Dashboard task edits abort if the target line changed while awaiting approval, and success is reported only after the write completes.
+
+### 2. Zero-cost intelligence
+
+**Situational awareness must never cost a token.**
+
+Implemented in `src/intelligence/VaultDataBridge.ts`, following Dataview's model: read only Obsidian's `metadataCache` and `cachedRead`, never a model. It powers the four “Happening now” cards, the calendar, and the vault doorway. One snapshot feeds every surface, in-flight scans are shared rather than duplicated, and results are bounded (25 captures, 200 tasks) so a large vault cannot stall the UI. Model spend is reserved for actual reasoning — dashboards are free.
+
+### 3. Dynamic extensibility, Markdown-backed
+
+**Your vault is the configuration. Extend the plugin by writing notes, not by editing settings JSON.**
+
+Implemented in `src/ui/CommandDeck.ts`, `src/ui/CustomCards.ts`, and `src/connectors/ApiConnectorManager.ts`. Workflow files become deck buttons, and any note carrying `cc-card: true` becomes a dashboard card — discovered, not registered. Both hot-register on vault events with no Obsidian restart. New tools, MCP servers, and REST connectors join the same `CapabilityRegistry` at runtime. Connectors are strictly declarative: a validated method, path, and schema, never downloaded code.
+
+### 4. Total system transparency
+
+**You can always see what the system did, what it is about to do, and what it cost.**
+
+Implemented across the ReAct monitor, the write-gate log, and the provenance line on every intelligence card (scan time plus “no tokens used”). Panels state their data source and say plainly when they are unconfigured or empty rather than rendering a misleading blank. Failures degrade visibly with the actual error text — no silent blanking, no frozen panel. Action blocks are stripped from visible chat, executed through real APIs, and confirmed back into model context, so the transcript reflects what actually happened rather than what was merely claimed.
+
+### 5. Native Obsidian harmony
+
+**Use what Obsidian already provides instead of reimplementing it.**
+
+Writes go through `Vault.process`, which is atomic and compatible with native File Recovery. Tasks use standard Markdown checkboxes with inline fields, so Dataview, Tasks, Kanban, and Bases keep working on whatever Command Center produces. `.base` views render through Obsidian's own renderer; folders reveal in the native file explorer; tag searches hand off to the built-in global search; card bodies render via `MarkdownRenderer`, so embeds, callouts, and Dataview blocks work unchanged. Styling uses Obsidian theme variables throughout, so the plugin inherits your theme rather than fighting it.
+
+### 6. Centralized operational hub
+
+**One surface for recording, finding, deciding, and acting.**
+
+The dashboard is a doorway, not a destination: dates, tasks, notes, folders, tags, Bases views, and workflows are all reachable and actionable from one responsive grid. The vault doorway jumps anywhere in the vault; the calendar creates and completes dated work; the embedded browser keeps documentation beside your notes, expandable inline or poppable into its own pane. Every panel is reorderable, resizable, and hideable per vault, and each one states its purpose and next action so nothing needs to be guessed.
+
+> [!NOTE]
+> Principles 1 and 2 sometimes constrain features that would be easier to build otherwise — that is intentional. A dashboard that quietly spends tokens, or an agent that writes without asking, would be more convenient and less trustworthy.
 
 ## Feature overview
 
@@ -487,6 +531,39 @@ Computed from Obsidian's metadata cache only; no model calls, no token spend.
 **Vault doorway** — one filter box across note titles, folders, tags, canvases, and `.base` views, ranked by prefix, word-boundary, then substring match. Press Enter to open the top hit. Left empty it lists your most recently edited notes. Folders reveal in the native file explorer; tags hand off to Obsidian's own global search.
 
 **Command deck** — a vertical rail built from your vault's workflow files (`.md`, `.canvas`, and generated `.json`). Labels, descriptions, and icons come from native frontmatter, and new workflows hot-register without an Obsidian restart.
+
+**Browser** — an embedded web view for documentation, API references, and research. Use it inline, expand it to fill the dashboard for close reading, or pop it out into its own pane. Bare hosts and `localhost:3000` resolve as addresses, free text becomes a search, and non-web schemes (`javascript:`, `data:`, `file:`) are refused. Pages are sandboxed without `allow-same-origin`, so an embedded page cannot reach the plugin's origin or your vault. Hidden by default — enable it in **Customize dashboard**.
+
+### Custom cards
+
+Any note in your vault becomes a dashboard card by adding `cc-card: true` to its frontmatter. There is no registry and no settings form: create the note and the card appears, delete it and the card is gone. Cards are reorderable alongside built-in widgets.
+
+```markdown
+---
+cc-card: true
+cc-card-title: Morning review
+cc-card-hint: What I committed to today
+cc-card-icon: sunrise
+cc-card-order: 1
+---
+
+## Focus
+
+- [ ] Draft the quarterly summary
+- [ ] Reply to the vendor thread
+
+![[Active projects.base]]
+```
+
+| Key | Purpose |
+|---|---|
+| `cc-card` | Required. `true` marks the note as a dashboard card. |
+| `cc-card-title` | Display name; falls back to `name`, `title`, then the filename. |
+| `cc-card-hint` | One-line description shown under the title. |
+| `cc-card-icon` | Obsidian icon id. |
+| `cc-card-order` | Sort order relative to other cards. |
+
+Card bodies render through Obsidian's own Markdown renderer, so embedded `.base` views, Dataview blocks, callouts, images, and transclusions all work. Checkbox lines become **interactive rows**: ticking one writes back to the source note through the write gate, and the arrow button jumps to that exact line. Checkboxes inside fenced code blocks stay as code samples rather than becoming buttons.
 
 **Also on the dashboard**
 

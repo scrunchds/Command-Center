@@ -22,6 +22,8 @@ import type { OnboardingConfig } from '../onboarding/OnboardingTypes';
 import type { ApiConnectorConfig } from '../connectors/ApiConnectorManager';
 import type { WriteGateRecord } from '../security/WriteGate';
 import { renderIntelligenceCards } from './IntelligenceCards';
+import { CUSTOM_WIDGET_PREFIX, CustomCards } from './CustomCards';
+import { BrowserPanel } from './BrowserPanel';
 import { CommandDeck, type DeckEntry } from './CommandDeck';
 import { CalendarPanel } from './CalendarPanel';
 import { VaultNavigator } from './VaultNavigator';
@@ -130,6 +132,9 @@ export class CommandCenterView extends ItemView {
 	private commandDeck: CommandDeck | null = null;
 	private calendarPanel: CalendarPanel | null = null;
 	private vaultNavigator: VaultNavigator | null = null;
+	private customCards: CustomCards | null = null;
+	private customCardsEl: HTMLElement | null = null;
+	private browserPanel: BrowserPanel | null = null;
 	private intelligenceTimer: number | null = null;
 	private widgetHostEl: HTMLElement | null = null;
 	private layoutEditorEl: HTMLElement | null = null;
@@ -200,6 +205,8 @@ export class CommandCenterView extends ItemView {
 		this.renderNavigator(widgetHost);
 		this.renderIntelligence(widgetHost);
 		this.renderCalendar(widgetHost);
+		this.renderBrowser(widgetHost);
+		this.renderCustomCards(widgetHost);
 		this.renderApprovalQueue(widgetHost);
 		this.renderBasesController(widgetHost);
 		this.renderDailyControls(widgetHost);
@@ -555,6 +562,11 @@ export class CommandCenterView extends ItemView {
 		this.calendarPanel = null;
 		this.vaultNavigator?.dispose();
 		this.vaultNavigator = null;
+		this.customCards?.dispose();
+		this.customCards = null;
+		this.customCardsEl = null;
+		this.browserPanel?.dispose();
+		this.browserPanel = null;
 		if (this.intelligenceTimer !== null) {
 			window.clearTimeout(this.intelligenceTimer);
 			this.intelligenceTimer = null;
@@ -712,10 +724,22 @@ export class CommandCenterView extends ItemView {
 		}
 	}
 
+	/**
+	 * Reconcile saved layout with the widgets that actually exist.
+	 *
+	 * Built-ins come from `DEFAULT_DASHBOARD_LAYOUT`; custom cards are discovered
+	 * from the vault at runtime. A saved entry survives only if its widget still
+	 * exists, so deleting a card note also retires its layout row. Custom cards
+	 * with no saved entry are appended, which is how a brand-new card appears
+	 * without any configuration step.
+	 */
 	private normalizedLayout(): DashboardWidgetLayout[] {
 		const configured = new Map(this.plugin.settings.dashboardLayout.map(widget => [widget.id, widget]));
-		const ordered = this.plugin.settings.dashboardLayout.filter(widget => DEFAULT_DASHBOARD_LAYOUT.some(item => item.id === widget.id));
+		const customIds = this.customCards?.widgetIds() ?? [];
+		const exists = (id: string) => DEFAULT_DASHBOARD_LAYOUT.some(item => item.id === id) || customIds.includes(id);
+		const ordered = this.plugin.settings.dashboardLayout.filter(widget => exists(widget.id));
 		for (const fallback of DEFAULT_DASHBOARD_LAYOUT) if (!configured.has(fallback.id)) ordered.push({ ...fallback });
+		for (const id of customIds) if (!configured.has(id)) ordered.push({ id, hidden: false, collapsed: false, size: 'standard' });
 		return ordered.map(widget => widget.id === 'approvals' ? { ...widget, hidden: false, collapsed: false } : { ...widget });
 	}
 
@@ -756,7 +780,14 @@ export class CommandCenterView extends ItemView {
 		host.createDiv({ text: action, cls: 'cc-widget-hint' });
 		return actions;
 	}
-	private widgetLabel(id: string): string { return ({ workspace: 'Dashboard workspace', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id; }
+	private widgetLabel(id: string): string {
+		// Custom cards are named by their backing note, resolved at call time.
+		if (id.startsWith(CUSTOM_WIDGET_PREFIX)) {
+			const label = this.customCards?.labelFor(id);
+			return label ? `${label} (custom card)` : id.slice(CUSTOM_WIDGET_PREFIX.length);
+		}
+		return ({ workspace: 'Dashboard workspace', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', browser: 'Browser', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id;
+	}
 	private updateWidget(id: string, patch: Partial<DashboardWidgetLayout>): void {
 		this.plugin.settings.dashboardLayout = this.normalizedLayout().map(widget => widget.id === id ? { ...widget, ...patch, ...(id === 'approvals' ? { hidden: false, collapsed: false } : {}) } : widget);
 		void this.plugin.saveSettings();
@@ -885,6 +916,57 @@ export class CommandCenterView extends ItemView {
 			},
 		});
 		this.commandDeck.mount(this.deckEl);
+	}
+
+	/**
+	 * Principle 6: an embedded browser so documentation and research stay beside
+	 * the vault. Usable inline, expandable to fill the dashboard, or popped out
+	 * into its own pane when it deserves full attention.
+	 */
+	private renderBrowser(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-browser-section' });
+		this.markWidget(section, 'browser');
+		this.sectionHeading(
+			section,
+			'Browser',
+			'Read documentation, API references, and research without leaving the dashboard.',
+			'Type an address or a search. Use expand for close reading, or pop out to keep it open in its own pane.',
+		);
+		const host = section.createDiv();
+		this.browserPanel = new BrowserPanel({
+			onPopOut: url => {
+				// Hand the current address to the full pane so reading continues.
+				void this.plugin.activateCommandCenterBrowserView(url);
+			},
+			// Focused mode dims the rest of the grid, so mark the section too.
+			onFocusChange: focused => section.toggleClass('is-browser-focused', focused),
+		});
+		this.browserPanel.mount(host);
+	}
+
+	/**
+	 * Principle 3: user-defined cards, each backed by a vault note carrying
+	 * `cc-card: true`. Cards are discovered, not configured, and mount into their
+	 * own host so the layout system can order them beside the built-in widgets.
+	 */
+	private renderCustomCards(container: HTMLElement): void {
+		// Cards create their own sections; this wrapper is only a mount point.
+		this.customCardsEl = container.createDiv({ cls: 'cc-custom-card-host' });
+		this.customCards = new CustomCards(this.app, {
+			tasks: this.plugin.taskWriter,
+			component: this,
+			// A card write can change tasks the other zero-cost surfaces show.
+			onMutate: () => {
+				this.plugin.vaultData.invalidate();
+				void this.refreshIntelligence(true);
+			},
+			// Re-place new sections; rebuild the editor only if the roster moved.
+			onCardsChanged: rosterChanged => {
+				this.applyDashboardLayout();
+				if (rosterChanged && this.layoutEditorOpen) this.renderLayoutEditor();
+			},
+		});
+		this.customCards.mount(this.customCardsEl);
 	}
 
 	/**

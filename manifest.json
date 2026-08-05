@@ -3,7 +3,7 @@
 	"name": "Command Center",
 	"version": "1.7.4",
 	"minAppVersion": "1.13.0",
-	"description": "An operational hub for your vault: a zero-token dashboard of today's note, captures, tasks, and workspaces, plus a calendar, vault search, and one-click workflows. Orchestrates AI agents, retrieval, and memory across 13 providers behind an absolute write gate.",
+	"description": "An operational hub for your vault: zero-token dashboard cards, calendar, vault search, embedded browser, and Markdown-backed custom cards. Orchestrates AI agents, retrieval, and memory across 13 providers behind an absolute write gate.",
 	"author": "Dustin Stringer",
 	"authorUrl": "https://github.com/scrunchds",
 	"fundingUrl": "https://buymeacoffee.com/DustinS",

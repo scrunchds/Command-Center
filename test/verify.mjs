@@ -2249,6 +2249,173 @@ async function verifyTaskSyntax() {
 	pass('22p: detects every Markdown checkbox bullet style');
 }
 
+
+/* ═══════════════════════════════════════════════════════════
+   23. Custom Cards (Markdown-backed dashboard extensibility)
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyCustomCards() {
+	console.log('\n─── 23. Custom Cards ───');
+
+	const mod = await import(pathToFileURL(join(SRC, 'ui', 'card-syntax.ts')).href);
+	const { parseCardBody, stripFrontmatter, CUSTOM_CARD_FLAG, CUSTOM_WIDGET_PREFIX } = mod;
+
+	// 23a: the flag and prefix are stable contract values
+	assert.equal(CUSTOM_CARD_FLAG, 'cc-card');
+	assert.equal(CUSTOM_WIDGET_PREFIX, 'custom:');
+	pass('23a: exposes stable frontmatter flag and widget prefix');
+
+	// 23b: frontmatter is configuration and must never render as content
+	assert.equal(stripFrontmatter('---\ncc-card: true\n---\nbody\n'), 'body\n');
+	assert.equal(stripFrontmatter('no frontmatter\n'), 'no frontmatter\n');
+	pass('23b: strips leading frontmatter without touching plain notes');
+
+	// 23c: a horizontal rule is not frontmatter
+	assert.equal(stripFrontmatter('body\n\n---\n\nmore\n'), 'body\n\n---\n\nmore\n');
+	pass('23c: leaves mid-note horizontal rules intact');
+
+	// 23d: prose becomes a single markdown segment
+	const prose = parseCardBody('---\ncc-card: true\n---\n# Title\n\nSome text.\n');
+	assert.equal(prose.length, 1);
+	assert.equal(prose[0].kind, 'markdown');
+	assert.match(prose[0].text, /# Title/);
+	assert.ok(!prose[0].text.includes('cc-card'), 'frontmatter must not leak into content');
+	pass('23d: renders prose as one markdown segment, free of frontmatter');
+
+	// 23e: task lines become individually addressable segments
+	const tasks = parseCardBody('- [ ] first\n- [x] second\n');
+	assert.equal(tasks.length, 2);
+	assert.deepEqual(tasks.map(s => s.kind), ['task', 'task']);
+	assert.deepEqual(tasks.map(s => s.done), [false, true]);
+	assert.deepEqual(tasks.map(s => s.label), ['first', 'second']);
+	pass('23e: splits task lines into addressable segments');
+
+	// 23f: line numbers must point at the real file line, past frontmatter
+	const offset = parseCardBody('---\ncc-card: true\n---\nintro\n\n- [ ] task here\n');
+	const task = offset.find(s => s.kind === 'task');
+	assert.equal(task.line, 6, 'line must account for the stripped frontmatter');
+	pass('23f: reports true 1-based file line numbers past frontmatter');
+
+	// 23g: a checkbox inside a fenced block is a code sample, not a task
+	const fenced = parseCardBody('```md\n- [ ] not a task\n```\n\n- [ ] real task\n');
+	const found = fenced.filter(s => s.kind === 'task');
+	assert.equal(found.length, 1, 'only the unfenced checkbox is interactive');
+	assert.equal(found[0].label, 'real task');
+	pass('23g: ignores checkboxes inside fenced code blocks');
+
+	// 23h: interleaved prose and tasks keep their document order
+	const mixed = parseCardBody('intro\n\n- [ ] a\n\noutro\n\n- [ ] b\n');
+	assert.deepEqual(mixed.map(s => s.kind), ['markdown', 'task', 'markdown', 'task']);
+	pass('23h: preserves document order across mixed content');
+
+	// 23i: blank runs are dropped rather than rendered as empty blocks
+	assert.equal(parseCardBody('\n\n\n').length, 0);
+	assert.equal(parseCardBody('').length, 0);
+	pass('23i: produces no segments for an empty card');
+
+	// 23j: base embeds survive as markdown for native rendering
+	const base = parseCardBody('![[Projects.base]]\n');
+	assert.equal(base.length, 1);
+	assert.equal(base[0].kind, 'markdown');
+	assert.match(base[0].text, /Projects\.base/);
+	pass('23j: passes base embeds through for native rendering');
+
+	// 23k: CRLF notes parse identically
+	const crlf = parseCardBody('---\r\ncc-card: true\r\n---\r\nintro\r\n- [x] done\r\n');
+	const crlfTask = crlf.find(s => s.kind === 'task');
+	assert.equal(crlfTask.done, true);
+	assert.equal(crlfTask.label, 'done');
+	assert.equal(crlfTask.line, 5);
+	pass('23k: parses CRLF notes with correct line numbers');
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   24. Browser panel URL handling and history
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyBrowserUrl() {
+	console.log('\n─── 24. Browser URL handling ───');
+
+	const mod = await import(pathToFileURL(join(SRC, 'ui', 'browser-url.ts')).href);
+	const { normalizeBrowserUrl, BrowserHistory, describeUrl } = mod;
+
+	// 24a: full URLs pass through
+	assert.equal(normalizeBrowserUrl('https://obsidian.md/'), 'https://obsidian.md/');
+	assert.equal(normalizeBrowserUrl('http://example.com/a?b=c'), 'http://example.com/a?b=c');
+	pass('24a: preserves fully-qualified http and https URLs');
+
+	// 24b: bare hosts gain https
+	assert.equal(normalizeBrowserUrl('obsidian.md'), 'https://obsidian.md/');
+	assert.equal(normalizeBrowserUrl('docs.obsidian.md/plugins'), 'https://docs.obsidian.md/plugins');
+	pass('24b: upgrades bare hosts to https');
+
+	// 24c: localhost and ports are valid targets for local API work
+	assert.equal(normalizeBrowserUrl('localhost:3000'), 'https://localhost:3000/');
+	assert.equal(normalizeBrowserUrl('http://localhost:8080/docs'), 'http://localhost:8080/docs');
+	pass('24c: accepts localhost with explicit ports');
+
+	// 24d: non-URL input becomes a search rather than failing silently
+	const search = normalizeBrowserUrl('garmin health api docs');
+	assert.match(search, /^https:\/\/duckduckgo\.com\/\?q=/);
+	assert.match(search, /garmin(%20|\+)health/);
+	pass('24d: routes free text to a search query');
+
+	// 24e: dangerous schemes are refused outright
+	for (const bad of ['javascript:alert(1)', 'data:text/html,<h1>x', 'file:///C:/Windows/System32', 'vbscript:msgbox']) {
+		assert.equal(normalizeBrowserUrl(bad), '', `must refuse ${bad}`);
+	}
+	pass('24e: refuses javascript, data, file, and vbscript schemes');
+
+	// 24f: empty input yields nothing to load
+	assert.equal(normalizeBrowserUrl(''), '');
+	assert.equal(normalizeBrowserUrl('   '), '');
+	pass('24f: treats blank input as no navigation');
+
+	// 24g: a fresh history has nothing to navigate
+	const history = new BrowserHistory();
+	assert.equal(history.current, '');
+	assert.equal(history.canGoBack, false);
+	assert.equal(history.canGoForward, false);
+	pass('24g: starts with an empty, immovable history');
+
+	// 24h: back and forward walk the stack
+	history.push('https://a.com/');
+	history.push('https://b.com/');
+	history.push('https://c.com/');
+	assert.equal(history.current, 'https://c.com/');
+	assert.equal(history.back(), 'https://b.com/');
+	assert.equal(history.back(), 'https://a.com/');
+	assert.equal(history.canGoBack, false);
+	assert.equal(history.forward(), 'https://b.com/');
+	pass('24h: walks back and forward through visited pages');
+
+	// 24i: navigating after going back discards the forward entries
+	history.push('https://d.com/');
+	assert.equal(history.canGoForward, false);
+	assert.equal(history.current, 'https://d.com/');
+	pass('24i: discards forward history on a new navigation');
+
+	// 24j: re-visiting the current page is not duplicated
+	history.push('https://d.com/');
+	assert.equal(history.back(), 'https://b.com/', 'no duplicate entry to step over');
+	pass('24j: collapses a repeat visit to the current page');
+
+	// 24k: reset replaces the whole stack
+	history.reset('https://home.com/');
+	assert.equal(history.current, 'https://home.com/');
+	assert.equal(history.canGoBack, false);
+	assert.equal(history.canGoForward, false);
+	pass('24k: reset clears both directions');
+
+	// 24l: status text keeps the host and trims long paths
+	assert.equal(describeUrl('https://example.com/'), 'example.com');
+	assert.equal(describeUrl('https://example.com/docs/page'), 'example.com/docs/page');
+	assert.ok(describeUrl(`https://example.com/${'x'.repeat(80)}`).length < 45, 'long paths are trimmed');
+	assert.equal(describeUrl('not a url'), 'not a url');
+	pass('24l: summarizes URLs for a compact status line');
+}
+
 async function main() {
 	console.log('═══════════════════════════════════════════');
 	console.log('  Command Center — Verification Suite');
@@ -2274,6 +2441,8 @@ async function main() {
 	await verifyNewCapabilities();
 	await verifyWriteGate();
 	await verifyTaskSyntax();
+	await verifyCustomCards();
+	await verifyBrowserUrl();
 
 	console.log('\n═══════════════════════════════════════════');
 	console.log(`  Results:  ${results.pass} passed, ${results.fail} failed, ${results.skip} skipped`);
