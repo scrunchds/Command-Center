@@ -40,7 +40,7 @@ export interface DashboardWidgetLayout {
 export type DashboardWidgetHeight = 'auto' | 'short' | 'tall' | 'taller';
 
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardWidgetLayout[] = [
-	{ id: 'workspace', hidden: false, collapsed: false, size: 'expanded' },
+	{ id: 'workspace', hidden: false, collapsed: false, size: 'standard' },
 	{ id: 'deck', hidden: false, collapsed: false, size: 'compact' },
 	{ id: 'navigator', hidden: false, collapsed: false, size: 'standard' },
 	{ id: 'intelligence', hidden: false, collapsed: false, size: 'expanded' },
@@ -49,6 +49,7 @@ export const DEFAULT_DASHBOARD_LAYOUT: DashboardWidgetLayout[] = [
 	{ id: 'browser', hidden: true, collapsed: false, size: 'expanded' },
 	{ id: 'approvals', hidden: false, collapsed: false, size: 'expanded' },
 	{ id: 'orchestrator', hidden: false, collapsed: false, size: 'expanded' },
+	{ id: 'chatbox', hidden: false, collapsed: false, size: 'standard' },
 	{ id: 'queue', hidden: false, collapsed: false, size: 'standard' },
 	{ id: 'react', hidden: false, collapsed: false, size: 'expanded' },
 	{ id: 'bases', hidden: false, collapsed: false, size: 'standard' },
@@ -170,6 +171,44 @@ export const DEFAULT_MULTI_PROVIDER: MultiProviderSettings = {
 	fallback: DEFAULT_FALLBACK_CONFIG,
 	defaults: {},
 };
+
+/**
+ * Deep-clone a plain JSON value (no `structuredClone`), so the shared
+ * `DEFAULT_*` constants can never be mutated through a live settings object.
+ */
+function clonePlain(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(clonePlain);
+	if (value && typeof value === 'object') {
+		const out: Record<string, unknown> = {};
+		for (const [key, child] of Object.entries(value as Record<string, unknown>)) out[key] = clonePlain(child);
+		return out;
+	}
+	return value;
+}
+
+/** Fully independent deep copy of the default settings (no shared references). */
+export function structuredSafeDefaults(): CommandCenterSettings {
+	return clonePlain(DEFAULT_SETTINGS) as CommandCenterSettings;
+}
+
+/**
+ * Deep-merge a saved `multiProvider` into fresh defaults. An older `data.json`
+ * may carry only `credentials` and omit `routing`/`fallback`/`defaults`; this
+ * backfills every missing sub-object from a private clone so upgraders always
+ * start with a complete, isolated set.
+ */
+export function mergeMultiProvider(
+	defaults: MultiProviderSettings,
+	saved: Partial<MultiProviderSettings> | undefined,
+): MultiProviderSettings {
+	const merged = clonePlain(defaults) as MultiProviderSettings;
+	if (!saved) return merged;
+	if (saved.credentials) merged.credentials = { ...saved.credentials };
+	if (saved.routing) merged.routing = { ...merged.routing, ...saved.routing };
+	if (saved.fallback) merged.fallback = { ...merged.fallback, ...saved.fallback };
+	if (saved.defaults) merged.defaults = { ...merged.defaults, ...saved.defaults };
+	return merged;
+}
 
 export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	activeProfile: 'default-orchestrator',

@@ -44,7 +44,9 @@ export class CommandCenterBrowserView extends ItemView {
 		});
 		this.panel.mount(host);
 
-		// Load whatever was requested, or the home page for a bare open.
+		// A dedicated pane exists to show the page inline, so turn the preview on
+		// and load whatever was requested (or the home page for a bare open).
+		this.panel.togglePreview(true);
 		this.panel.navigate(this.pendingUrl ?? DEFAULT_HOME);
 		this.pendingUrl = null;
 	}

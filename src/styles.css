@@ -116,35 +116,52 @@ Command Center — Agentic OS for Obsidian
 .command-center-identity { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
 .command-center-subtitle { color: var(--text-muted); font-size: var(--font-small); }
 .command-center-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.cc-dashboard-telemetry { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 8px; margin-bottom: 18px; }
-.cc-dashboard-layout-editor { margin-bottom: 14px; padding: 12px; border: 1px solid var(--interactive-accent); border-radius: var(--radius-l); background: var(--background-secondary); }
-/* The editor is created hidden and toggled by the Customize dashboard button. */
-.cc-dashboard-layout-editor.is-hidden { display: none; }
-.cc-layout-list { display: flex; flex-direction: column; gap: 6px; }
-.cc-layout-row { display: grid; grid-template-columns: minmax(150px, 1fr) auto auto minmax(100px, auto) auto auto; gap: 6px; align-items: center; }
-.cc-layout-row button { padding: 3px 8px; }
-.cc-dashboard-widget-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.cc-dashboard-telemetry { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin-bottom: 18px; }
+/* Auto-fill responsive grid: each widget gets a track between 380px and
+   full-width. The grid adds columns as the pane widens and drops to one
+   column when narrow. This is robust — even if applyDashboardLayout() fails
+   to assign size classes, every widget still gets a readable-width track
+   instead of collapsing to a 116px sliver. */
+.cc-dashboard-widget-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 14px; align-items: start; container-type: inline-size; grid-auto-flow: dense; }
 .cc-dashboard-widget-grid > [data-widget-id] {
-	/* --cc-widget-span is written by applyDashboardLayout() from the saved
-	   layout; the size classes below only supply the pre-drag default. */
-	grid-column: span var(--cc-widget-span, 6);
-	position: relative;
 	min-width: 0;
 	margin-bottom: 0;
 }
-.cc-dashboard-widget-grid > .is-size-compact { --cc-widget-span: 4; }
-.cc-dashboard-widget-grid > .is-size-standard { --cc-widget-span: 6; }
-.cc-dashboard-widget-grid > .is-size-expanded { --cc-widget-span: 12; }
+/* Size classes map to column spans inside the auto-fill grid. Container
+   queries base the layout on the dashboard pane's own width, not the viewport,
+   so a narrow sidebar still gets sane single-column stacking.
+     compact   → 1 track  (~380px)
+     standard  → 2 tracks  (~780px)
+     expanded  → full row  (1 / -1)
+   In panes too narrow for two tracks every span clamps to the available
+   columns, so nothing overflows. */
+.cc-dashboard-widget-grid > .is-size-compact { grid-column: span 1; }
+.cc-dashboard-widget-grid > .is-size-standard { grid-column: span 2; }
+.cc-dashboard-widget-grid > .is-size-expanded { grid-column: 1 / -1; }
+/* When the pane can only fit one or two tracks, collapse standard to full
+   width so it never sits awkwardly beside a gap. */
+@container (max-width: 820px) {
+	.cc-dashboard-widget-grid > .is-size-standard { grid-column: 1 / -1; }
+}
 
 /* Named heights keep panels aligned across rows; auto tracks content. */
 .cc-dashboard-widget-grid > [data-widget-height='short'] { max-height: 14rem; overflow: auto; }
 .cc-dashboard-widget-grid > [data-widget-height='tall'] { min-height: 26rem; }
 .cc-dashboard-widget-grid > [data-widget-height='taller'] { min-height: 40rem; }
 .cc-dashboard-widget-grid > .is-widget-hidden { display: none; }
-.cc-dashboard-widget-grid > .is-widget-collapsed > :not(h3):not(.command-center-section-header):not(.cc-dashboard-workspace-heading) { display: none; }
+.cc-dashboard-widget-grid > .is-widget-collapsed > :not(h3):not(.command-center-section-header) { display: none; }
 .cc-dashboard-widget-grid > .is-widget-collapsed { min-height: 48px; overflow: hidden; }
-@media (max-width: 1000px) { .cc-dashboard-widget-grid > .is-size-compact { grid-column: span 6; } }
-@media (max-width: 720px) { .cc-dashboard-widget-grid > [data-widget-id] { grid-column: 1 / -1; } .cc-layout-row { grid-template-columns: 1fr repeat(2, auto); } .cc-layout-row select, .cc-layout-row button:nth-last-child(-n+2) { grid-row: 2; } }
+/* In-dashboard layout editor: a chrome-free list of every widget with
+   reorder, size, collapse, and hide controls. No drag grips. */
+.cc-dashboard-layout-editor { margin: 0 0 14px; padding: 12px 14px; }
+.cc-dashboard-layout-editor.is-hidden { display: none; }
+.cc-layout-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.cc-layout-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto auto; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); background: var(--background-primary); }
+.cc-layout-row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-small); }
+.cc-layout-row select { min-width: 100px; }
+.cc-layout-row button { padding: 2px 8px; font-size: var(--font-smallest); }
+/* The auto-fill grid handles responsiveness natively — no breakpoint queries needed. */
+@media (max-width: 720px) { .cc-layout-row { grid-template-columns: 1fr repeat(2, auto); } .cc-layout-row select, .cc-layout-row button:nth-last-child(-n+2) { grid-row: 2; } }
 .cc-telemetry-card { min-width: 0; padding: 10px 12px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-secondary); }
 
 /* ─── Built-in browser view ───────────────────────── */
@@ -181,22 +198,27 @@ Command Center — Agentic OS for Obsidian
 .cc-dashboard-approval-queue { display: flex; flex-direction: column; gap: 10px; }
 .cc-dashboard-approval-queue .cc-chat-action-card { max-width: none; }
 .cc-widget-caption { color: var(--text-muted); font-size: var(--font-smallest); }
-.cc-bases-telemetry { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.cc-bases-telemetry { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; }
 .cc-bases-telemetry-item { display: flex; flex-direction: column; padding: 10px; border-radius: var(--radius-m); background: var(--background-secondary); text-align: center; }
 .cc-bases-telemetry-item strong { font-size: var(--font-ui-large); }
 .cc-bases-telemetry-item span { color: var(--text-muted); font-size: var(--font-smallest); }
-@media (max-width: 900px) { .cc-dashboard-telemetry, .cc-bases-telemetry { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 480px) { .cc-dashboard-telemetry, .cc-bases-telemetry { grid-template-columns: 1fr; } }
+/* Telemetry grids use auto-fit (above) so they wrap natively; no breakpoints needed. */
 .cc-dashboard-workspace { padding: clamp(14px, 2vw, 24px); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l); background: var(--background-primary-alt); }
-.cc-dashboard-workspace-heading { position: relative; }
-.cc-dashboard-workspace-heading h2 { margin: 2px 0 5px; }
-.cc-dashboard-workspace-heading p { max-width: 760px; margin: 0; color: var(--text-muted); }
-.cc-dashboard-workspace-heading > button { position: absolute; top: 0; right: 0; }
-.cc-dashboard-workspace-kicker { color: var(--interactive-accent); font-size: var(--font-smallest); font-weight: var(--font-semibold); letter-spacing: .12em; }
-.cc-dashboard-workspace-cards { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 8px; margin-top: 18px; }
-.cc-dashboard-workspace-card { padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); }
-.cc-dashboard-workspace-card div { margin-top: 3px; color: var(--text-muted); font-size: var(--font-small); }
-.cc-dashboard-workspace-actions { display: flex; gap: 8px; margin-top: 12px; }
+/* Operational overview: a compact live status strip. */
+.cc-overview-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.cc-overview-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); font-size: var(--font-small); line-height: 1; }
+.cc-overview-chip .cc-overview-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--color-green); }
+.cc-overview-chip.is-warn .cc-overview-dot { background: var(--color-orange); }
+.cc-overview-chip.is-alert .cc-overview-dot { background: var(--color-red); }
+.cc-overview-chip.is-muted .cc-overview-dot { background: var(--text-faint); }
+.cc-overview-chip.is-ok { color: var(--text-normal); }
+.cc-overview-chip.is-warn { color: var(--text-normal); border-color: var(--color-orange); }
+.cc-overview-chip.is-alert { color: var(--text-normal); border-color: var(--color-red); }
+.cc-overview-label { flex: 0 1 auto; }
+.cc-overview-action { margin-left: 4px; padding: 1px 9px; font-size: var(--font-smallest); border-radius: var(--radius-s); }
+.cc-overview-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.cc-overview-setup-btn { flex: 0 0 auto; font-size: var(--font-small); padding: 5px 14px; }
+.cc-overview-setup .cc-widget-caption { flex: 1 1 220px; margin: 0; }
 /* First-run setup banner: shown when no providers are configured yet. */
 .cc-setup-banner {
 	display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; padding: 14px 16px;
@@ -208,8 +230,8 @@ Command Center — Agentic OS for Obsidian
 .cc-setup-banner-text strong { display: block; margin-bottom: 4px; font-size: var(--font-ui-medium); }
 .cc-setup-banner-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
 .cc-setup-banner-actions button { white-space: nowrap; }
-@media (max-width: 800px) { .cc-dashboard-workspace-cards { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 480px) { .cc-dashboard-workspace-cards { grid-template-columns: 1fr; } .cc-dashboard-workspace-heading > button { position: static; margin-top: 10px; } }
+/* Workspace cards use auto-fit (above) so they wrap natively; no breakpoint needed. */
+@media (max-width: 480px) { .cc-overview-chip { font-size: var(--font-smallest); } }
 
 .command-center-section {
 	margin-bottom: 20px;
@@ -633,7 +655,6 @@ Command Center — Agentic OS for Obsidian
 .cc-section-header,
 .cc-provider-card,
 .cc-developer-support,
-.cc-dashboard-layout-editor,
 .cc-telemetry-card,
 .cc-bases-telemetry-item {
 	border: 1px solid var(--background-modifier-border);
@@ -1336,8 +1357,8 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 .command-center-section-header .cc-widget-caption { text-transform: none; letter-spacing: normal; font-weight: var(--font-normal); line-height: 1.45; }
 .cc-widget-hint { margin: 0 0 9px; padding: 6px 9px; border-left: 2px solid var(--background-modifier-border); border-radius: var(--radius-s); background: var(--background-secondary); color: var(--text-muted); font-size: var(--font-smallest); line-height: 1.5; }
 .cc-intel-card-hint { padding: 6px 10px; border-bottom: 1px solid var(--background-modifier-border); color: var(--text-muted); font-size: calc(var(--font-smallest) * 0.92); line-height: 1.45; }
-.cc-dashboard-workspace-actions { flex-wrap: wrap; align-items: center; }
-.cc-dashboard-workspace-actions .cc-widget-caption { flex: 1 1 220px; }
+.cc-overview-setup { flex-wrap: wrap; align-items: center; }
+.cc-overview-setup .cc-widget-caption { flex: 1 1 220px; }
 .cc-deck-header .cc-widget-title-group h3 { font-size: var(--font-ui-medium); }
 @media (max-width: 600px) { .cc-widget-hint { font-size: calc(var(--font-smallest) * 0.92); } }
 
@@ -1364,6 +1385,10 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 .cc-calendar-detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cc-calendar-detail-header strong { flex: 1 1 auto; font-size: var(--font-small); }
 .cc-calendar-detail-header button { font-size: var(--font-smallest); padding: 2px 9px; }
+.cc-calendar-subhead { font-size: var(--font-smallest); font-weight: var(--font-semibold); color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+.cc-calendar-subhead.is-empty-label { font-weight: var(--font-normal); text-transform: none; letter-spacing: normal; color: var(--text-faint); font-style: italic; }
+.cc-calendar-note-preview { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; padding: 8px 10px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); background: var(--background-secondary); max-height: 12rem; overflow-y: auto; }
+.cc-calendar-note-line { font-size: var(--font-smallest); color: var(--text-normal); overflow-wrap: anywhere; line-height: 1.4; }
 .cc-calendar-tasks { display: flex; flex-direction: column; gap: 3px; max-height: 190px; overflow-y: auto; }
 .cc-calendar-task { display: flex; align-items: flex-start; gap: 7px; padding: 4px 6px; border-radius: var(--radius-s); }
 .cc-calendar-task:hover { background: var(--background-modifier-hover); }
@@ -1534,6 +1559,18 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 	color: var(--text-accent);
 }
 
+/* The primary "Open" button launches the system browser. */
+.cc-browser-panel-open {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	flex-shrink: 0;
+	padding: var(--size-2-2) var(--size-4-2);
+	font-size: var(--font-ui-small);
+}
+/* Hide the inline viewport unless previewing; the launcher is the default. */
+.cc-browser-panel:not(.is-previewing) .cc-browser-panel-viewport { display: none; }
+
 .cc-browser-panel-address {
 	flex: 1;
 	min-width: 0;
@@ -1541,6 +1578,8 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 }
 
 .cc-browser-panel-viewport {
+	display: flex;
+	flex-direction: column;
 	flex: 1;
 	min-height: 18rem;
 	border: 1px solid var(--background-modifier-border);
@@ -1636,72 +1675,72 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 	}
 }
 
-/* ─── Arranging widgets: drag to move, grips to resize ──────────────────── */
+/* ─── Dashboard layout settings (Settings tab) ──────────────────────────
+   A chrome-free customization surface: reordering and resizing live here in
+   the settings panel instead of drag grips overlaid on the dashboard. */
+.cc-dashboard-layout-actions { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.cc-dashboard-layout-actions button { font-size: var(--font-ui-small); }
+.cc-layout-setting-row .setting-item-control { flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.cc-layout-setting-row .setting-item-control select { min-width: 110px; }
 
-/* Chrome stays invisible until the panel is hovered, so the dashboard reads as
-   content first and only reveals its handles when you go to rearrange. */
-.cc-widget-grip {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	position: absolute;
-	top: var(--size-2-1);
-	right: var(--size-2-1);
-	width: var(--size-4-4);
-	height: var(--size-4-4);
-	border-radius: var(--radius-s);
-	opacity: 0;
-	color: var(--text-faint);
-	cursor: grab;
-	transition: opacity 120ms ease-in-out;
+/* Highlight pulse used to draw the eye to a widget after a cross-widget
+   action (e.g. "New workflow" → scroll to Orchestrator input). */
+@keyframes cc-highlight-pulse {
+	0% { box-shadow: 0 0 0 0 hsla(var(--interactive-accent-hsl), .55); }
+	40% { box-shadow: 0 0 0 6px hsla(var(--interactive-accent-hsl), .25); }
+	100% { box-shadow: 0 0 0 0 hsla(var(--interactive-accent-hsl), 0); }
 }
+.cc-highlight-pulse { animation: cc-highlight-pulse 1.6s ease-out; border-radius: var(--radius-l); }
 
-.cc-widget-arrangeable:hover .cc-widget-grip,
-.cc-widget-grip:focus-visible { opacity: 1; }
-.cc-widget-grip:hover { background-color: var(--background-modifier-hover); color: var(--text-normal); }
-.cc-widget-grip:active { cursor: grabbing; }
-
-.is-widget-dragging { opacity: 0.5; }
-
-/* A clear left edge marks where the dragged panel will land. */
-.is-widget-drop-target {
-	outline: 2px solid var(--interactive-accent);
-	outline-offset: 2px;
+/* ─── Chatbox widget ─────────────────────────────────── */
+.cc-chatbox { display: flex; flex-direction: column; gap: 8px; }
+.cc-chatbox-messages {
+	display: flex; flex-direction: column; gap: 6px;
+	max-height: 340px; min-height: 120px; overflow-y: auto;
+	padding: 6px 4px; border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s); background: var(--background-secondary);
 }
-
-.cc-widget-resize {
-	position: absolute;
-	opacity: 0;
-	background-color: var(--interactive-accent);
-	transition: opacity 120ms ease-in-out;
+.cc-chatbox-message { display: flex; }
+.cc-chatbox-message.is-user { justify-content: flex-end; }
+.cc-chatbox-message.is-assistant,
+.cc-chatbox-message.is-error { justify-content: flex-start; }
+.cc-chatbox-bubble {
+	max-width: 85%; padding: 6px 10px; border-radius: var(--radius-m);
+	font-size: var(--font-small); line-height: 1.45; overflow-wrap: anywhere;
+	white-space: pre-wrap;
 }
-
-.cc-widget-arrangeable:hover .cc-widget-resize { opacity: 0.35; }
-.cc-widget-resize:hover { opacity: 1; }
-
-.cc-widget-resize.is-axis-width {
-	top: 25%;
-	right: 0;
-	width: 4px;
-	height: 50%;
-	border-radius: var(--radius-s) 0 0 var(--radius-s);
-	cursor: ew-resize;
+.cc-chatbox-message.is-user .cc-chatbox-bubble {
+	background: var(--interactive-accent); color: var(--text-on-accent);
 }
-
-.cc-widget-resize.is-axis-height {
-	bottom: 0;
-	left: 25%;
-	width: 50%;
-	height: 4px;
-	border-radius: var(--radius-s) var(--radius-s) 0 0;
-	cursor: ns-resize;
+.cc-chatbox-message.is-assistant .cc-chatbox-bubble {
+	background: var(--background-primary); color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
 }
-
-/* Suppress text selection while dragging a grip. */
-.is-widget-resizing { user-select: none; }
-
-/* Touch and coarse pointers cannot hover, so keep handles visible there. */
-@media (hover: none) {
-	.cc-widget-grip,
-	.cc-widget-resize { opacity: 0.5; }
+.cc-chatbox-message.is-error .cc-chatbox-bubble,
+.cc-chatbox-bubble:has(.cc-chatbox-typing) { color: var(--text-muted); }
+.cc-chatbox-message.is-error .cc-chatbox-bubble { color: var(--text-error); }
+.cc-chatbox-message.is-welcome .cc-chatbox-bubble {
+	font-style: italic; color: var(--text-muted); background: transparent; border: 0; max-width: 100%;
 }
+.cc-chatbox-read {
+	display: inline-flex; align-items: center; justify-content: center;
+	width: 22px; height: 22px; margin-left: 6px; padding: 0;
+	background: transparent; border: 0; box-shadow: none;
+	color: var(--text-muted); cursor: pointer; vertical-align: middle;
+}
+.cc-chatbox-read:hover { color: var(--text-normal); }
+.cc-chatbox-typing { opacity: 0.6; }
+.cc-chatbox-input {
+	width: 100%; resize: none; font-size: var(--font-small);
+	padding: 8px 10px; border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary); color: var(--text-normal);
+	font-family: inherit; line-height: 1.4; box-sizing: border-box;
+}
+.cc-chatbox-input:focus { border-color: var(--interactive-accent); }
+.cc-chatbox-controls { display: flex; align-items: center; gap: 10px; }
+.cc-chatbox-send {
+	flex: 0 0 auto; font-size: var(--font-small); padding: 5px 16px;
+}
+.cc-chatbox-send:disabled { opacity: 0.5; cursor: default; }
+.cc-chatbox-hint { flex: 1 1 auto; font-size: var(--font-smallest); color: var(--text-faint); }

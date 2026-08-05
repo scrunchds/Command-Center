@@ -13,6 +13,13 @@
  */
 
 import { type App, type CachedMetadata, TFile, normalizePath } from 'obsidian';
+
+/** Shape of the core Daily Notes internal plugin's options. */
+interface CoreDailyNotesOptions {
+	folder?: string;
+	format?: string;
+	template?: string;
+}
 import type { ConfigManager } from '../engine/ConfigManager';
 import type { OnboardingConfig } from '../onboarding/OnboardingTypes';
 
@@ -279,10 +286,29 @@ export class VaultDataBridge {
 	/**
 	 * Public daily-note path resolution for any date. The calendar uses this so
 	 * clicking a day opens (or offers to create) the correct note.
+	 *
+	 * When onboarding has been completed the interview-derived template wins.
+	 * Otherwise we fall back to Obsidian's core Daily Notes plugin settings so
+	 * the calendar still detects notes before the user has run the interview.
 	 */
 	dailyNotePathFor(date: Date): string | null {
-		if (!this.configs.isInitialized()) return null;
-		return resolveDailyNotePath(this.configs.requireConfig(), date);
+		if (this.configs.isInitialized()) return resolveDailyNotePath(this.configs.requireConfig(), date);
+		return this.coreDailyNotePath(date);
+	}
+
+	/** Resolve a daily-note path from the core Daily Notes internal plugin. */
+	private coreDailyNotePath(date: Date): string | null {
+		const registry = (this.app as App & { internalPlugins?: { getPluginById?: (id: string) => { instance?: { options?: CoreDailyNotesOptions } } | null } }).internalPlugins;
+		const options = registry?.getPluginById?.('daily-notes')?.instance?.options;
+		if (!options) return null;
+		const folder = (options.folder ?? '').replace(/^\/+|\/+$/g, '');
+		const format = options.format ?? 'YYYY-MM-DD';
+		// moment is always present on the Obsidian window object.
+		const momentFn = (window as unknown as { moment?: (d: Date) => { format: (f: string) => string } }).moment;
+		if (!momentFn) return null;
+		const name = momentFn(date).format(format);
+		const file = name.endsWith('.md') ? name : `${name}.md`;
+		return normalizePath(folder ? `${folder}/${file}` : file);
 	}
 
 	/* ─── Action Items ───────────────────────────────────── */

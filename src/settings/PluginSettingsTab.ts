@@ -41,7 +41,12 @@ import { DEFAULT_ROUTING } from '../routing/routing-table';
 import {
 	METACOGNITIVE_DEPTH_MIN,
 	METACOGNITIVE_DEPTH_MAX,
+	DEFAULT_DASHBOARD_LAYOUT,
+	type DashboardWidgetLayout,
+	type DashboardWidgetSize,
 } from '../settings/settings-model';
+import { mergeLayout, nudgeLayout } from '../ui/layout-model';
+import { CUSTOM_WIDGET_PREFIX } from '../ui/card-syntax';
 import { detectPiPath, clearPiDetectionCache } from '../daemon';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
 import { renderCapabilitySettings } from '../capabilities';
@@ -107,7 +112,7 @@ function makeSyncState(): ModelSyncState {
    PluginSettingsTab
    ═══════════════════════════════════════════════════════════ */
 
-type SettingsTabId = 'all' | 'core' | 'features' | 'providers' | 'routing' | 'health';
+type SettingsTabId = 'all' | 'core' | 'features' | 'providers' | 'routing' | 'health' | 'dashboard';
 
 export class PluginSettingsTab extends PluginSettingTab {
 	plugin: CommandCenterPlugin;
@@ -199,6 +204,9 @@ export class PluginSettingsTab extends PluginSettingTab {
 		const showHealth = this.plugin.settings.uiMode === 'advanced';
 		if (showHealth && (this.selectedTab === 'all' || this.selectedTab === 'health')) {
 			this.renderHealthDashboard(content);
+		}
+		if (this.selectedTab === 'all' || this.selectedTab === 'dashboard') {
+			this.renderDashboardLayout(content);
 		}
 
 		this.renderFooter(el);
@@ -1835,6 +1843,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			{ id: 'features', label: 'Features', desc: 'Enable or disable subsystems' },
 			{ id: 'providers', label: 'Providers', desc: 'Credentials, endpoints, and model sync' },
 			{ id: 'routing', label: 'Routing', desc: 'Task routing and fallback pipeline' },
+			{ id: 'dashboard', label: 'Dashboard', desc: 'Reorder, show or hide, and resize dashboard widgets' },
 		];
 		// Advanced mode shows health dashboard and debug tools
 		if (this.plugin.settings.uiMode === 'advanced') {
@@ -1905,6 +1914,152 @@ export class PluginSettingsTab extends PluginSettingTab {
 	   ═══════════════════════════════════════════════════════ */
 
 	/** Render a collapsible section header and return the header row for action buttons. */
+	private renderDashboardLayout(containerEl: HTMLElement): void {
+		this.renderSectionHeader(
+			containerEl,
+			'dashboard',
+			'🎛️ Dashboard layout',
+			'Reorder, show or hide, and resize the widgets on the Command Center dashboard. Changes apply instantly.',
+		);
+		const body = this.getSectionBody(containerEl, 'dashboard');
+
+		// Custom-card widget ids already saved in the layout (cards created in a
+		// previous session). Live custom cards owned by the open view are not
+		// reachable from the settings tab, but any saved entry still appears so
+		// its visibility/size can be managed until it is removed from the vault.
+		const savedCustomIds = this.plugin.settings.dashboardLayout
+			.map(entry => entry.id)
+			.filter(id => id.startsWith(CUSTOM_WIDGET_PREFIX));
+		const layout = mergeLayout(
+			this.plugin.settings.dashboardLayout,
+			DEFAULT_DASHBOARD_LAYOUT,
+			savedCustomIds,
+		);
+
+		const actions = body.createDiv({ cls: 'cc-dashboard-layout-actions' });
+		const reset = actions.createEl('button', { text: 'Reset to default layout' });
+		reset.addEventListener('click', () => {
+			this.plugin.settings.dashboardLayout = DEFAULT_DASHBOARD_LAYOUT.map(w => ({ ...w }));
+			this.plugin.saveSettings().catch(() => {});
+			this.plugin.getCommandCenterView()?.refreshDashboardLayout?.();
+			this.update();
+		});
+
+		for (let i = 0; i < layout.length; i++) {
+			const widget = layout[i]!;
+			const isProtected = widget.id === 'approvals';
+			const row = new Setting(body)
+				.setName(this.widgetLabel(widget.id))
+				.setClass('cc-layout-setting-row');
+
+			// Visibility toggle
+			row.addToggle(toggle => {
+				toggle.setValue(!widget.hidden);
+				toggle.setDisabled(isProtected);
+				toggle.onChange(value => {
+					this.patchWidget(widget.id, { hidden: !value });
+				});
+			});
+
+			// Size dropdown
+			row.addDropdown(dropdown => {
+				for (const size of ['compact', 'standard', 'expanded'] as const) {
+					dropdown.addOption(size, size);
+				}
+				dropdown.setValue(widget.size);
+				dropdown.onChange(value => {
+					this.patchWidget(widget.id, { size: value as DashboardWidgetSize });
+				});
+			});
+
+			// Collapse toggle (button)
+			row.addButton(btn => {
+				btn.setButtonText(widget.collapsed ? 'Expand' : 'Collapse');
+				btn.setDisabled(isProtected);
+				btn.onClick(() => {
+					this.patchWidget(widget.id, { collapsed: !widget.collapsed });
+				});
+			});
+
+			// Move up
+			row.addButton(btn => {
+				btn.setButtonText('↑');
+				btn.setDisabled(i === 0);
+				btn.setTooltip(`Move ${this.widgetLabel(widget.id)} up`);
+				btn.onClick(() => this.moveWidget(widget.id, -1));
+			});
+
+			// Move down
+			row.addButton(btn => {
+				btn.setButtonText('↓');
+				btn.setDisabled(i === layout.length - 1);
+				btn.setTooltip(`Move ${this.widgetLabel(widget.id)} down`);
+				btn.onClick(() => this.moveWidget(widget.id, 1));
+			});
+		}
+	}
+
+	/** Apply a patch to one widget's layout entry, persist, and refresh the tab. */
+	private patchWidget(id: string, patch: Partial<DashboardWidgetLayout>): void {
+		const customIds = this.plugin.settings.dashboardLayout
+			.map(entry => entry.id)
+			.filter(wid => wid.startsWith(CUSTOM_WIDGET_PREFIX));
+		const current = mergeLayout(
+			this.plugin.settings.dashboardLayout,
+			DEFAULT_DASHBOARD_LAYOUT,
+			customIds,
+		);
+		this.plugin.settings.dashboardLayout = current.map(entry =>
+			entry.id === id
+				? { ...entry, ...patch, ...(id === 'approvals' ? { hidden: false, collapsed: false } : {}) }
+				: entry,
+		);
+		this.plugin.saveSettings().catch(() => {});
+		this.plugin.getCommandCenterView()?.refreshDashboardLayout?.();
+		this.update();
+	}
+
+	/** Move a widget up (-1) or down (+1) in the saved layout order. */
+	private moveWidget(id: string, direction: -1 | 1): void {
+		const customIds = this.plugin.settings.dashboardLayout
+			.map(entry => entry.id)
+			.filter(wid => wid.startsWith(CUSTOM_WIDGET_PREFIX));
+		const current = mergeLayout(
+			this.plugin.settings.dashboardLayout,
+			DEFAULT_DASHBOARD_LAYOUT,
+			customIds,
+		);
+		this.plugin.settings.dashboardLayout = nudgeLayout(current, id, direction);
+		this.plugin.saveSettings().catch(() => {});
+		this.plugin.getCommandCenterView()?.refreshDashboardLayout?.();
+		this.update();
+	}
+
+	/** Human-readable name for a widget id, including custom cards. */
+	private widgetLabel(id: string): string {
+		if (id.startsWith(CUSTOM_WIDGET_PREFIX)) {
+			return `${id.slice(CUSTOM_WIDGET_PREFIX.length)} (custom card)`;
+		}
+		return ({
+			workspace: 'Operational overview',
+			deck: 'Command deck',
+			navigator: 'Vault doorway',
+			calendar: 'Calendar',
+			browser: 'Browser',
+			intelligence: 'Happening now',
+			approvals: 'Mutation approvals',
+			orchestrator: 'Orchestrator',
+			queue: 'Task queue',
+			react: 'ReAct monitor',
+			bases: 'Bases controller',
+			daily: 'Daily cycle',
+			system: 'System state',
+			daemon: 'Daemon controls',
+			live: 'Live output',
+			history: 'Task history',
+		} as Record<string, string>)[id] ?? id;
+	}
+
 	private renderSectionHeader(
 		containerEl: HTMLElement,
 		sectionId: string,

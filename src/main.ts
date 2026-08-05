@@ -10,6 +10,8 @@ import {
 	DEFAULT_SETTINGS,
 	DEFAULT_MULTI_PROVIDER,
 	PluginSettingsTab,
+	structuredSafeDefaults,
+	mergeMultiProvider,
 } from './settings/settings-model';
 import { PersistenceManager } from './persistence';
 import type { StoredTask, StoredSessions } from './persistence';
@@ -937,11 +939,12 @@ export default class CommandCenterPlugin extends Plugin {
 	 * registered.
 	 */
 	private loadSettings(loaded: Record<string, unknown>): void {
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			loaded as Partial<CommandCenterSettings>,
-		);
+		// Deep-clone defaults so the shared DEFAULT_* constants are never
+		// mutated through the live settings object, and any partial saved
+		// multiProvider is backfilled with complete sub-objects.
+		const base = structuredSafeDefaults();
+		this.settings = Object.assign(base, loaded as Partial<CommandCenterSettings>);
+		this.settings.multiProvider = mergeMultiProvider(DEFAULT_MULTI_PROVIDER, this.settings.multiProvider);
 		this.settings.dashboardLayout = Array.isArray(this.settings.dashboardLayout)
 			? this.settings.dashboardLayout
 			: DEFAULT_SETTINGS.dashboardLayout.map(widget => ({ ...widget }));

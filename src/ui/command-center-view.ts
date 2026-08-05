@@ -10,7 +10,6 @@ import {
 	TFile,
 	WorkspaceLeaf,
 	normalizePath,
-	setIcon,
 	App,
 	type EventRef,
 } from 'obsidian';
@@ -28,16 +27,13 @@ import { BrowserPanel } from './BrowserPanel';
 import { openInNativeWebViewer } from './native-webviewer';
 import {
 	effectiveHeight,
-	effectiveSpan,
 	mergeLayout,
-	nudgeLayout,
-	reorderLayout,
-	spanFromWidth,
 } from './layout-model';
 import { CommandDeck, type DeckEntry } from './CommandDeck';
 import { CalendarPanel } from './CalendarPanel';
+import { ChatBoxPanel } from './ChatBoxPanel';
 import { VaultNavigator } from './VaultNavigator';
-import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetHeight, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings/settings-model';
+import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings/settings-model';
 import { DashboardOnboarding } from './DashboardOnboarding';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
 import { ChatActionCard } from './chat-action-card';
@@ -130,6 +126,7 @@ export class CommandCenterView extends ItemView {
 	private workflowStateEl: HTMLElement | null = null;
 	private chatMessagesEl: HTMLElement | null = null;
 	private chatInputEl: HTMLTextAreaElement | null = null;
+	private orchestratorSectionEl: HTMLElement | null = null;
 	private currentDailyFile: TFile | null = null;
 	private dashboardWorkspaceEl: HTMLElement | null = null;
 	private telemetryEl: HTMLElement | null = null;
@@ -144,8 +141,7 @@ export class CommandCenterView extends ItemView {
 	private customCards: CustomCards | null = null;
 	private customCardsEl: HTMLElement | null = null;
 	private browserPanel: BrowserPanel | null = null;
-	/** Widget id currently being dragged, or null. */
-	private draggingWidgetId: string | null = null;
+	private chatBoxPanel: ChatBoxPanel | null = null;
 	private intelligenceTimer: number | null = null;
 	private widgetHostEl: HTMLElement | null = null;
 	private layoutEditorEl: HTMLElement | null = null;
@@ -223,6 +219,7 @@ export class CommandCenterView extends ItemView {
 		this.renderDailyControls(widgetHost);
 		this.renderWorkflowMonitor(widgetHost);
 		this.renderOrchestratorChat(widgetHost);
+		this.renderChatBox(widgetHost);
 
 		/* ─── Daemon Section ──────────────────────── */
 		const daemonSection = widgetHost.createEl('section', {
@@ -502,38 +499,106 @@ export class CommandCenterView extends ItemView {
 			this.registerDomEvent(startInterview, 'click', () => this.plugin.openOnboarding());
 		}
 
-		const heading = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-heading' });
-		heading.createDiv( { text: 'COMMAND CENTER DASHBOARD', cls: 'cc-dashboard-workspace-kicker' });
-		heading.createEl('h2', { text: 'Operational overview' });
-		heading.createEl('p', {
-			text: 'One place to see what needs attention, ask for work in plain language, and approve anything that changes your vault. Nothing is written without your click.',
-		});
-		// Orientation tiles: each one names a concrete next action rather than a
-		// feature, so a new operator knows where to begin.
-		const cards = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-cards' });
-		for (const [title, copy] of [
-			['1 · Review', 'Check Happening now for today’s note, captures, and overdue items.'],
-			['2 · Ask', 'Describe an outcome in the Orchestrator; it will pick the tools it needs.'],
-			['3 · Approve', 'Proposed file changes wait in Mutation approvals until you accept them.'],
-			['4 · Automate', 'Turn anything you repeat into a workflow; it appears in the Command deck.'],
-		] as const) {
-			const card = cards.createDiv({ cls: 'cc-dashboard-workspace-card' });
-			card.createEl('strong', { text: title });
-			card.createDiv({ text: copy });
-		}
-		const actions = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-dashboard-workspace-actions' });
+		// A genuine operational overview: live status of the pieces that matter,
+		// not a tutorial. Each chip reports real state and offers the obvious
+		// next action when something needs attention.
+		this.sectionHeading(
+			this.dashboardWorkspaceEl,
+			'Operational overview',
+			'Live status of the dashboard’s moving parts.',
+			'Glance here first. If a chip turns red, click its action to fix it.',
+		);
+		this.dashboardWorkspaceEl.appendChild(this.renderOverviewStrip());
+
+		// Guided setup entry stays available but unobtrusive.
 		const configured = this.plugin.configManager.isInitialized();
-		const discovery = actions.createEl('button', {
-			text: configured ? 'Revise discovery' : 'Start guided setup (optional)',
-			cls: 'mod-cta',
+		const setupRow = this.dashboardWorkspaceEl.createDiv({ cls: 'cc-overview-setup' });
+		const discovery = setupRow.createEl('button', {
+			text: configured ? 'Revise guided setup' : 'Start guided setup (optional)',
+			cls: 'cc-overview-setup-btn',
 		});
 		this.registerDomEvent(discovery, 'click', () => this.plugin.openOnboarding());
-		actions.createSpan({
+		setupRow.createSpan({
 			cls: 'cc-widget-caption',
 			text: configured
 				? 'Re-run the interview to change folders, metrics, or tone.'
 				: 'Optional. Chat and tools already work; setup tailors the daily cards to how you work.',
 		});
+	}
+
+	/**
+	 * Re-render just the overview strip without rebuilding the whole workspace
+	 * section. Cheaper than a full render and avoids losing the setup banner the
+	 * operator may have deliberately kept visible.
+	 */
+	private refreshOverview(): void {
+		if (!this.isViewOpen || !this.dashboardWorkspaceEl) return;
+		const existing = this.dashboardWorkspaceEl.querySelector('.cc-overview-strip');
+		if (!existing) return; // not yet rendered
+		existing.remove();
+		// Re-insert a fresh strip right after the section header.
+		const header = this.dashboardWorkspaceEl.querySelector(':scope > .command-center-section-header');
+		const strip = this.renderOverviewStrip();
+		if (header && header.nextSibling) {
+			this.dashboardWorkspaceEl.insertBefore(strip, header.nextSibling);
+		} else {
+			this.dashboardWorkspaceEl.prepend(strip);
+		}
+	}
+
+	/** Build the live status strip as a detached element. */
+	private renderOverviewStrip(): HTMLElement {
+		const host = createDiv({ cls: 'cc-overview-strip' });
+		const mp = this.plugin.settings.multiProvider;
+
+		// Daemon status.
+		const daemonRunning = this.plugin.daemon.isRunning() && !this.plugin.daemon.startError;
+		const daemonChip = host.createDiv({ cls: `cc-overview-chip is-${daemonRunning ? 'ok' : 'warn'}` });
+		daemonChip.createDiv({ cls: 'cc-overview-dot' });
+		daemonChip.createDiv({ text: daemonRunning ? 'Daemon running' : (this.plugin.daemon.startError ? 'Daemon error' : 'Daemon stopped'), cls: 'cc-overview-label' });
+		if (!daemonRunning) {
+			const start = daemonChip.createEl('button', { text: 'Start', cls: 'cc-overview-action' });
+			start.addEventListener('click', () => this.plugin.restartDaemon());
+		}
+
+		// Providers connected.
+		const providerCount = Object.values(mp.credentials).filter(c => c?.enabled).length;
+		const providerChip = host.createDiv({ cls: `cc-overview-chip is-${providerCount > 0 ? 'ok' : 'warn'}` });
+		providerChip.createDiv({ text: `${providerCount} provider${providerCount === 1 ? '' : 's'} connected`, cls: 'cc-overview-label' });
+
+		// Pending approvals.
+		const pending = this.approvalCards.size;
+		const approvalChip = host.createDiv({ cls: `cc-overview-chip is-${pending > 0 ? 'alert' : 'ok'}` });
+		approvalChip.createDiv({ text: pending === 0 ? 'No approvals pending' : `${pending} approval${pending === 1 ? '' : 's'} pending`, cls: 'cc-overview-label' });
+		if (pending > 0) {
+			const jump = approvalChip.createEl('button', { text: 'Review', cls: 'cc-overview-action' });
+			jump.addEventListener('click', () => this.approvalQueueEl?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+		}
+
+		// Today's daily note.
+		const today = new Date();
+		const notePath = this.plugin.vaultData.dailyNotePathFor(today);
+		const noteExists = notePath ? this.app.vault.getAbstractFileByPath(notePath) instanceof TFile : false;
+		const todayChip = host.createDiv({ cls: `cc-overview-chip is-${noteExists ? 'ok' : 'muted'}` });
+		todayChip.createDiv({ text: noteExists ? 'Today’s note ready' : (notePath ? 'No note for today' : 'Daily notes unconfigured'), cls: 'cc-overview-label' });
+		if (notePath) {
+			const btn = todayChip.createEl('button', { text: noteExists ? 'Open' : 'Create', cls: 'cc-overview-action' });
+			btn.addEventListener('click', () => {
+				void (async () => {
+					const file = noteExists ? this.app.vault.getAbstractFileByPath(notePath) : await this.app.vault.create(notePath, `# ${today.toLocaleDateString()}\n\n`);
+					if (file instanceof TFile) void this.app.workspace.getLeaf(false).openFile(file);
+				})();
+			});
+		}
+
+		// Overdue tasks (from the intelligence snapshot, when available).
+		const snapshot = this.plugin.vaultData.peek();
+		const overdue = snapshot?.totals.overdueTasks ?? 0;
+		if (overdue > 0) {
+			const overdueChip = host.createDiv({ cls: 'cc-overview-chip is-alert' });
+			overdueChip.createDiv({ text: `${overdue} overdue task${overdue === 1 ? '' : 's'}`, cls: 'cc-overview-label' });
+		}
+		return host;
 	}
 
 	async onClose(): Promise<void> {
@@ -559,6 +624,7 @@ export class CommandCenterView extends ItemView {
 		this.workflowStateEl = null;
 		this.chatMessagesEl = null;
 		this.chatInputEl = null;
+		this.orchestratorSectionEl = null;
 		this.currentDailyFile = null;
 		this.dashboardWorkspaceEl = null;
 		this.telemetryEl = null;
@@ -578,6 +644,8 @@ export class CommandCenterView extends ItemView {
 		this.customCardsEl = null;
 		this.browserPanel?.dispose();
 		this.browserPanel = null;
+		this.chatBoxPanel?.dispose();
+		this.chatBoxPanel = null;
 		if (this.intelligenceTimer !== null) {
 			window.clearTimeout(this.intelligenceTimer);
 			this.intelligenceTimer = null;
@@ -610,8 +678,6 @@ export class CommandCenterView extends ItemView {
 		});
 		this.customizeButtonEl = customize;
 		this.registerDomEvent(customize, 'click', () => this.toggleLayoutEditor(customize));
-		// Principle 6: the native Obsidian browser keeps documentation and web
-		// research inside the same operational surface.
 		const browser = actions.createEl('button', { text: 'Open browser' });
 		// Route through the plugin so an already-open browser leaf is revealed and
 		// reused, rather than stacking a fresh empty split every click.
@@ -755,6 +821,12 @@ export class CommandCenterView extends ItemView {
 		return merged.map(widget => widget.id === 'approvals' ? { ...widget, hidden: false, collapsed: false } : widget);
 	}
 
+	/** Re-apply the saved dashboard layout to the live view. Public so the
+	 * settings tab can refresh an open dashboard after a layout edit. */
+	refreshDashboardLayout(): void {
+		this.applyDashboardLayout();
+	}
+
 	private applyDashboardLayout(): void {
 		if (!this.widgetHostEl) return;
 		const layout = this.normalizedLayout();
@@ -766,174 +838,13 @@ export class CommandCenterView extends ItemView {
 			element.toggleClass('is-widget-collapsed', widget.collapsed);
 			element.removeClass('is-size-compact', 'is-size-standard', 'is-size-expanded');
 			element.addClass(`is-size-${widget.size}`);
-			// Span and height drive CSS custom properties rather than inline
-			// styles, so the lint rule against style assignment still holds and
-			// themes can override the values.
-			element.style.setProperty('--cc-widget-span', String(effectiveSpan(widget)));
+			// Height drives a data attribute consumed by CSS; the grid itself is
+			// auto-wrapping so no span custom property is needed.
 			element.dataset.widgetHeight = effectiveHeight(widget);
-			this.ensureWidgetChrome(element, widget.id);
+			// Re-append in layout order so the saved sequence wins, while leaving
+			// each widget's own content and listeners untouched.
 			this.widgetHostEl.appendChild(element);
 		}
-	}
-
-	/**
-	 * Add the drag handle and resize grips to a widget, once.
-	 *
-	 * `applyDashboardLayout()` runs on every render and reparents sections, so
-	 * this guards on a marker class rather than appending duplicate handles.
-	 * Listeners are registered through `registerDomEvent` so the view's own
-	 * lifecycle removes them.
-	 */
-	private ensureWidgetChrome(element: HTMLElement, id: string): void {
-		if (element.hasClass('cc-widget-arrangeable')) return;
-		element.addClass('cc-widget-arrangeable');
-
-		const label = this.widgetLabel(id);
-
-		// Drag by an explicit grip, not the whole panel: panels contain buttons,
-		// inputs, and a webview that must keep their own pointer behaviour.
-		const grip = element.createDiv({
-			cls: 'cc-widget-grip',
-			attr: { 'aria-label': `Drag to move ${label}`, title: `Drag to move ${label}`, draggable: 'true' },
-		});
-		setIcon(grip, 'grip-horizontal');
-
-		this.registerDomEvent(grip, 'dragstart', event => {
-			this.draggingWidgetId = id;
-			element.addClass('is-widget-dragging');
-			// Some data must be set or Firefox/Electron cancels the drag.
-			event.dataTransfer?.setData('text/plain', id);
-			if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-		});
-		this.registerDomEvent(grip, 'dragend', () => {
-			this.draggingWidgetId = null;
-			element.removeClass('is-widget-dragging');
-			this.widgetHostEl?.findAll('.is-widget-drop-target').forEach(el => el.removeClass('is-widget-drop-target'));
-		});
-
-		// Any panel is a drop target for the panel being dragged.
-		this.registerDomEvent(element, 'dragover', event => {
-			if (!this.draggingWidgetId || this.draggingWidgetId === id) return;
-			event.preventDefault();
-			if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-			element.addClass('is-widget-drop-target');
-		});
-		this.registerDomEvent(element, 'dragleave', () => element.removeClass('is-widget-drop-target'));
-		this.registerDomEvent(element, 'drop', event => {
-			event.preventDefault();
-			element.removeClass('is-widget-drop-target');
-			const moving = this.draggingWidgetId;
-			this.draggingWidgetId = null;
-			if (!moving || moving === id) return;
-
-			// Dropping on the right half means "place after this panel".
-			const box = element.getBoundingClientRect();
-			const after = event.clientX > box.left + box.width / 2;
-			const layout = this.normalizedLayout();
-			const index = layout.findIndex(entry => entry.id === id);
-			const beforeId = after ? (layout[index + 1]?.id ?? null) : id;
-			const next = reorderLayout(layout, moving, beforeId);
-			if (next !== layout) this.commitLayout(next);
-		});
-
-		// Keyboard equivalent, so arranging does not require a pointer.
-		this.registerDomEvent(grip, 'keydown', event => {
-			if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-			event.preventDefault();
-			this.moveWidget(id, event.key === 'ArrowLeft' ? -1 : 1);
-		});
-		grip.tabIndex = 0;
-
-		this.addResizeGrip(element, id, 'width', `Drag to change the width of ${label}`);
-		this.addResizeGrip(element, id, 'height', `Drag to change the height of ${label}`);
-	}
-
-	/**
-	 * Attach one resize grip. Width maps to a 12-column span; height maps to a
-	 * named step, so results stay on the grid instead of drifting to arbitrary
-	 * pixel values that break at other window sizes.
-	 */
-	private addResizeGrip(element: HTMLElement, id: string, axis: 'width' | 'height', label: string): void {
-		const grip = element.createDiv({
-			cls: `cc-widget-resize is-axis-${axis}`,
-			attr: { 'aria-label': label, title: label, role: 'separator' },
-		});
-
-		let startX = 0;
-		let startY = 0;
-		let startWidth = 0;
-		let startHeight = 0;
-		let active = false;
-
-		const onMove = (event: PointerEvent) => {
-			if (!active || !this.widgetHostEl) return;
-			if (axis === 'width') {
-				const grid = this.widgetHostEl.getBoundingClientRect().width;
-				const gap = Number.parseFloat(getComputedStyle(this.widgetHostEl).columnGap) || 0;
-				const span = spanFromWidth(startWidth + (event.clientX - startX), grid, gap);
-				if (span !== effectiveSpan(this.widgetEntry(id))) this.resizeWidget(id, { span });
-			} else {
-				const step = this.heightForDrag(startHeight + (event.clientY - startY));
-				if (step !== effectiveHeight(this.widgetEntry(id))) this.resizeWidget(id, { height: step });
-			}
-		};
-
-		const onUp = () => {
-			if (!active) return;
-			active = false;
-			element.removeClass('is-widget-resizing');
-			this.app.workspace.trigger('css-change');
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-		};
-
-		this.registerDomEvent(grip, 'pointerdown', event => {
-			event.preventDefault();
-			event.stopPropagation();
-			active = true;
-			const box = element.getBoundingClientRect();
-			startX = event.clientX;
-			startY = event.clientY;
-			startWidth = box.width;
-			startHeight = box.height;
-			element.addClass('is-widget-resizing');
-			// Listen on the window so the drag survives leaving the small grip.
-			window.addEventListener('pointermove', onMove);
-			window.addEventListener('pointerup', onUp);
-		});
-
-		// Double-click restores the shipped default for this panel.
-		this.registerDomEvent(grip, 'dblclick', () => {
-			const fallback = DEFAULT_DASHBOARD_LAYOUT.find(entry => entry.id === id);
-			this.resizeWidget(id, axis === 'width' ? { span: fallback ? effectiveSpan(fallback) : 6 } : { height: 'auto' });
-		});
-	}
-
-	/** Current layout entry for a widget, or a neutral default. */
-	private widgetEntry(id: string): DashboardWidgetLayout {
-		return this.normalizedLayout().find(entry => entry.id === id)
-			?? { id, hidden: false, collapsed: false, size: 'standard' };
-	}
-
-	/** Map a dragged pixel height onto the nearest named step. */
-	private heightForDrag(height: number): DashboardWidgetHeight {
-		if (height < 240) return 'short';
-		if (height < 420) return 'auto';
-		if (height < 640) return 'tall';
-		return 'taller';
-	}
-
-	/**
-	 * Save a span/height change without rebuilding the layout editor.
-	 *
-	 * Re-rendering the editor mid-drag would destroy the row under the pointer,
-	 * so this applies the grid change only.
-	 */
-	private resizeWidget(id: string, patch: Pick<DashboardWidgetLayout, 'span'> | Pick<DashboardWidgetLayout, 'height'>): void {
-		this.plugin.settings.dashboardLayout = this.normalizedLayout()
-			.map(entry => entry.id === id ? { ...entry, ...patch } : entry);
-		void this.plugin.saveSettings();
-		this.applyDashboardLayout();
 	}
 
 	/**
@@ -976,7 +887,7 @@ export class CommandCenterView extends ItemView {
 			const label = this.customCards?.labelFor(id);
 			return label ? `${label} (custom card)` : id.slice(CUSTOM_WIDGET_PREFIX.length);
 		}
-		return ({ workspace: 'Dashboard workspace', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', browser: 'Browser', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id;
+		return ({ workspace: 'Operational overview', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', browser: 'Browser', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', chatbox: 'Chatbox', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id;
 	}
 	private updateWidget(id: string, patch: Partial<DashboardWidgetLayout>): void {
 		this.plugin.settings.dashboardLayout = this.normalizedLayout().map(widget => widget.id === id ? { ...widget, ...patch, ...(id === 'approvals' ? { hidden: false, collapsed: false } : {}) } : widget);
@@ -985,11 +896,11 @@ export class CommandCenterView extends ItemView {
 		this.renderLayoutEditor();
 	}
 	private moveWidget(id: string, direction: -1 | 1): void {
-		this.commitLayout(nudgeLayout(this.normalizedLayout(), id, direction));
-	}
-
-	/** Persist a new order and re-render, skipping no-op moves. */
-	private commitLayout(layout: DashboardWidgetLayout[]): void {
+		const layout = this.normalizedLayout();
+		const index = layout.findIndex(widget => widget.id === id);
+		const target = index + direction;
+		if (index < 0 || target < 0 || target >= layout.length) return;
+		[layout[index], layout[target]] = [layout[target]!, layout[index]!];
 		this.plugin.settings.dashboardLayout = layout;
 		void this.plugin.saveSettings();
 		this.applyDashboardLayout();
@@ -1079,6 +990,8 @@ export class CommandCenterView extends ItemView {
 			// One snapshot feeds every zero-cost surface.
 			this.calendarPanel?.update(snapshot);
 			this.vaultNavigator?.refresh();
+			// The overview strip shows live counts (overdue tasks, etc.).
+			this.refreshOverview();
 		} catch (error) {
 			// Principle 4: degrade visibly, never freeze or blank silently.
 			if (!this.intelligenceEl) return;
@@ -1100,12 +1013,43 @@ export class CommandCenterView extends ItemView {
 		this.deckEl = section.createDiv();
 		this.commandDeck = new CommandDeck(this.app, {
 			onLaunch: entry => void this.launchDeckEntry(entry),
-			onCreate: () => {
-				this.chatInputEl?.focus();
-				new Notice('Describe the automation you want; the orchestrator will propose a workflow for approval.');
-			},
+			onCreate: () => this.startNewWorkflow(),
 		});
 		this.commandDeck.mount(this.deckEl);
+	}
+
+	/**
+	 * Scroll the Orchestrator widget into view, reveal it if the operator hid
+	 * it, pre-fill a prompt starter, and highlight the input so it is obvious
+	 * where to describe the new workflow. Called from the Command Deck's "New
+	 * workflow" button so the user is never left staring at a toast with no
+	 * place to type.
+	 */
+	private startNewWorkflow(): void {
+		// If the orchestrator widget is hidden in the layout, un-hide it so the
+		// input is actually reachable.
+		const layout = this.plugin.settings.dashboardLayout;
+		const orchEntry = layout.find(entry => entry.id === 'orchestrator');
+		if (orchEntry?.hidden) {
+			orchEntry.hidden = false;
+			void this.plugin.saveSettings();
+			this.applyDashboardLayout();
+		}
+		const section = this.orchestratorSectionEl;
+		const input = this.chatInputEl;
+		if (section && input) {
+			section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			// Briefly highlight the input so the eye lands on it.
+			section.addClass('cc-highlight-pulse');
+			window.setTimeout(() => section.removeClass('cc-highlight-pulse'), 1600);
+			// Pre-fill a prompt starter so the user knows what to type.
+			if (!input.value.trim()) input.value = 'Create a workflow that ';
+			input.focus();
+			// Place the caret at the end of the pre-filled text.
+			const end = input.value.length;
+			input.setSelectionRange(end, end);
+		}
+		new Notice('Describe the automation you want in the orchestrator box below — the orchestrator will propose a workflow for approval.', 6000);
 	}
 
 	/**
@@ -1119,8 +1063,8 @@ export class CommandCenterView extends ItemView {
 		this.sectionHeading(
 			section,
 			'Browser',
-			'Read documentation, API references, and research without leaving the dashboard.',
-			'Type an address or a search. Use expand for close reading, or pop out to keep it open in its own pane.',
+			'Open links and research in your system browser, or preview them inline.',
+			'Type an address or a search and press Enter to open it in your browser. Toggle “Preview inline” to read it here instead.',
 		);
 		const host = section.createDiv();
 		this.browserPanel = new BrowserPanel(this.app, {
@@ -1153,7 +1097,9 @@ export class CommandCenterView extends ItemView {
 				this.plugin.vaultData.invalidate();
 				void this.refreshIntelligence(true);
 			},
-			// Re-place new sections; rebuild the editor only if the roster moved.
+			// Re-place sections in layout order when the roster of custom cards
+			// changes; refresh the editor only if it is open so an open panel stays
+			// in sync without rebuilding it needlessly.
 			onCardsChanged: rosterChanged => {
 				this.applyDashboardLayout();
 				if (rosterChanged && this.layoutEditorOpen) this.renderLayoutEditor();
@@ -1227,8 +1173,10 @@ export class CommandCenterView extends ItemView {
 			timeoutMs: request.timeoutMs ?? 60_000,
 		});
 		this.approvalCards.add(card);
+		this.refreshOverview();
 		const decision = await card.wait();
 		this.approvalCards.delete(card);
+		this.refreshOverview();
 		return decision;
 	}
 
@@ -1316,6 +1264,7 @@ export class CommandCenterView extends ItemView {
 		const section = container.createEl('section', {
 			cls: 'command-center-section cc-orchestrator-chat',
 		});
+		this.orchestratorSectionEl = section;
 		this.markWidget(section, 'orchestrator');
 		this.sectionHeading(
 			section,
@@ -1431,6 +1380,60 @@ export class CommandCenterView extends ItemView {
 			this.scheduleChatScroll();
 		}
 		return row;
+	}
+
+	/**
+	 * A lightweight chatbox widget: fast, simple Q&A with no workflow proposals
+	 * or approvals. Reuses the ModelRouter but asks the fast tier for snappy
+	 * responses. Distinct from the Orchestrator, which is the reasoning-tier
+	 * workflow-building surface.
+	 */
+	private renderChatBox(container: HTMLElement): void {
+		const section = container.createEl('section', {
+			cls: 'command-center-section cc-chatbox-section',
+		});
+		this.markWidget(section, 'chatbox');
+		this.sectionHeading(
+			section,
+			'Chatbox',
+			'Quick questions and answers, straight away.',
+			'Ask anything — a definition, a snippet, a second opinion. Answers stream back live; nothing here touches your vault.',
+		);
+		const host = section.createDiv();
+		this.chatBoxPanel = new ChatBoxPanel(this.app, {
+			routePrompt: (prompt, onStream) => this.routeChatBoxPrompt(prompt, onStream),
+			onSpeak: text => this.plugin.accessibilityAudio.speak(text),
+		});
+		this.chatBoxPanel.mount(host);
+	}
+
+	/** Route a chatbox prompt through the ModelRouter on the fast tier. */
+	private async routeChatBoxPrompt(
+		prompt: string,
+		onStream: (delta: string) => void,
+	): Promise<{ content: string; error?: string }> {
+		try {
+			this.plugin.requireInitialized();
+			const result = await this.plugin.router.route({
+				id: crypto.randomUUID(),
+				workerProfile: 'orchestrator',
+				workerRole: 'Orchestrator',
+				preferredTier: 'tier1_local',
+				prompt,
+				status: 'queued',
+				createdAt: Date.now(),
+				onStream,
+			});
+			const normalized = this.plugin.normalizeDashboardOutput({
+				success: Boolean(result.servedBy),
+				content: result.taskResult.output ?? result.taskResult.summary ?? '',
+				...(result.servedBy ? {} : { error: result.taskResult.output ?? 'No reasoning provider completed the request.' }),
+			});
+			if (!normalized.success) return { content: '', error: normalized.error ?? 'Agent execution failed safely.' };
+			return { content: normalized.content || 'Completed.' };
+		} catch (error) {
+			return { content: '', error: (error as Error).message || 'Request failed.' };
+		}
 	}
 
 	private async submitOrchestratorChat(

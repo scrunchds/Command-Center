@@ -4,6 +4,23 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-08-05
+
+### Added
+- **Chatbox widget** (`src/ui/ChatBoxPanel.ts`): a lightweight, always-on conversational surface distinct from the Orchestrator. Quick questions and answers stream back live on the fast compute tier — no workflow proposals or approvals. Reuses the same `ModelRouter` backend so every configured provider and fallback applies, with an optional read-aloud button. Auto-appears for existing users right after the Orchestrator widget.
+- **Core Daily Notes fallback** (`src/intelligence/VaultDataBridge.ts`): the calendar now detects daily notes from Obsidian's core Daily Notes plugin settings when the onboarding interview has not been run, so the month grid and per-day detail work immediately instead of waiting for configuration.
+- **Live note preview in the calendar** (`src/ui/CalendarPanel.ts`): clicking a date now reads the day's note and renders a short excerpt of its body (skipping frontmatter and checkbox tasks) alongside a prominent “Open note” / “Create note” button, so clicking a day actually surfaces its contents rather than only its tasks.
+
+### Changed
+- **Operational overview rethought** (`src/ui/command-center-view.ts`): the widget no longer shows a four-step orientation tutorial. It now reports genuine live state — daemon running/stopped, providers connected, pending approvals, today's note status, and overdue-task count — as a compact status strip where each chip offers the obvious next action when something needs attention. The strip refreshes whenever the intelligence snapshot updates or an approval lands, and the widget's default size is now `standard` rather than `expanded`.
+- **“New workflow” now lands you on the input** (`src/ui/command-center-view.ts`): the Command Deck button used to show a toast and focus an off-screen textarea. It now scrolls the Orchestrator into view, un-hides it if hidden, pre-fills a prompt starter, places the caret, and pulses the section so it is obvious where to type.
+- **Browser defaults to the system browser** (`src/ui/BrowserPanel.ts`): the primary action now opens the address in your system default browser via Electron's `shell.openExternal`, since embedded webviews drop `target="_blank"` links and break logins — `window.open` was opening another Obsidian window rather than your browser. Obsidian's core Web viewer is offered alongside when enabled (Native Obsidian Harmony). The embedded `<webview>` is kept as an opt-in “Preview inline” toggle, now with a `new-window` handler that redirects `target="_blank"` links into the current view instead of dropping them, and `did-navigate-in-page` syncing so the address bar stays accurate. The popped-out pane starts with the inline preview on so it actually shows the page.
+
+### Fixed
+- The calendar showed no daily notes and read “Configure daily notes” even with Obsidian's core Daily Notes enabled, because daily-note path resolution depended solely on the onboarding interview. The core-plugin fallback resolves this.
+- The browser's “Open in your system browser” button opened another Obsidian window instead of the system browser; it now uses `shell.openExternal`.
+- `target="_blank"` links inside the embedded browser did nothing; they now navigate the current webview in place.
+
 ## [1.7.7] - 2026-08-05
 
 ### Added

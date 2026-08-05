@@ -182,16 +182,24 @@ export class CalendarPanel {
 		const notePath = this.options.dailyNotePathFor(date);
 		if (notePath) {
 			const exists = this.app.vault.getAbstractFileByPath(notePath) instanceof TFile;
-			const open = heading.createEl('button', { text: exists ? 'Open note' : 'Create note' });
+			const open = heading.createEl('button', { text: exists ? 'Open note' : 'Create note', cls: 'mod-cta' });
 			open.addEventListener('click', () => void this.openOrCreateDailyNote(notePath));
+			// Show a short preview of the day's note so clicking a date actually
+			// surfaces its contents, not just its tasks.
+			if (exists) {
+				const preview = host.createDiv({ cls: 'cc-calendar-note-preview' });
+				preview.createEl('em', { text: 'Loading note…', cls: 'cc-widget-caption' });
+				void this.renderNotePreview(preview, notePath);
+			} else {
+				host.createDiv({ cls: 'cc-widget-hint', text: 'No daily note for this date yet. Click “Create note” to start one.' });
+			}
 		} else {
-			heading.createSpan({ cls: 'cc-widget-caption', text: 'Configure daily notes to open a note for this date.' });
+			heading.createSpan({ cls: 'cc-widget-caption', text: 'Daily notes are not configured, so this date has no linked note.' });
 		}
 
+		const listHeader = host.createDiv({ cls: 'cc-calendar-subhead', text: dayTasks.length ? 'Scheduled tasks' : 'No tasks scheduled for this day.' });
+		listHeader.toggleClass('is-empty-label', dayTasks.length === 0);
 		const list = host.createDiv({ cls: 'cc-calendar-tasks' });
-		if (dayTasks.length === 0) {
-			list.createDiv({ text: 'Nothing scheduled for this day.', cls: 'cc-intel-empty' });
-		}
 		for (const task of dayTasks) {
 			const rowEl = list.createDiv({ cls: 'cc-calendar-task' });
 			rowEl.toggleClass('is-done', task.done);
@@ -257,6 +265,46 @@ export class CalendarPanel {
 			cls: 'cc-widget-hint',
 			text: 'Click a date to see its note and scheduled work. Tasks you add here are written to that day’s note after you approve the change.',
 		});
+	}
+
+	/**
+	 * Read the daily note and render a short excerpt (first few non-frontmatter,
+	 * non-task lines) so clicking a date surfaces the note's contents rather
+	 * than only its tasks.
+	 */
+	private async renderNotePreview(host: HTMLElement, path: string): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) {
+			host.empty();
+			return;
+		}
+		try {
+			const raw = await this.app.vault.cachedRead(file);
+			const lines = raw.split(/\r?\n/);
+			const excerpts: string[] = [];
+			let inFrontmatter = false;
+			let sawFrontmatterOpen = false;
+			for (const line of lines) {
+				if (excerpts.length >= 4) break;
+				// Skip a leading YAML frontmatter block.
+				if (!sawFrontmatterOpen && line.trim() === '---') { inFrontmatter = true; sawFrontmatterOpen = true; continue; }
+				if (inFrontmatter) { if (line.trim() === '---') inFrontmatter = false; continue; }
+				const trimmed = line.trim();
+				if (!trimmed) continue;
+				// Skip checkbox task lines; they are listed in the tasks section below.
+				if (/^[-*+]\s+\[[ xX]\]/.test(trimmed)) continue;
+				excerpts.push(trimmed);
+			}
+			host.empty();
+			if (excerpts.length === 0) {
+				host.createDiv({ text: 'This note has no body text yet.', cls: 'cc-intel-empty' });
+			} else {
+				for (const line of excerpts) host.createDiv({ text: line, cls: 'cc-calendar-note-line' });
+			}
+		} catch {
+			host.empty();
+			host.createDiv({ text: 'Could not read this note.', cls: 'cc-intel-empty' });
+		}
 	}
 
 	/**
