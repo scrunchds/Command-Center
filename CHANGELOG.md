@@ -4,7 +4,7 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.7.5] - 2026-08-04
 
 ### Added
 - **Custom dashboard cards** (`src/ui/CustomCards.ts`, `src/ui/card-syntax.ts`): any note carrying `cc-card: true` becomes a dashboard card, discovered rather than registered and hot-registering on vault events. Bodies render through `MarkdownRenderer`, so embedded `.base` views, Dataview blocks, callouts, and transclusions work unchanged. Checkbox lines become interactive rows that write back through the write gate, with fenced code blocks correctly excluded. Optional `cc-card-title`, `cc-card-hint`, `cc-card-icon`, and `cc-card-order` frontmatter keys.

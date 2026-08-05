@@ -228,8 +228,11 @@ let changelog = readFileSync(changelogPath, 'utf8');
 // Collect commit subjects between the last tag and HEAD
 let logEntries = '';
 try {
-	const lastTag = execSync('git', ['describe', '--tags', '--abbrev=0'], { cwd: ROOT, encoding: 'utf8' }).trim();
-	const log = execSync('git', ['log', `${lastTag}..HEAD`, '--oneline', '--no-decorate'], { cwd: ROOT, encoding: 'utf8' }).trim();
+	// spawnSync takes an args array; execSync takes a single command string.
+	// Passing an array to execSync threw, so this block always fell through to
+	// the empty-log fallback and produced a placeholder changelog entry.
+	const lastTag = spawnSync('git', ['describe', '--tags', '--abbrev=0'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
+	const log = spawnSync('git', ['log', `${lastTag}..HEAD`, '--oneline', '--no-decorate'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
 	if (log) {
 		logEntries = '\n' + log.split('\n')
 			.map(line => {
@@ -242,16 +245,23 @@ try {
 } catch { /* first release with no prior tag */ }
 
 const today = new Date().toISOString().slice(0, 10);
-const entry = `## [${targetVersion}] - ${today}\n\n### Changed\n${logEntries || '- Release ${targetVersion}.\n'}\n`;
+// Template literal, not a literal '${targetVersion}' string, in the fallback.
+const entry = `## [${targetVersion}] - ${today}\n\n### Changed\n${logEntries || `- Release ${targetVersion}.\n`}\n`;
 
-// Insert before the first existing version entry
-const firstEntry = changelog.indexOf('\n## [');
-if (firstEntry !== -1) {
-	changelog = changelog.slice(0, firstEntry + 1) + entry + changelog.slice(firstEntry + 1);
-	writeFileSync(changelogPath, changelog, 'utf8');
-	console.log(`  ✅ Entry added for ${targetVersion}`);
+// A hand-written entry for this version is authoritative: it explains intent,
+// which a list of commit subjects cannot. Only generate one when absent.
+if (changelog.includes(`## [${targetVersion}]`)) {
+	console.log(`  ✅ Existing hand-written entry for ${targetVersion} kept as-is`);
 } else {
-	console.warn('  ⚠️  Could not insert CHANGELOG entry. Add manually.');
+	// Insert before the first existing version entry
+	const firstEntry = changelog.indexOf('\n## [');
+	if (firstEntry !== -1) {
+		changelog = changelog.slice(0, firstEntry + 1) + entry + changelog.slice(firstEntry + 1);
+		writeFileSync(changelogPath, changelog, 'utf8');
+		console.log(`  ✅ Entry added for ${targetVersion}`);
+	} else {
+		console.warn('  ⚠️  Could not insert CHANGELOG entry. Add manually.');
+	}
 }
 
 /* ─── Step 5: Build + package ───────────────────────────── */
