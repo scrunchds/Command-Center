@@ -4,10 +4,22 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.7.6] - 2026-08-05
+## [1.7.7] - 2026-08-05
 
 ### Added
-- **Mind map widget** (`src/ui/MindMapPanel.ts`, `src/ui/mindmap-model.ts`): maps the active note's heading structure from `metadataCache`, so it costs no tokens and no file reads. Nodes jump to their heading, branches collapse, and the map exports as an indented Markdown outline. Skipped heading levels and notes starting at a deep heading are handled by attaching to the nearest shallower parent rather than dropping the heading. No third-party mind map plugin required; hidden by default.
+- **Drag-and-drop dashboard layout** (`src/ui/layout-model.ts`): drag a panel by its grip to reorder it, drag the right edge to set its width on a twelve-column grid, and drag the bottom edge to pick a height. Double-click a grip to restore that panel's default. Grips are keyboard operable, and handles stay visible on touch devices where hover does not exist.
+- **Native Web viewer handoff** (`src/ui/native-webviewer.ts`): when Obsidian's core Web viewer is enabled, the browser panel can hand the current address to it, so its history, favicons, ad blocking, and search-engine choice apply instead of a parallel set of the plugin's own. Detection is guarded against the internal-plugin registry changing shape and falls back to the plugin's own pane.
+
+### Changed
+- Widget width and height are stored as an optional `span` and `height` on each layout entry. Layouts saved by earlier versions keep working: a missing `span` is derived from the existing compact/standard/expanded size.
+
+### Removed
+- The mind map widget, along with its styles and tests. It added a panel whose upkeep outweighed what it showed over the core Outline view.
+
+### Fixed
+- Newly shipped widgets were appended to the bottom of an existing dashboard instead of appearing beside the panels they belong with, because the layout merge pushed unknown ids onto the end. New built-ins now anchor to the widget that precedes them in the default order, which also leaves a user's own arrangement untouched. Duplicate saved entries are collapsed rather than rendered twice.
+
+## [1.7.6] - 2026-08-05
 
 ### Fixed
 - The full-pane browser opened an empty split: it was a second, diverged implementation of the browser, and its `<webview>` had no resolved height. The pane is now a thin shell around the same `BrowserPanel` as the dashboard widget, so both surfaces share one implementation and any fix applies to both.

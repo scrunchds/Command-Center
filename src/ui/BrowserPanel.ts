@@ -16,7 +16,9 @@
  */
 
 import { Notice, Platform, setIcon } from 'obsidian';
+import type { App } from 'obsidian';
 import { BrowserHistory, chromeUserAgent, describeUrl, normalizeBrowserUrl } from './browser-url';
+import { isNativeWebViewerEnabled } from './native-webviewer';
 
 /** Where the panel starts when no address has been visited yet. */
 const DEFAULT_HOME = 'https://obsidian.md';
@@ -56,6 +58,12 @@ export interface BrowserPanelOptions {
 	home?: string;
 	/** Hide the pop-out control when already in a dedicated pane. */
 	showPopOut?: boolean;
+	/**
+	 * Hand the current address to Obsidian's own Web viewer. Omitted by surfaces
+	 * that are already a Web viewer leaf, which would otherwise offer to open
+	 * themselves.
+	 */
+	onOpenNative?: (url: string) => void;
 }
 
 /** Renders and maintains the embedded browser. */
@@ -74,7 +82,7 @@ export class BrowserPanel {
 	private readonly history = new BrowserHistory();
 	private focused = false;
 
-	constructor(private readonly options: BrowserPanelOptions) {}
+	constructor(private readonly app: App, private readonly options: BrowserPanelOptions) {}
 
 	/** Build the toolbar and viewport inside the supplied host. */
 	mount(host: HTMLElement): void {
@@ -112,6 +120,20 @@ export class BrowserPanel {
 				this.options.onPopOut(this.history.current || this.home());
 			});
 		}
+		// Hand off to Obsidian's own Web viewer, which brings its history, favicons,
+		// ad blocking, and search-engine choice. Only offered when it is enabled,
+		// so the button never appears and then fails.
+		if (this.options.onOpenNative && isNativeWebViewerEnabled(this.app)) {
+			this.navButton(bar, 'globe-2', "Open in Obsidian's Web viewer", () => {
+				const url = this.history.current;
+				if (!url) {
+					new Notice('Enter an address first.');
+					return;
+				}
+				this.options.onOpenNative?.(url);
+			});
+		}
+
 		// Escape hatch: logins, downloads, and anything better handled by a real browser.
 		this.navButton(bar, 'external-link', 'Open in your system browser', () => {
 			const url = this.history.current;

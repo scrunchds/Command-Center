@@ -10,6 +10,7 @@ import {
 	TFile,
 	WorkspaceLeaf,
 	normalizePath,
+	setIcon,
 	App,
 	type EventRef,
 } from 'obsidian';
@@ -24,11 +25,19 @@ import type { WriteGateRecord } from '../security/WriteGate';
 import { renderIntelligenceCards } from './IntelligenceCards';
 import { CUSTOM_WIDGET_PREFIX, CustomCards } from './CustomCards';
 import { BrowserPanel } from './BrowserPanel';
-import { MindMapPanel } from './MindMapPanel';
+import { openInNativeWebViewer } from './native-webviewer';
+import {
+	effectiveHeight,
+	effectiveSpan,
+	mergeLayout,
+	nudgeLayout,
+	reorderLayout,
+	spanFromWidth,
+} from './layout-model';
 import { CommandDeck, type DeckEntry } from './CommandDeck';
 import { CalendarPanel } from './CalendarPanel';
 import { VaultNavigator } from './VaultNavigator';
-import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings/settings-model';
+import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetHeight, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings/settings-model';
 import { DashboardOnboarding } from './DashboardOnboarding';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
 import { ChatActionCard } from './chat-action-card';
@@ -135,7 +144,8 @@ export class CommandCenterView extends ItemView {
 	private customCards: CustomCards | null = null;
 	private customCardsEl: HTMLElement | null = null;
 	private browserPanel: BrowserPanel | null = null;
-	private mindMapPanel: MindMapPanel | null = null;
+	/** Widget id currently being dragged, or null. */
+	private draggingWidgetId: string | null = null;
 	private intelligenceTimer: number | null = null;
 	private widgetHostEl: HTMLElement | null = null;
 	private layoutEditorEl: HTMLElement | null = null;
@@ -207,7 +217,6 @@ export class CommandCenterView extends ItemView {
 		this.renderIntelligence(widgetHost);
 		this.renderCalendar(widgetHost);
 		this.renderBrowser(widgetHost);
-		this.renderMindMap(widgetHost);
 		this.renderCustomCards(widgetHost);
 		this.renderApprovalQueue(widgetHost);
 		this.renderBasesController(widgetHost);
@@ -569,8 +578,6 @@ export class CommandCenterView extends ItemView {
 		this.customCardsEl = null;
 		this.browserPanel?.dispose();
 		this.browserPanel = null;
-		this.mindMapPanel?.dispose();
-		this.mindMapPanel = null;
 		if (this.intelligenceTimer !== null) {
 			window.clearTimeout(this.intelligenceTimer);
 			this.intelligenceTimer = null;
@@ -740,13 +747,12 @@ export class CommandCenterView extends ItemView {
 	 * without any configuration step.
 	 */
 	private normalizedLayout(): DashboardWidgetLayout[] {
-		const configured = new Map(this.plugin.settings.dashboardLayout.map(widget => [widget.id, widget]));
-		const customIds = this.customCards?.widgetIds() ?? [];
-		const exists = (id: string) => DEFAULT_DASHBOARD_LAYOUT.some(item => item.id === id) || customIds.includes(id);
-		const ordered = this.plugin.settings.dashboardLayout.filter(widget => exists(widget.id));
-		for (const fallback of DEFAULT_DASHBOARD_LAYOUT) if (!configured.has(fallback.id)) ordered.push({ ...fallback });
-		for (const id of customIds) if (!configured.has(id)) ordered.push({ id, hidden: false, collapsed: false, size: 'standard' });
-		return ordered.map(widget => widget.id === 'approvals' ? { ...widget, hidden: false, collapsed: false } : { ...widget });
+		const merged = mergeLayout(
+			this.plugin.settings.dashboardLayout,
+			DEFAULT_DASHBOARD_LAYOUT,
+			this.customCards?.widgetIds() ?? [],
+		);
+		return merged.map(widget => widget.id === 'approvals' ? { ...widget, hidden: false, collapsed: false } : widget);
 	}
 
 	private applyDashboardLayout(): void {
@@ -760,8 +766,186 @@ export class CommandCenterView extends ItemView {
 			element.toggleClass('is-widget-collapsed', widget.collapsed);
 			element.removeClass('is-size-compact', 'is-size-standard', 'is-size-expanded');
 			element.addClass(`is-size-${widget.size}`);
+			// Span and height drive CSS custom properties rather than inline
+			// styles, so the lint rule against style assignment still holds and
+			// themes can override the values.
+			element.style.setProperty('--cc-widget-span', String(effectiveSpan(widget)));
+			element.dataset.widgetHeight = effectiveHeight(widget);
+			this.ensureWidgetChrome(element, widget.id);
 			this.widgetHostEl.appendChild(element);
 		}
+	}
+
+	/**
+	 * Add the drag handle and resize grips to a widget, once.
+	 *
+	 * `applyDashboardLayout()` runs on every render and reparents sections, so
+	 * this guards on a marker class rather than appending duplicate handles.
+	 * Listeners are registered through `registerDomEvent` so the view's own
+	 * lifecycle removes them.
+	 */
+	private ensureWidgetChrome(element: HTMLElement, id: string): void {
+		if (element.hasClass('cc-widget-arrangeable')) return;
+		element.addClass('cc-widget-arrangeable');
+
+		const label = this.widgetLabel(id);
+
+		// Drag by an explicit grip, not the whole panel: panels contain buttons,
+		// inputs, and a webview that must keep their own pointer behaviour.
+		const grip = element.createDiv({
+			cls: 'cc-widget-grip',
+			attr: { 'aria-label': `Drag to move ${label}`, title: `Drag to move ${label}`, draggable: 'true' },
+		});
+		setIcon(grip, 'grip-horizontal');
+
+		this.registerDomEvent(grip, 'dragstart', event => {
+			this.draggingWidgetId = id;
+			element.addClass('is-widget-dragging');
+			// Some data must be set or Firefox/Electron cancels the drag.
+			event.dataTransfer?.setData('text/plain', id);
+			if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+		});
+		this.registerDomEvent(grip, 'dragend', () => {
+			this.draggingWidgetId = null;
+			element.removeClass('is-widget-dragging');
+			this.widgetHostEl?.findAll('.is-widget-drop-target').forEach(el => el.removeClass('is-widget-drop-target'));
+		});
+
+		// Any panel is a drop target for the panel being dragged.
+		this.registerDomEvent(element, 'dragover', event => {
+			if (!this.draggingWidgetId || this.draggingWidgetId === id) return;
+			event.preventDefault();
+			if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+			element.addClass('is-widget-drop-target');
+		});
+		this.registerDomEvent(element, 'dragleave', () => element.removeClass('is-widget-drop-target'));
+		this.registerDomEvent(element, 'drop', event => {
+			event.preventDefault();
+			element.removeClass('is-widget-drop-target');
+			const moving = this.draggingWidgetId;
+			this.draggingWidgetId = null;
+			if (!moving || moving === id) return;
+
+			// Dropping on the right half means "place after this panel".
+			const box = element.getBoundingClientRect();
+			const after = event.clientX > box.left + box.width / 2;
+			const layout = this.normalizedLayout();
+			const index = layout.findIndex(entry => entry.id === id);
+			const beforeId = after ? (layout[index + 1]?.id ?? null) : id;
+			const next = reorderLayout(layout, moving, beforeId);
+			if (next !== layout) this.commitLayout(next);
+		});
+
+		// Keyboard equivalent, so arranging does not require a pointer.
+		this.registerDomEvent(grip, 'keydown', event => {
+			if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+			event.preventDefault();
+			this.moveWidget(id, event.key === 'ArrowLeft' ? -1 : 1);
+		});
+		grip.tabIndex = 0;
+
+		this.addResizeGrip(element, id, 'width', `Drag to change the width of ${label}`);
+		this.addResizeGrip(element, id, 'height', `Drag to change the height of ${label}`);
+	}
+
+	/**
+	 * Attach one resize grip. Width maps to a 12-column span; height maps to a
+	 * named step, so results stay on the grid instead of drifting to arbitrary
+	 * pixel values that break at other window sizes.
+	 */
+	private addResizeGrip(element: HTMLElement, id: string, axis: 'width' | 'height', label: string): void {
+		const grip = element.createDiv({
+			cls: `cc-widget-resize is-axis-${axis}`,
+			attr: { 'aria-label': label, title: label, role: 'separator' },
+		});
+
+		let startX = 0;
+		let startY = 0;
+		let startWidth = 0;
+		let startHeight = 0;
+		let active = false;
+
+		const onMove = (event: PointerEvent) => {
+			if (!active || !this.widgetHostEl) return;
+			if (axis === 'width') {
+				const grid = this.widgetHostEl.getBoundingClientRect().width;
+				const gap = Number.parseFloat(getComputedStyle(this.widgetHostEl).columnGap) || 0;
+				const span = spanFromWidth(startWidth + (event.clientX - startX), grid, gap);
+				if (span !== effectiveSpan(this.widgetEntry(id))) this.resizeWidget(id, { span });
+			} else {
+				const step = this.heightForDrag(startHeight + (event.clientY - startY));
+				if (step !== effectiveHeight(this.widgetEntry(id))) this.resizeWidget(id, { height: step });
+			}
+		};
+
+		const onUp = () => {
+			if (!active) return;
+			active = false;
+			element.removeClass('is-widget-resizing');
+			this.app.workspace.trigger('css-change');
+			window.removeEventListener('pointermove', onMove);
+			window.removeEventListener('pointerup', onUp);
+		};
+
+		this.registerDomEvent(grip, 'pointerdown', event => {
+			event.preventDefault();
+			event.stopPropagation();
+			active = true;
+			const box = element.getBoundingClientRect();
+			startX = event.clientX;
+			startY = event.clientY;
+			startWidth = box.width;
+			startHeight = box.height;
+			element.addClass('is-widget-resizing');
+			// Listen on the window so the drag survives leaving the small grip.
+			window.addEventListener('pointermove', onMove);
+			window.addEventListener('pointerup', onUp);
+		});
+
+		// Double-click restores the shipped default for this panel.
+		this.registerDomEvent(grip, 'dblclick', () => {
+			const fallback = DEFAULT_DASHBOARD_LAYOUT.find(entry => entry.id === id);
+			this.resizeWidget(id, axis === 'width' ? { span: fallback ? effectiveSpan(fallback) : 6 } : { height: 'auto' });
+		});
+	}
+
+	/** Current layout entry for a widget, or a neutral default. */
+	private widgetEntry(id: string): DashboardWidgetLayout {
+		return this.normalizedLayout().find(entry => entry.id === id)
+			?? { id, hidden: false, collapsed: false, size: 'standard' };
+	}
+
+	/** Map a dragged pixel height onto the nearest named step. */
+	private heightForDrag(height: number): DashboardWidgetHeight {
+		if (height < 240) return 'short';
+		if (height < 420) return 'auto';
+		if (height < 640) return 'tall';
+		return 'taller';
+	}
+
+	/**
+	 * Save a span/height change without rebuilding the layout editor.
+	 *
+	 * Re-rendering the editor mid-drag would destroy the row under the pointer,
+	 * so this applies the grid change only.
+	 */
+	private resizeWidget(id: string, patch: Pick<DashboardWidgetLayout, 'span'> | Pick<DashboardWidgetLayout, 'height'>): void {
+		this.plugin.settings.dashboardLayout = this.normalizedLayout()
+			.map(entry => entry.id === id ? { ...entry, ...patch } : entry);
+		void this.plugin.saveSettings();
+		this.applyDashboardLayout();
+	}
+
+	/**
+	 * Open a URL in Obsidian's own Web viewer, in a split beside the dashboard.
+	 *
+	 * Falls back to the plugin's own browser pane if the core viewer is disabled
+	 * or refuses the state, so the action never dead-ends.
+	 */
+	private async openInNativeWebViewer(url: string): Promise<void> {
+		const leaf = this.app.workspace.getLeaf('split');
+		if (await openInNativeWebViewer(this.app, leaf, url)) return;
+		await this.plugin.activateCommandCenterBrowserView(url);
 	}
 
 	private markWidget(element: HTMLElement, id: string): void { element.dataset.widgetId = id; }
@@ -792,7 +976,7 @@ export class CommandCenterView extends ItemView {
 			const label = this.customCards?.labelFor(id);
 			return label ? `${label} (custom card)` : id.slice(CUSTOM_WIDGET_PREFIX.length);
 		}
-		return ({ workspace: 'Dashboard workspace', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', browser: 'Browser', mindmap: 'Mind map', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id;
+		return ({ workspace: 'Dashboard workspace', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', browser: 'Browser', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id;
 	}
 	private updateWidget(id: string, patch: Partial<DashboardWidgetLayout>): void {
 		this.plugin.settings.dashboardLayout = this.normalizedLayout().map(widget => widget.id === id ? { ...widget, ...patch, ...(id === 'approvals' ? { hidden: false, collapsed: false } : {}) } : widget);
@@ -801,11 +985,11 @@ export class CommandCenterView extends ItemView {
 		this.renderLayoutEditor();
 	}
 	private moveWidget(id: string, direction: -1 | 1): void {
-		const layout = this.normalizedLayout();
-		const index = layout.findIndex(widget => widget.id === id);
-		const target = index + direction;
-		if (index < 0 || target < 0 || target >= layout.length) return;
-		[layout[index], layout[target]] = [layout[target]!, layout[index]!];
+		this.commitLayout(nudgeLayout(this.normalizedLayout(), id, direction));
+	}
+
+	/** Persist a new order and re-render, skipping no-op moves. */
+	private commitLayout(layout: DashboardWidgetLayout[]): void {
 		this.plugin.settings.dashboardLayout = layout;
 		void this.plugin.saveSettings();
 		this.applyDashboardLayout();
@@ -925,42 +1109,6 @@ export class CommandCenterView extends ItemView {
 	}
 
 	/**
-	 * Principle 2: a mind map of the active note's headings, built from the
-	 * metadata cache Obsidian has already parsed, so it costs nothing to keep
-	 * open. Nodes jump to their heading, making it a navigation aid rather than
-	 * just a picture.
-	 */
-	private renderMindMap(container: HTMLElement): void {
-		const section = container.createEl('section', { cls: 'command-center-section cc-mindmap-section' });
-		this.markWidget(section, 'mindmap');
-		this.sectionHeading(
-			section,
-			'Mind map',
-			"Visualize the structure of the note you are working on, derived from its headings.",
-			'Click a node to jump to that heading. Collapse branches to focus, or copy the map as an outline.',
-		);
-		const host = section.createDiv();
-		this.mindMapPanel = new MindMapPanel(this.app, {
-			onJump: (file, line) => void this.openFileAtLine(file, line),
-		});
-		this.mindMapPanel.mount(host);
-
-		// Track whatever note the user moves to, and any heading edits to it.
-		this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.mindMapPanel?.refresh()));
-		this.registerEvent(this.app.metadataCache.on('changed', file => {
-			if (file.path === this.app.workspace.getActiveFile()?.path) this.mindMapPanel?.refresh();
-		}));
-	}
-
-	/** Open a note and place the cursor on a specific zero-based line. */
-	private async openFileAtLine(file: TFile, line: number): Promise<void> {
-		const leaf = this.app.workspace.getLeaf(false);
-		await leaf.openFile(file);
-		const view = leaf.view as { editor?: { setCursor: (pos: { line: number; ch: number }) => void } };
-		view.editor?.setCursor({ line: Math.max(0, line), ch: 0 });
-	}
-
-	/**
 	 * Principle 6: an embedded browser so documentation and research stay beside
 	 * the vault. Usable inline, expandable to fill the dashboard, or popped out
 	 * into its own pane when it deserves full attention.
@@ -975,13 +1123,16 @@ export class CommandCenterView extends ItemView {
 			'Type an address or a search. Use expand for close reading, or pop out to keep it open in its own pane.',
 		);
 		const host = section.createDiv();
-		this.browserPanel = new BrowserPanel({
+		this.browserPanel = new BrowserPanel(this.app, {
 			onPopOut: url => {
 				// Hand the current address to the full pane so reading continues.
 				void this.plugin.activateCommandCenterBrowserView(url);
 			},
 			// Focused mode dims the rest of the grid, so mark the section too.
 			onFocusChange: focused => section.toggleClass('is-browser-focused', focused),
+			// Principle 5: hand off to the core Web viewer when the user has it on,
+			// so its history, favicons, and search-engine choice apply.
+			onOpenNative: url => void this.openInNativeWebViewer(url),
 		});
 		this.browserPanel.mount(host);
 	}

@@ -124,10 +124,22 @@ Command Center — Agentic OS for Obsidian
 .cc-layout-row { display: grid; grid-template-columns: minmax(150px, 1fr) auto auto minmax(100px, auto) auto auto; gap: 6px; align-items: center; }
 .cc-layout-row button { padding: 3px 8px; }
 .cc-dashboard-widget-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; align-items: start; }
-.cc-dashboard-widget-grid > [data-widget-id] { grid-column: span 6; min-width: 0; margin-bottom: 0; }
-.cc-dashboard-widget-grid > .is-size-compact { grid-column: span 4; }
-.cc-dashboard-widget-grid > .is-size-standard { grid-column: span 6; }
-.cc-dashboard-widget-grid > .is-size-expanded { grid-column: 1 / -1; }
+.cc-dashboard-widget-grid > [data-widget-id] {
+	/* --cc-widget-span is written by applyDashboardLayout() from the saved
+	   layout; the size classes below only supply the pre-drag default. */
+	grid-column: span var(--cc-widget-span, 6);
+	position: relative;
+	min-width: 0;
+	margin-bottom: 0;
+}
+.cc-dashboard-widget-grid > .is-size-compact { --cc-widget-span: 4; }
+.cc-dashboard-widget-grid > .is-size-standard { --cc-widget-span: 6; }
+.cc-dashboard-widget-grid > .is-size-expanded { --cc-widget-span: 12; }
+
+/* Named heights keep panels aligned across rows; auto tracks content. */
+.cc-dashboard-widget-grid > [data-widget-height='short'] { max-height: 14rem; overflow: auto; }
+.cc-dashboard-widget-grid > [data-widget-height='tall'] { min-height: 26rem; }
+.cc-dashboard-widget-grid > [data-widget-height='taller'] { min-height: 40rem; }
 .cc-dashboard-widget-grid > .is-widget-hidden { display: none; }
 .cc-dashboard-widget-grid > .is-widget-collapsed > :not(h3):not(.command-center-section-header):not(.cc-dashboard-workspace-heading) { display: none; }
 .cc-dashboard-widget-grid > .is-widget-collapsed { min-height: 48px; overflow: hidden; }
@@ -1624,74 +1636,72 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 	}
 }
 
-/* ─── Mind map widget (Principle 2: built from the metadata cache) ──────── */
+/* ─── Arranging widgets: drag to move, grips to resize ──────────────────── */
 
-.cc-mindmap { display: flex; flex-direction: column; gap: var(--size-2-2); min-height: 0; }
-
-.cc-mindmap-bar { display: flex; align-items: center; gap: var(--size-2-2); }
-
-.cc-mindmap-meta {
-	flex: 1;
-	overflow: hidden;
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.cc-mindmap-action { display: inline-flex; flex-shrink: 0; padding: var(--size-2-1) var(--size-2-2); color: var(--text-muted); }
-.cc-mindmap-action:hover { color: var(--text-accent); }
-
-.cc-mindmap-body { overflow: auto; max-height: 22rem; }
-
-.cc-mindmap-list { margin: 0; padding-left: var(--size-4-3); list-style: none; }
-
-/* Connector lines make the hierarchy readable at a glance. */
-.cc-mindmap-list:not(.is-root) {
-	border-left: 1px solid var(--background-modifier-border);
-	margin-left: var(--size-2-3);
-	padding-left: var(--size-2-3);
-}
-
-.cc-mindmap-list.is-root { padding-left: 0; }
-
-.cc-mindmap-row { display: flex; align-items: flex-start; gap: var(--size-2-1); }
-
-.cc-mindmap-twisty,
-.cc-mindmap-twisty-spacer {
-	display: inline-flex;
+/* Chrome stays invisible until the panel is hovered, so the dashboard reads as
+   content first and only reveals its handles when you go to rearrange. */
+.cc-widget-grip {
+	display: flex;
 	align-items: center;
 	justify-content: center;
-	flex-shrink: 0;
+	position: absolute;
+	top: var(--size-2-1);
+	right: var(--size-2-1);
 	width: var(--size-4-4);
 	height: var(--size-4-4);
-	padding: 0;
+	border-radius: var(--radius-s);
+	opacity: 0;
+	color: var(--text-faint);
+	cursor: grab;
+	transition: opacity 120ms ease-in-out;
 }
 
-.cc-mindmap-twisty { color: var(--text-faint); background: transparent; box-shadow: none; }
-.cc-mindmap-twisty:hover { color: var(--text-normal); }
-.cc-mindmap-twisty-spacer { background: transparent; }
+.cc-widget-arrangeable:hover .cc-widget-grip,
+.cc-widget-grip:focus-visible { opacity: 1; }
+.cc-widget-grip:hover { background-color: var(--background-modifier-hover); color: var(--text-normal); }
+.cc-widget-grip:active { cursor: grabbing; }
 
-.cc-mindmap-label {
-	flex: 1;
-	min-width: 0;
-	padding: var(--size-2-1) var(--size-2-2);
-	background: transparent;
-	box-shadow: none;
-	color: var(--text-normal);
-	text-align: left;
-	white-space: normal;
-	cursor: pointer;
+.is-widget-dragging { opacity: 0.5; }
+
+/* A clear left edge marks where the dragged panel will land. */
+.is-widget-drop-target {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
 }
 
-.cc-mindmap-label:hover { background-color: var(--background-modifier-hover); color: var(--text-accent); }
+.cc-widget-resize {
+	position: absolute;
+	opacity: 0;
+	background-color: var(--interactive-accent);
+	transition: opacity 120ms ease-in-out;
+}
 
-/* Depth is conveyed by weight and colour as well as indentation. */
-.cc-mindmap-label.is-level-1 { font-weight: var(--font-bold); }
-.cc-mindmap-label.is-level-2 { font-weight: var(--font-semibold); }
-.cc-mindmap-label.is-level-3 { color: var(--text-normal); }
-.cc-mindmap-label.is-level-4,
-.cc-mindmap-label.is-level-5,
-.cc-mindmap-label.is-level-6 { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.cc-widget-arrangeable:hover .cc-widget-resize { opacity: 0.35; }
+.cc-widget-resize:hover { opacity: 1; }
 
-.cc-mindmap-empty { padding: var(--size-4-2); color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.cc-widget-resize.is-axis-width {
+	top: 25%;
+	right: 0;
+	width: 4px;
+	height: 50%;
+	border-radius: var(--radius-s) 0 0 var(--radius-s);
+	cursor: ew-resize;
+}
+
+.cc-widget-resize.is-axis-height {
+	bottom: 0;
+	left: 25%;
+	width: 50%;
+	height: 4px;
+	border-radius: var(--radius-s) var(--radius-s) 0 0;
+	cursor: ns-resize;
+}
+
+/* Suppress text selection while dragging a grip. */
+.is-widget-resizing { user-select: none; }
+
+/* Touch and coarse pointers cannot hover, so keep handles visible there. */
+@media (hover: none) {
+	.cc-widget-grip,
+	.cc-widget-resize { opacity: 0.5; }
+}

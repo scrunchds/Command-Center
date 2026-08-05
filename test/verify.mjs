@@ -2435,85 +2435,168 @@ async function verifyBrowserUrl() {
 }
 
 
+
 /* ═══════════════════════════════════════════════════════════
-   25. Mind map heading tree
+   25. Dashboard layout: merge, reorder, resize
    ═══════════════════════════════════════════════════════════ */
 
-async function verifyMindMap() {
-	console.log('\n─── 25. Mind map model ───');
+async function verifyLayoutModel() {
+	console.log('\n─── 25. Dashboard layout model ───');
 
-	const mod = await import(pathToFileURL(join(SRC, 'ui', 'mindmap-model.ts')).href);
-	const { buildMindMap, countNodes, maxDepth, toOutline } = mod;
+	const mod = await import(pathToFileURL(join(SRC, 'ui', 'layout-model.ts')).href);
+	const { clampSpan, effectiveHeight, effectiveSpan, mergeLayout, nudgeLayout, reorderLayout, spanForSize, spanFromWidth } = mod;
 
-	const h = (heading, level, line) => ({ heading, level, line });
+	const w = (id, extra = {}) => ({ id, hidden: false, collapsed: false, size: 'standard', ...extra });
+	const defaults = [w('workspace'), w('deck'), w('calendar'), w('approvals'), w('history')];
 
-	// 25a: nesting follows heading levels
-	const simple = buildMindMap([h('Top', 1, 0), h('Sub', 2, 5), h('Deep', 3, 8), h('Other', 2, 12)]);
-	assert.equal(simple.length, 1);
-	assert.equal(simple[0].children.length, 2);
-	assert.equal(simple[0].children[0].children[0].text, 'Deep');
-	pass('25a: nests headings by level');
+	// 25a: a new built-in lands at its default neighbour, not the bottom
+	const saved = [w('workspace'), w('approvals'), w('history')];
+	const merged = mergeLayout(saved, defaults, []);
+	assert.deepEqual(merged.map(e => e.id), ['workspace', 'deck', 'calendar', 'approvals', 'history']);
+	pass('25a: inserts new built-ins at their default position');
 
-	// 25b: several top-level headings become siblings, not a chain
-	const twoRoots = buildMindMap([h('One', 1, 0), h('Two', 1, 4)]);
-	assert.equal(twoRoots.length, 2);
-	assert.equal(twoRoots[1].children.length, 0);
-	pass('25b: keeps multiple h1 headings as siblings');
+	// 25b: a user-chosen order survives, and new panels follow their default
+	// predecessor rather than being dragged along by a moved successor.
+	const reordered = [w('history'), w('workspace'), w('approvals')];
+	assert.deepEqual(
+		mergeLayout(reordered, defaults, []).map(e => e.id),
+		['history', 'workspace', 'deck', 'calendar', 'approvals'],
+	);
+	pass('25b: preserves a user-chosen order when inserting new panels');
 
-	// 25c: a skipped level attaches to the nearest shallower parent
-	const skipped = buildMindMap([h('Top', 1, 0), h('Jumped', 3, 2)]);
-	assert.equal(skipped.length, 1, 'must not become a second root');
-	assert.equal(skipped[0].children[0].text, 'Jumped');
-	pass('25c: attaches skipped levels to the nearest parent');
+	// 25c: retired widgets are dropped
+	assert.ok(!mergeLayout([...saved, w('mindmap')], defaults, []).some(e => e.id === 'mindmap'));
+	pass('25c: drops widgets that no longer exist');
 
-	// 25d: a note starting at h3 still renders rather than vanishing
-	const deepStart = buildMindMap([h('Deep first', 3, 0), h('Sibling', 3, 4)]);
-	assert.equal(deepStart.length, 2);
-	pass('25d: handles notes that start at a deep heading');
+	// 25d: duplicates collapse to a single entry
+    const dupes = mergeLayout([w('deck'), w('deck')], defaults, []);
+	assert.equal(dupes.filter(e => e.id === 'deck').length, 1);
+	pass('25d: collapses duplicate saved entries');
 
-	// 25e: returning to a shallower level closes the deeper branch
-	const back = buildMindMap([h('A', 1, 0), h('B', 2, 1), h('C', 3, 2), h('D', 2, 3)]);
-	assert.equal(back[0].children.length, 2, 'B and D are siblings');
-	assert.equal(back[0].children[1].text, 'D');
-	pass('25e: unwinds correctly when depth decreases');
+	// 25e: custom cards append, since defaults have no opinion about them
+	const withCustom = mergeLayout(saved, defaults, ['custom:Note.md']);
+	assert.equal(withCustom[withCustom.length - 1].id, 'custom:Note.md');
+	pass('25e: appends newly discovered custom cards');
 
-	// 25f: line numbers survive for jump-to-heading
-	assert.equal(back[0].children[1].line, 3);
-	pass('25f: preserves source line numbers');
+	// 25f: saved span and height survive the merge
+	const sized = mergeLayout([w('workspace', { span: 9, height: 'tall' })], defaults, []);
+	assert.equal(sized.find(e => e.id === 'workspace').span, 9);
+	assert.equal(sized.find(e => e.id === 'workspace').height, 'tall');
+	pass('25f: preserves saved span and height');
 
-	// 25g: markdown in heading text is reduced to a plain label
-	const fancy = buildMindMap([
-		h('**Bold** and `code`', 1, 0),
-		h('[[Note|Alias]]', 2, 1),
-		h('[Link](https://example.com)', 2, 2),
-	]);
-	assert.equal(fancy[0].text, 'Bold and code');
-	assert.equal(fancy[0].children[0].text, 'Alias');
-	assert.equal(fancy[0].children[1].text, 'Link');
-	pass('25g: strips markdown from node labels');
+	// 25g: legacy entries with no span fall back to their size
+	assert.equal(spanForSize('compact'), 4);
+	assert.equal(spanForSize('standard'), 6);
+	assert.equal(spanForSize('expanded'), 12);
+	assert.equal(effectiveSpan(w('a', { size: 'expanded' })), 12);
+	pass('25g: derives a span from the legacy size when absent');
 
-	// 25h: headings with no visible text are dropped
-	const empty = buildMindMap([h('Real', 1, 0), h('   ', 2, 1), h('**', 2, 2)]);
-	assert.equal(countNodes(empty), 1);
-	pass('25h: drops headings with no visible label');
+	// 25h: spans stay on the grid and above the readable minimum
+	assert.equal(clampSpan(0), 3);
+	assert.equal(clampSpan(99), 12);
+	assert.equal(clampSpan(5.4), 5);
+	assert.equal(clampSpan(Number.NaN), 6);
+	pass('25h: clamps spans to the twelve-column grid');
 
-	// 25i: an empty note yields an empty map, not a crash
-	assert.deepEqual(buildMindMap([]), []);
-	assert.equal(countNodes([]), 0);
-	assert.equal(maxDepth([]), 0);
-	pass('25i: handles a note with no headings');
+	// 25i: an explicit span wins over the size class
+	assert.equal(effectiveSpan(w('a', { size: 'compact', span: 12 })), 12);
+	pass('25i: prefers an explicit span over the size class');
 
-	// 25j: counts and depth describe the whole forest
-	assert.equal(countNodes(simple), 4);
-	assert.equal(maxDepth(simple), 3);
-	pass('25j: reports node count and depth');
+	// 25j: pixel widths convert to column spans, accounting for gaps
+	assert.equal(spanFromWidth(1200, 1200, 0), 12);
+	assert.equal(spanFromWidth(600, 1200, 0), 6);
+	assert.equal(spanFromWidth(0, 1200, 0), 3);
+	assert.equal(spanFromWidth(600, 0, 14), 6, 'a zero-width grid must not divide by zero');
+	pass('25j: converts a dragged width into a column span');
 
-	// 25k: outline export indents with tabs for pasting into Markdown
-	const outline = toOutline(simple);
-	assert.equal(outline.split('\n')[0], '- Top');
-	assert.ok(outline.includes('\t- Sub'), 'children indent one tab');
-	assert.ok(outline.includes('\t\t- Deep'), 'grandchildren indent two tabs');
-	pass('25k: exports an indented markdown outline');
+	// 25k: unknown heights fall back to content-sized
+	assert.equal(effectiveHeight(w('a')), 'auto');
+	assert.equal(effectiveHeight(w('a', { height: 'tall' })), 'tall');
+	assert.equal(effectiveHeight(w('a', { height: 'enormous' })), 'auto');
+	pass('25k: falls back to auto for an unknown height');
+
+	// 25l: dropping a panel before another moves it there
+	const order = [w('a'), w('b'), w('c')];
+	assert.deepEqual(reorderLayout(order, 'c', 'a').map(e => e.id), ['c', 'a', 'b']);
+	assert.deepEqual(reorderLayout(order, 'a', null).map(e => e.id), ['b', 'c', 'a']);
+	pass('25l: reorders on drop, including dropping at the end');
+
+	// 25m: a no-op drop returns the same array so callers can skip saving
+	assert.strictEqual(reorderLayout(order, 'a', 'a'), order);
+	assert.strictEqual(reorderLayout(order, 'a', 'b'), order, 'dropping onto its own slot changes nothing');
+	assert.strictEqual(reorderLayout(order, 'missing', 'a'), order);
+	pass('25m: returns the original array for a no-op drop');
+
+	// 25n: keyboard nudging moves one slot and stops at the ends
+	assert.deepEqual(nudgeLayout(order, 'b', -1).map(e => e.id), ['b', 'a', 'c']);
+	assert.deepEqual(nudgeLayout(order, 'b', 1).map(e => e.id), ['a', 'c', 'b']);
+	assert.strictEqual(nudgeLayout(order, 'a', -1), order);
+	assert.strictEqual(nudgeLayout(order, 'c', 1), order);
+	pass('25n: nudges one slot and clamps at both ends');
+
+	// 25o: merging never mutates the caller's array
+	const input = [w('workspace')];
+	mergeLayout(input, defaults, []);
+	assert.equal(input.length, 1);
+	pass('25o: does not mutate the saved layout in place');
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   26. Native Web viewer handoff
+   ═══════════════════════════════════════════════════════════ */
+
+async function verifyNativeWebViewer() {
+	console.log('\n─── 26. Native Web viewer handoff ───');
+
+	const mod = await import(pathToFileURL(join(SRC, 'ui', 'native-webviewer.ts')).href);
+	const { WEBVIEWER_VIEW_TYPE, isNativeWebViewerEnabled, openInNativeWebViewer, webViewerState } = mod;
+
+	// 26a: the view type matches what Obsidian's own bundle registers
+	assert.equal(WEBVIEWER_VIEW_TYPE, 'webviewer');
+	pass('26a: targets the core webviewer view type');
+
+	// 26b: the state shape matches Obsidian's own recordHistory call
+	assert.deepEqual(webViewerState('https://example.com'), {
+		type: 'webviewer',
+		state: { url: 'https://example.com' },
+		active: true,
+	});
+	pass('26b: builds the view state the core viewer expects');
+
+	// 26c: an enabled viewer is detected
+	const enabled = { internalPlugins: { getEnabledPluginById: id => (id === 'webviewer' ? {} : null) } };
+	assert.equal(isNativeWebViewerEnabled(enabled), true);
+	pass('26c: detects an enabled core Web viewer');
+
+	// 26d: a disabled viewer returns null and must read as unavailable
+	assert.equal(isNativeWebViewerEnabled({ internalPlugins: { getEnabledPluginById: () => null } }), false);
+	pass('26d: treats a disabled viewer as unavailable');
+
+	// 26e: an older or altered Obsidian with no registry must not throw
+	assert.equal(isNativeWebViewerEnabled({}), false);
+	assert.equal(isNativeWebViewerEnabled({ internalPlugins: {} }), false);
+	pass('26e: degrades when the internal plugin registry is absent');
+
+	// 26f: a throwing registry degrades instead of taking the dashboard down
+	assert.equal(isNativeWebViewerEnabled({
+		internalPlugins: { getEnabledPluginById: () => { throw new Error('shape changed'); } },
+	}), false);
+	pass('26f: survives a registry shape change');
+
+	// 26g: opening sets the state on the supplied leaf
+	let received = null;
+	const leaf = { setViewState: async state => { received = state; } };
+	assert.equal(await openInNativeWebViewer(enabled, leaf, 'https://obsidian.md'), true);
+	assert.equal(received.state.url, 'https://obsidian.md');
+	pass('26g: sets the webviewer state on the target leaf');
+
+	// 26h: it reports failure rather than leaving an empty pane
+	assert.equal(await openInNativeWebViewer({}, leaf, 'https://obsidian.md'), false);
+	assert.equal(await openInNativeWebViewer(enabled, {
+		setViewState: async () => { throw new Error('refused'); },
+	}, 'https://obsidian.md'), false);
+	pass('26h: reports failure so the caller can fall back');
 }
 
 async function main() {
@@ -2543,7 +2626,8 @@ async function main() {
 	await verifyTaskSyntax();
 	await verifyCustomCards();
 	await verifyBrowserUrl();
-	await verifyMindMap();
+	await verifyLayoutModel();
+	await verifyNativeWebViewer();
 
 	console.log('\n═══════════════════════════════════════════');
 	console.log(`  Results:  ${results.pass} passed, ${results.fail} failed, ${results.skip} skipped`);

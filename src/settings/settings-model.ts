@@ -26,7 +26,18 @@ export interface DashboardWidgetLayout {
 	hidden: boolean;
 	collapsed: boolean;
 	size: DashboardWidgetSize;
+	/**
+	 * Column span out of twelve, set by dragging a panel's resize handle.
+	 * Absent means "derive it from `size`", which keeps layouts saved by
+	 * earlier versions working untouched.
+	 */
+	span?: number;
+	/** Discrete panel height, set by dragging the bottom edge. */
+	height?: DashboardWidgetHeight;
 }
+
+/** Named heights rather than free pixels, so themes and spacing stay coherent. */
+export type DashboardWidgetHeight = 'auto' | 'short' | 'tall' | 'taller';
 
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardWidgetLayout[] = [
 	{ id: 'workspace', hidden: false, collapsed: false, size: 'expanded' },
@@ -34,8 +45,6 @@ export const DEFAULT_DASHBOARD_LAYOUT: DashboardWidgetLayout[] = [
 	{ id: 'navigator', hidden: false, collapsed: false, size: 'standard' },
 	{ id: 'intelligence', hidden: false, collapsed: false, size: 'expanded' },
 	{ id: 'calendar', hidden: false, collapsed: false, size: 'standard' },
-	// Mind map and browser start hidden: both are opt-in focus surfaces.
-	{ id: 'mindmap', hidden: true, collapsed: false, size: 'standard' },
 	// Browser starts hidden: it is opt-in reading space, not everyday signal.
 	{ id: 'browser', hidden: true, collapsed: false, size: 'expanded' },
 	{ id: 'approvals', hidden: false, collapsed: false, size: 'expanded' },

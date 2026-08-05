@@ -36,7 +36,7 @@ export class CommandCenterBrowserView extends ItemView {
 		container.addClass('cc-browser-view');
 
 		const host = container.createDiv({ cls: 'cc-browser-view-host' });
-		this.panel = new BrowserPanel({
+		this.panel = new BrowserPanel(this.app, {
 			// Already a dedicated pane, so there is nothing to pop out to.
 			onPopOut: () => undefined,
 			showPopOut: false,
