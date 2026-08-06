@@ -4,6 +4,30 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-08-06
+
+### Added
+- **Clock widget** (`src/ui/ClockPanel.ts`): a live, zero-token dashboard clock that respects your time-format preference (System / 12-hour / 24-hour). Customize it under **Settings → Command Center → Paths & Appearance**: toggle seconds, toggle the date, choose a date verbosity (long / short / numeric), and set an optional label. The clock auto-updates every second and picks up setting changes on the next tick without a reload.
+- **Daily schedule widget** (`src/ui/DailySchedulePanel.ts`): a zero-cost "today by time" view built only from Obsidian's metadata cache. It surfaces tasks due today, parses inline time tags (`⏰ HH:MM` and `[time:: HH:MM]`), sorts timed entries before untimed ones, and click-throughs to the source note. No model calls, no token spend.
+- **Dedicated Paths settings tab** (`src/settings/PluginSettingsTab.ts`): all asset-placement controls now live under **Settings → Command Center → Paths & Appearance** — workflow directory, workflow format (`.md` or `.json`), template directory, profile path, time format, and the full clock customization suite.
+- **Full user control over asset placement** (`src/settings/settings-model.ts`, `src/main.ts`): workflows, templates, and the profile can now live anywhere in your vault, hidden or visible. A new `updateAssetPaths()` programmatic API validates, saves, and optionally migrates existing files to the new locations.
+- **Workflows in `.md` format** (`src/workflows/WorkflowGenerator.ts`): generated workflows can be written as Markdown with YAML frontmatter (the `workflow:` key is read back unchanged by the existing sync `loadWorkflowFromNote`) plus a human-readable body, instead of only `.json`. Choose the format in Paths & Appearance or let the onboarding interview pick it.
+- **System time-format detection** (`src/util/time-format.ts`): the clock, the daily schedule, and any future time display detect whether your OS uses 12- or 24-hour time, with an explicit override in Paths & Appearance.
+- **Interview persistence** (`src/ui/DashboardOnboarding.ts`): the onboarding interview now resumes exactly where you left off after closing the dashboard or restarting Obsidian, including pending synthesis and connector approvals. Progress is cleared only when the interview completes or is explicitly reset.
+- **Onboarding vault awareness** (`src/onboarding/InterviewEngine.ts`): the interview proactively references the scanned vault topology it already collected instead of deferring it, so the first questions are grounded in what was actually found.
+- **Socratic, metacognitive, and frustration-aware interaction style** (`src/prompts/interaction-style.ts`): the core system prompt for every chat session now carries the Socratic and metacognitive directives plus a frustration protocol, wired into all dispatch sites so no chat path bypasses it.
+- **Configurable "Happening now" cards** (`src/settings/settings-model.ts`, `src/ui/IntelligenceCards.ts`): the four intelligence cards can be reordered and individually shown or hidden under **Settings → Command Center → Dashboard → Happening now — cards**.
+- **Configurable Action-items Kanban lanes** (`src/settings/settings-model.ts`, `src/ui/IntelligenceCards.ts`): the Action items card no longer ships four hard-coded lanes. Define your own lanes (columns) with a label, a deterministic filter (`overdue`, `due-today`, `upcoming`, `undated`, `done`, `all`), and a hide-when-empty flag. Add, remove, reorder, and reset lanes in the dashboard settings. A `done` lane surfaces completed work only when you add one, so the default board stays focused on open tasks.
+
+### Changed
+- **Path hygiene** (`src/settings/settings-model.ts`, `src/engine/ConfigSerializer.ts`): emoji and pictographs are stripped from model-suggested and user-entered asset paths at validation chokepoints, and the interview system prompt carries an explicit PATH HYGIENE rule, so generated folders never carry icon characters.
+- **Settings UI reorganized**: placement, format, time-format, and clock controls moved to the dedicated Paths & Appearance tab; the intelligence-card and lane controls live under the Dashboard tab.
+
+### Fixed
+- **TTS only worked for four providers** (`src/audio/AccessibilityAudio.ts`): the settings dropdown listed DeepInfra, Groq, Custom, LM Studio, and Ollama as text-to-speech engines, but playback only checked `openai`, `openrouter`, `xai`, and `mistral`, silently falling back to browser TTS for the rest. `canUseProviderTts()` and `resolveTtsProvider()` now use the full transcription-provider order filtered by `TtsAdapter.supportsProvider()`, so every listed engine actually routes through its provider endpoint.
+- **Chat output text could not be selected to copy** (`src/styles.css`): the AI output bubbles left rendered markdown children without an explicit `user-select: text` rule, so dragging to select inside a bubble was unreliable in some Obsidian themes. Selection is now enforced on the bubble, its content, and every rendered child (`a`, `code`, `pre`, `blockquote`, `li`), while the action bar, buttons, and timestamp are excluded from selection so they never pollute a copy.
+- **Interview never resumed** (`src/ui/DashboardOnboarding.ts`): `persistProgress()` existed but `restoreProgress()` was never called in `open()`, so closing the dashboard mid-interview always restarted from scratch. Restore now runs first, and progress is cleared only at the three completion points.
+
 ## [1.8.0] - 2026-08-05
 
 ### Added

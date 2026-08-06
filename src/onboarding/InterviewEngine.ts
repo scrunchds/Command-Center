@@ -2,8 +2,7 @@ import { App, TFile, TFolder, normalizePath } from 'obsidian';
 import type { ProviderDispatcher } from '../dispatcher';
 import type { OnboardingConfig } from './OnboardingTypes';
 import { parseModelJson } from '../providers/json-repair';
-import { TEMPLATE_DIRECTORY, TemplateGenerator, type TemplateProposal } from '../templates/TemplateGenerator';
-import { GENERATED_WORKFLOW_DIRECTORY, WorkflowGenerator, type WorkflowProposal } from '../workflows/WorkflowGenerator';
+import { GENERATED_WORKFLOW_DIRECTORY, WorkflowGenerator, type WorkflowFormat, type WorkflowProposal } from '../workflows/WorkflowGenerator';
 import { WorkflowBuilder } from '../workflows/WorkflowBuilder';
 import type { ConfigManager } from '../engine/ConfigManager';
 import { LOGIC_DISCOVERY_SYSTEM_PROMPT } from '../ingestion/LogicDiscovery';
@@ -11,6 +10,23 @@ import { getCapabilityRegistry } from '../capabilities';
 import type { ToolDefinition } from '../types';
 import type { ProviderToolResult } from '../providers/provider-types';
 import { withGlobalChatInteractionStyle } from '../prompts/interaction-style';
+import { TemplateGenerator, TEMPLATE_DIRECTORY, type TemplateProposal } from '../templates/TemplateGenerator';
+
+/** Resolved placement for generated assets, supplied by the host plugin. */
+export interface InterviewAssetPaths {
+	workflowDirectory: string;
+	workflowFormat: WorkflowFormat;
+	templateDirectory: string;
+	profilePath: string;
+}
+
+/** Optional hooks letting the interview update placement live as the user decides. */
+export interface InterviewAssetHooks {
+	/** Resolve the currently configured asset paths. */
+	getAssetPaths?: () => InterviewAssetPaths;
+	/** Update one or more asset paths and refresh dependent components. */
+	updateAssetPaths?: (patch: Partial<InterviewAssetPaths>) => Promise<void>;
+}
 
 export const INTERVIEW_COMPLETE_SIGNAL = 'COMMAND_CENTER_INTERVIEW_COMPLETE';
 export const SYNTHESIS_COMPLETE_SIGNAL = 'COMMAND_CENTER_SYNTHESIS_COMPLETE';
@@ -60,7 +76,29 @@ export class InterviewEngine {
 		private readonly configs: ConfigManager,
 		private readonly getTools: () => ToolDefinition[] = () => getCapabilityRegistry().getEnabledToolDefinitions(true),
 		private readonly confirmTool?: (tool: ToolDefinition, params: Record<string, unknown>) => Promise<boolean>,
+		private readonly assetHooks?: InterviewAssetHooks,
 	) {}
+
+	private assetPaths(): InterviewAssetPaths {
+		return this.assetHooks?.getAssetPaths?.() ?? {
+			workflowDirectory: GENERATED_WORKFLOW_DIRECTORY,
+			workflowFormat: 'json',
+			templateDirectory: TEMPLATE_DIRECTORY,
+			profilePath: '.command-center/profile.json',
+		};
+	}
+
+	private workflowGenerator(): WorkflowGenerator {
+		const { workflowDirectory, workflowFormat } = this.assetPaths();
+		return new WorkflowGenerator(this.app, { directory: workflowDirectory, format: workflowFormat });
+	}
+
+	private templateGenerator(): TemplateGenerator {
+		// TemplateGenerator is folder-oriented; a future patch threads the
+		// configured template directory through it. For now it keeps the
+		// hidden default, which the Paths settings tab can migrate later.
+		return new TemplateGenerator(this.app);
+	}
 
 	async start(): Promise<string> {
 		this.turns = [];
@@ -72,7 +110,10 @@ export class InterviewEngine {
 		this.stage = 1;
 		this.actionConfirmations.length = 0;
 		this.vaultTopology = this.inspectTopology();
-		return 'To begin without making assumptions about your vault, tell me about your background and the kind of work or life context this system needs to support. We will discuss its structure only after I understand what it needs to do for you.';
+		const summary = this.vaultTopology.empty
+			? 'Your vault appears empty, so we will build its structure from scratch.'
+			: `I have already scanned your vault and found ${this.vaultTopology.folders.length} folder${this.vaultTopology.folders.length === 1 ? '' : 's'}${this.vaultTopology.rootMarkdownFiles.length ? ` and ${this.vaultTopology.rootMarkdownFiles.length} root note${this.vaultTopology.rootMarkdownFiles.length === 1 ? '' : 's'}` : ''}. I will use that as context and never assume a structure you have not confirmed.`;
+		return `${summary} To begin, tell me about your background and the kind of work or life context this system needs to support. We will discuss your vault's structure only after I understand what it needs to do for you — but you can ask me "what did you find?" at any time and I will share what I observed.`;
 	}
 
 	async answer(raw: string): Promise<InterviewReply> {
@@ -149,10 +190,11 @@ export class InterviewEngine {
 	async approvePendingWorkflows(): Promise<InterviewCompletion> {
 		if (!this.pendingWorkflowActions || !this.pendingActionConfig) throw new Error('No complete workflow proposal is awaiting approval.');
 		const workflows = this.pendingWorkflowActions;
-		const paths = await new WorkflowGenerator(this.app).generate(workflows);
+		const { workflowDirectory } = this.assetPaths();
+		const paths = await this.workflowGenerator().generate(workflows);
 		const config: OnboardingConfig = {
 			...this.pendingActionConfig,
-			enabledWorkflows: workflows.map((item, index) => ({ id: item.id, name: item.name, path: paths[index] ?? `${GENERATED_WORKFLOW_DIRECTORY}/${item.fileName}` })),
+			enabledWorkflows: workflows.map((item, index) => ({ id: item.id, name: item.name, path: paths[index] ?? `${workflowDirectory}/${item.fileName}` })),
 		};
 		const saved = await this.configs.save(config);
 		this.pendingWorkflowActions = null;
@@ -171,12 +213,13 @@ export class InterviewEngine {
 		// class, preventing a malformed workflow from leaving a partial batch.
 		const builder = new WorkflowBuilder();
 		for (const workflow of workflows) builder.build(workflow.definition);
-		const templatePaths = await new TemplateGenerator(this.app).generate(templates);
-		const workflowPaths = await new WorkflowGenerator(this.app).generate(workflows);
+		const { workflowDirectory, templateDirectory } = this.assetPaths();
+		const templatePaths = await this.templateGenerator().generate(templates);
+		const workflowPaths = await this.workflowGenerator().generate(workflows);
 		const config: OnboardingConfig = {
 			...this.pendingSynthesis.config,
-			activeTemplates: templates.map((item, index) => ({ id: item.id, name: item.name, path: templatePaths[index] ?? `${TEMPLATE_DIRECTORY}/${item.fileName}` })),
-			enabledWorkflows: workflows.map((item, index) => ({ id: item.id, name: item.name, path: workflowPaths[index] ?? `${GENERATED_WORKFLOW_DIRECTORY}/${item.fileName}` })),
+			activeTemplates: templates.map((item, index) => ({ id: item.id, name: item.name, path: templatePaths[index] ?? `${templateDirectory}/${item.fileName}` })),
+			enabledWorkflows: workflows.map((item, index) => ({ id: item.id, name: item.name, path: workflowPaths[index] ?? `${workflowDirectory}/${item.fileName}` })),
 		};
 		const saved = await this.configs.save(config);
 		this.pendingSynthesis = null;
@@ -216,17 +259,24 @@ export class InterviewEngine {
 
 	/** Serialize the interview state for persistence. */
 	serialize(): string {
-		return JSON.stringify({ turns: this.turns, phaseIndex: this.phaseIndex, stage: this.stage, pendingWorkflowActions: this.pendingWorkflowActions, pendingActionConfig: this.pendingActionConfig, pendingConnector: this.pendingConnector, actionConfirmations: this.actionConfirmations });
+		return JSON.stringify({ turns: this.turns, phaseIndex: this.phaseIndex, stage: this.stage, pendingSynthesis: this.pendingSynthesis, pendingWorkflowActions: this.pendingWorkflowActions, pendingActionConfig: this.pendingActionConfig, pendingConnector: this.pendingConnector, actionConfirmations: this.actionConfirmations });
 	}
 
 	/** Restore a previously persisted interview state. */
 	deserialize(data: string): void {
 		try {
-			const parsed = JSON.parse(data) as { turns: InterviewTurn[]; phaseIndex: number; stage?: OnboardingStage; pendingWorkflowActions?: WorkflowProposal[] | null; pendingActionConfig?: unknown; pendingConnector?: import('../connectors/ApiConnectorManager').ApiConnectorConfig | null; actionConfirmations?: string[] };
+			const parsed = JSON.parse(data) as { turns: InterviewTurn[]; phaseIndex: number; stage?: OnboardingStage; pendingSynthesis?: InterviewSynthesis | null; pendingWorkflowActions?: WorkflowProposal[] | null; pendingActionConfig?: unknown; pendingConnector?: import('../connectors/ApiConnectorManager').ApiConnectorConfig | null; actionConfirmations?: string[] };
 			if (Array.isArray(parsed.turns) && typeof parsed.phaseIndex === 'number' && parsed.phaseIndex >= 0 && parsed.phaseIndex < PHASES.length) {
 				this.turns = parsed.turns;
 				this.phaseIndex = parsed.phaseIndex;
 				this.stage = parsed.stage === 1 || parsed.stage === 2 || parsed.stage === 3 || parsed.stage === 4 ? parsed.stage : 1;
+				if (parsed.pendingSynthesis) {
+					this.pendingSynthesis = {
+						config: this.configs.validate(parsed.pendingSynthesis.config),
+						templates: this.validateTemplates(parsed.pendingSynthesis.templates),
+						workflows: this.validateWorkflows(parsed.pendingSynthesis.workflows),
+					};
+				}
 				this.pendingWorkflowActions = Array.isArray(parsed.pendingWorkflowActions) ? this.validateWorkflows(parsed.pendingWorkflowActions) : null;
 				this.pendingActionConfig = parsed.pendingActionConfig ? this.configs.validate(parsed.pendingActionConfig) : null;
 				this.pendingConnector = parsed.pendingConnector ? this.validateConnector(parsed.pendingConnector) : null;
@@ -273,7 +323,7 @@ export class InterviewEngine {
 			} else if (block.kind === 'action-templates') {
 				const payload = block.value as { templates?: TemplateProposal[] };
 				const templates = this.validateTemplates(payload.templates);
-				await new TemplateGenerator(this.app).generate(templates);
+				await this.templateGenerator().generate(templates);
 				this.stage = 3;
 				this.actionConfirmations.push('[System: Templates physically written to the vault. Proceed to workflow suggestion.]');
 			} else if (block.kind === 'action-api-connector') {
@@ -304,12 +354,24 @@ export class InterviewEngine {
 
 	private async writeProfile(value: unknown): Promise<void> {
 		if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('The profile action must contain a JSON object.');
-		const path = normalizePath('.command-center/profile.json');
+		const { profilePath } = this.assetPaths();
+		const path = normalizePath(profilePath);
+		const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+		if (parent) await this.ensureFolder(parent);
 		const content = `${JSON.stringify(value, null, 2)}\\n`;
 		const existing = this.app.vault.getAbstractFileByPath(path);
 		if (existing instanceof TFile) await this.app.vault.modify(existing, content);
 		else if (existing) throw new Error('The profile path is blocked by a non-file entry.');
 		else await this.app.vault.create(path, content);
+	}
+
+	private async ensureFolder(path: string): Promise<void> {
+		const normalized = normalizePath(path);
+		const existing = this.app.vault.getAbstractFileByPath(normalized);
+		if (existing) return;
+		const parent = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : '';
+		if (parent) await this.ensureFolder(parent);
+		await this.app.vault.createFolder(normalized);
 	}
 
 	private advancePhase(output: string): void {
@@ -367,9 +429,12 @@ Stage 3 — Proactive workflows: use a Discovery → Proposal → Execution loop
 Stage 4 — Handoff: after the system confirmation, conclude the conversation and let the UI refresh to the normal dashboard.
 Action blocks are implementation instructions, not user-facing prose. Never put action blocks in a sentence or expose them intentionally; the host strips them from the visible conversation, executes them through Obsidian vault APIs, and supplies a system confirmation in the conversation context. The host can register declarative REST connectors and MCP-backed tools; this is an available operation, not a prohibited one. Never request credentials, tokens, passwords, or secrets in chat. Links, paths, hosts, ports, endpoint values, and public documentation URLs are acceptable context; required credential values are configured through Settings.
 
-You are also responsible for turning the jointly negotiated logic into Command Center configuration. Ask exactly one focused question at a time. Never assume folder names, paths, metrics, thresholds, task syntax, policies, writing tone, persona, templates, or workflows. Extract one cumulative configuration from natural-language answers. Do not introduce the topology context below until the contextual baseline is established.
+You are also responsible for turning the jointly negotiated logic into Command Center configuration. Ask exactly one focused question at a time. Never assume folder names, paths, metrics, thresholds, task syntax, policies, writing tone, persona, templates, or workflows. Extract one cumulative configuration from natural-language answers. You have already inspected the vault topology below — reference it when the user asks "what did you find?", when they describe a folder that matches a discovered one, or when proposing managed indexes; otherwise let the user lead and do not impose a structure they have not confirmed. Never claim a folder exists when it is not in the topology snapshot unless a tool call confirmed it.
+
+ASSET PLACEMENT — the user controls where generated files are written. Current placement: workflows → ${this.assetPaths().workflowDirectory} (format: ${this.assetPaths().workflowFormat}), templates → ${this.assetPaths().templateDirectory}, profile → ${this.assetPaths().profilePath}. When proposing templates or workflows, tell the user where they will be saved and offer to place them in a visible folder instead of the hidden default if they prefer to edit them by hand. If the user asks to change where files are stored, call the appropriate capability or tell them the Paths tab in Settings controls it; do not invent a path you cannot write to.
 
 SECURITY: Never request, accept, repeat, inspect, or store credential values such as API keys, passwords, access tokens, or secrets. Public documentation and operational connection details are allowed: links, paths, hosts, ports, endpoint values, and API schemas may be inspected and discussed. Direct only credential-value setup to the native Obsidian Settings → Command Center UI. Do not confuse protecting secrets with refusing an API integration.
+PATH HYGIENE: When you propose or mention a vault path, folder, or file name, never prepend or surround it with emoji, icons, decorative symbols, box-drawing characters, smart quotes, or backticks. Emit the bare relative path only (for example "Workflows" or "Daily Notes/2026-08-06.md"), not "📁 Workflows" or "📂 Templates". The host strips such decorations, but they must not appear in action blocks or config values either.
 CURRENT PHASE: ${this.getPhase()}
 VAULT TOPOLOGY DISCOVERED (context only; never select without consent): ${JSON.stringify(this.vaultTopology)}
 

@@ -192,6 +192,7 @@ The metacognition layer builds supporting local context without reorganizing or 
 Workflows are vault-native rather than hidden in a remote service:
 
 - Parse Markdown frontmatter or JSON Canvas graphs into validated DAGs
+- **Generate workflows as Markdown (`.md`) or JSON (`.json`)**, with the directory and format fully configurable under **Paths & Appearance**; the onboarding interview writes generated assets to your chosen locations
 - Collect typed text, dropdown, and toggle inputs in native Obsidian modals
 - Execute independent steps in parallel topological tiers
 - Evaluate constrained conditions over inputs and earlier step results—without `eval`
@@ -441,9 +442,11 @@ The six configuration phases are:
 5. **Focus** — priority caps, frog rules, quick wins, and task conventions
 6. **Style** — writing voice, agent persona, vocabulary, layouts, and reflections
 
-A confirmation/synthesis stage then previews 2–4 templates and 2–3 workflows. Nothing is generated until you explicitly select and approve it.
+A confirmation/synthesis stage then previews 2–4 templates and 2–3 workflows. Nothing is generated until you explicitly select and approve it. The interview proactively references the vault topology it already scanned, so the first questions are grounded in what was actually found — it does not defer topology to a later step.
 
-The interview writes validated assets under `.command-center/`, including:
+The interview is **persistent**: close the dashboard or restart Obsidian mid-interview and it resumes exactly where you left off, including any pending synthesis and connector approvals. Progress is cleared only when the interview completes or you run the reset command.
+
+The interview writes validated assets under your configured paths (`.command-center/` by default), including:
 
 ```text
 .command-center/
@@ -463,7 +466,7 @@ To start over, run **Command Center: Reset / Re-Initialize Vault Configuration**
 
 ## Configuration
 
-Open **Settings → Command Center**. The settings UI is organized into six sections.
+Open **Settings → Command Center**. The settings UI is organized into seven sections.
 
 ### 1. Core Configuration
 
@@ -475,7 +478,7 @@ Configure text-to-speech enablement, speaking voice, speaking rate, speech-to-te
 
 **Speech-to-text models** are per-provider (STT model IDs are not portable across providers — `openai/gpt-4o-mini-transcribe` is an OpenRouter routing slug, `grok-stt` is xAI, `whisper-1` is OpenAI). Set the slug each provider accepts in the per-provider model fields; a blank entry uses the provider's built-in default.
 
-**Text-to-speech** can use the browser's built-in speech engine (default) or route through a provider's `/audio/speech` (or xAI `/v1/tts`) endpoint for higher-quality voices. Pick the engine in **Text-to-speech engine**; set a per-provider TTS model and voice id when using a provider engine.
+**Text-to-speech** can use the browser's built-in speech engine (default) or route through any configured provider's `/audio/speech` (or xAI `/v1/tts`) endpoint for higher-quality voices. Pick the engine in **Text-to-speech engine**; set a per-provider TTS model and voice id when using a provider engine. Every engine listed in the dropdown is actually wired through its provider — DeepInfra, Groq, Custom, LM Studio, and Ollama route through their own endpoints rather than silently falling back to browser TTS.
 
 ### 3. Provider Credentials
 
@@ -509,6 +512,20 @@ Enable or disable fallback, then add, remove, and reorder providers. Permanent r
 
 Review provider state, test one provider, refresh all providers, and inspect actionable errors such as a missing Pi binary or unreachable local endpoint.
 
+### 7. Paths & Appearance
+
+Control where generated assets land in your vault and how time is displayed:
+
+- **Workflow directory** — where generated workflow files are written.
+- **Workflow format** — `.md` (Markdown with YAML frontmatter, human-readable) or `.json`. The onboarding interview honors this choice.
+- **Template directory** — where generated templates are written.
+- **Profile path** — where the onboarding profile is written.
+- **Migrate now** — move existing workflows/templates/profile to the new configured locations through Obsidian's trash flow.
+- **Time format** — System (detected), 12-hour, or 24-hour. Applied to the clock, the daily schedule, and future time displays.
+- **Clock widget** — toggle seconds, toggle the date, pick a date verbosity (long / short / numeric), and set an optional label.
+
+Paths are validated and sanitized: emoji and pictographs are stripped, so generated folders never carry icon characters. The plugin can also update these paths programmatically via `updateAssetPaths()` (used by the onboarding interview), with optional file migration.
+
 ## Everyday usage
 
 ### Dashboard
@@ -517,14 +534,20 @@ Open Command Center from the ribbon or command palette. Every panel carries a on
 
 **Happening now — four zero-token intelligence cards**
 
-Computed from Obsidian's metadata cache only; no model calls, no token spend.
+Computed from Obsidian's metadata cache only; no model calls, no token spend. The four cards can be reordered and individually shown or hidden under **Settings → Command Center → Dashboard**.
 
 | Card | What it shows | What to do |
 |---|---|---|
 | Daily intelligence | Today's note, its sections, tracked metrics, and any capacity rule that tripped | Click to open today's note |
 | Capture | Notes you dropped in but have not filed | Open one to process it, or ask for triage |
-| Action items | Open tasks vault-wide, in Kanban-style lanes (Overdue / Due today / Scheduled / Undated) | Click a row to jump to that exact line |
+| Action items | Open (and optionally completed) tasks vault-wide, in user-configurable Kanban lanes | Click a row to jump to that exact line |
 | Workspaces | Managed folders with live note counts, freshness, and index state, plus nested `.base` views | Click to open a folder index or Bases view |
+
+The **Action items** card is fully configurable — think Kanban. Under **Settings → Command Center → Dashboard → Action items — Kanban lanes** you define the lanes (columns): a label, a deterministic filter (`overdue`, `due today`, `scheduled`, `undated`, `done`, or `all tasks`), and a hide-when-empty flag. Lanes render in your chosen order, empty lanes can stay visible as placeholders, and a `done` lane surfaces completed work only when you add one. The defaults (Overdue / Due today / Scheduled / Undated) match the previous hard-coded board.
+
+**Clock** — a live, zero-token clock respecting your time-format preference (System / 12h / 24h). Customize it under **Paths & Appearance**: toggle seconds, toggle the date, pick a date verbosity (long / short / numeric), and set an optional label.
+
+**Today's schedule** — a zero-cost "today by time" view built only from Obsidian's metadata cache. It surfaces tasks due today, parses inline time tags (`⏰ HH:MM` and `[time:: HH:MM]`), sorts timed entries before untimed ones, and click-throughs to the source note. No model calls, no token spend.
 
 **Calendar** — a month grid marking which days have notes and how much work is scheduled. Click a date to open or create its daily note, tick tasks complete, reschedule them, delete them, or add new dated tasks. Every write is a proposal that passes the write gate first.
 
@@ -589,6 +612,7 @@ Card bodies render through Obsidian's own Markdown renderer, so embedded `.base`
 - Daily-cycle controls and consolidated silent-start summaries
 - Obsidian's built-in browser, opened in a split pane for documentation and research
 - Per-vault widget ordering, sizing, collapse/visibility controls, and responsive layout persistence
+- Live clock widget (time-format aware, customizable) and a zero-cost today-by-time schedule widget
 - Review-before-send dictation plus opt-in audio cues, speech-to-text, and AI read-aloud
 
 ### Chat panel
@@ -826,7 +850,7 @@ npm run dev
 |---|---|
 | `npm run typecheck` | Strict TypeScript check (including security, metacognition, execution, and diagnostic layers) |
 | `npm run lint` | Zero-warning ESLint gate |
-| `npm run test` | 167 core + 153 ReAct + 22 provider = 342 total |
+| `npm run test` | 242 core + 153 ReAct + 22 provider = 417 total |
 | `npm run benchmark` | Produce the standardized 10-metric report |
 | `npm run benchmark:check` | Enforce the 25% core regression threshold |
 | `npm run sanitize` | Scan public repository files for PII/secrets/runtime data |
@@ -874,9 +898,9 @@ The `OnboardingConfig` already has a `style.dailyNoteLayout` field, so a `style.
 
 ## Quality, security, and release controls
 
-The test suite currently contains **342 tests**:
+The test suite currently contains **417 tests**:
 
-- **167 core tests** — build integrity, parsers, byte-safe RPC framing, subprocess integration, task queue, recovery, provider fallback, capability registry, user memory, system prompts, project manager, composer fuzzy matching, @-mention engine, fallback pipeline, and STT/TTS adapters
+- **242 core tests** — build integrity, parsers, byte-safe RPC framing, subprocess integration, task queue, recovery, provider fallback, capability registry, user memory, system prompts, project manager, composer fuzzy matching, @-mention engine, fallback pipeline, and STT/TTS adapters
 - **153 ReAct and subsystem tests** — roles, evaluation, traces, workflows, Bases, chat context, action cards, audio, JIT lifecycle, RAG, memory, CLI, locks, and stress scenarios
 - **22 provider tests** — XAI provider, OpenRouter model metadata, transcription candidates, and model matrix integration
 
@@ -891,7 +915,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.8.0`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.9.0`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**.
 

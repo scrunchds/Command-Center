@@ -41,10 +41,12 @@ export type DashboardWidgetHeight = 'auto' | 'short' | 'tall' | 'taller';
 
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardWidgetLayout[] = [
 	{ id: 'workspace', hidden: false, collapsed: false, size: 'standard' },
+	{ id: 'clock', hidden: false, collapsed: false, size: 'compact' },
 	{ id: 'deck', hidden: false, collapsed: false, size: 'compact' },
 	{ id: 'navigator', hidden: false, collapsed: false, size: 'standard' },
 	{ id: 'intelligence', hidden: false, collapsed: false, size: 'expanded' },
 	{ id: 'calendar', hidden: false, collapsed: false, size: 'standard' },
+	{ id: 'schedule', hidden: false, collapsed: false, size: 'standard' },
 	// Browser starts hidden: it is opt-in reading space, not everyday signal.
 	{ id: 'browser', hidden: true, collapsed: false, size: 'expanded' },
 	{ id: 'approvals', hidden: false, collapsed: false, size: 'expanded' },
@@ -163,6 +165,96 @@ export interface CommandCenterSettings {
 	capabilityPreferences: CapabilityUserPreference[];
 	/** Max autonomous tool calls per ReAct cycle. */
 	capabilityMaxAutonomousCalls: number;
+
+	/* ─── Asset placement (user controls where files live in the vault) ─── */
+
+	/**
+	 * Vault-relative directory where approved workflows are written. Defaults
+	 * to the hidden `.command-center/workflows`. Set to a visible folder
+	 * (e.g. `Workflows`) to keep generated workflows in plain sight. Existing
+	 * generated workflows are not moved automatically when this changes.
+	 */
+	workflowDirectory: string;
+	/** File format for generated workflows. `md` writes human-editable
+	 * frontmatter (loadWorkflowFromNote reads it); `json` writes the raw DAG. */
+	workflowFormat: 'md' | 'json';
+	/** Vault-relative directory where approved templates are written. */
+	templateDirectory: string;
+	/** Vault-relative path of the interview-derived profile JSON. */
+	profilePath: string;
+
+	/**
+	 * How times are formatted across the dashboard and schedule widget.
+	 * Default 'system' inherits the OS locale's hour12/24h preference; the
+	 * user may force '12h' or '24h'. The Paths tab exposes this as a dropdown.
+	 */
+	timeFormat: 'system' | '12h' | '24h';
+
+	/* ─── Clock widget customization ─── */
+	/** Show a seconds field on the clock widget. */
+	clockShowSeconds: boolean;
+	/** Show the current date beneath the clock. */
+	clockShowDate: boolean;
+	/** Date verbosity for the clock widget. */
+	clockDateFormat: 'long' | 'short' | 'numeric';
+	/** Optional label shown above the clock (e.g. a timezone name or office). */
+	clockLabel: string;
+
+	/* ─── "Happening now" intelligence customization ─── */
+	/** Ordered, toggleable intelligence cards (daily / capture / actions / workspaces). */
+	intelligenceCards: IntelligenceCardEntry[];
+	/** Configurable kanban-style lanes for the Action items card. */
+	actionLanes: ActionLaneConfig[];
+}
+
+/** Identifier for one of the four built-in intelligence cards. */
+export type IntelligenceCardId = 'daily' | 'capture' | 'actions' | 'workspaces';
+
+/** One entry in the ordered, toggleable intelligence card list. */
+export interface IntelligenceCardEntry {
+	id: IntelligenceCardId;
+	hidden: boolean;
+}
+
+/** Deterministic filter that assigns tasks to a kanban lane. */
+export type ActionLaneFilter = 'overdue' | 'due-today' | 'upcoming' | 'undated' | 'done' | 'all';
+
+/** One configurable lane in the Action items intelligence card. */
+export interface ActionLaneConfig {
+	id: string;
+	label: string;
+	filter: ActionLaneFilter;
+	/** Hide this lane when it has no matching tasks. */
+	hideWhenEmpty: boolean;
+}
+
+/**
+ * Validate a user-supplied vault-relative asset path. Rejects empty, root,
+ * parent-escape, and the reserved `.command-center` root (sub-paths are fine).
+ * Strips emoji/pictographs and common decorative wrappers so a model-suggested
+ * value like `📁 Workflows` or `📂 "Templates"` is normalized to `Workflows` /
+ * `Templates` rather than rejected. Returns the normalized path or throws.
+ * Used by the Paths settings tab and by updateAssetPaths.
+ */
+export function validateAssetPath(value: string, { allowFile = false }: { allowFile?: boolean } = {}): string {
+	// Drop emoji, pictographs, symbols, and decorative box-drawing/smart
+	// quotes/wrapping characters that models sometimes prepend to paths.
+	const stripped = value
+		.replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200d]/gu, '')
+		.replace(/[\u2500-\u257f\u2190-\u21ff\u2b00-\u2bff\u2600-\u27bf]/gu, '')
+		.replace(/[\u201c\u201d\u2018\u2019\u00ab\u00bb"`]/g, '')
+		.trim();
+	const trimmed = stripped.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+	if (!trimmed || trimmed === '.') throw new Error('Path cannot be empty or the vault root.');
+	if (trimmed.startsWith('../') || trimmed.includes('/../') || trimmed === '..') throw new Error('Path cannot escape the vault.');
+	if (trimmed === '.command-center') throw new Error('Storing directly in .command-center is not allowed; use a subfolder such as .command-center/workflows.');
+	// A file path has exactly one segment with an extension in the final component.
+	const segments = trimmed.split('/');
+	const last = segments[segments.length - 1] ?? trimmed;
+	const looksLikeFile = last.includes('.');
+	if (looksLikeFile && !allowFile) throw new Error(`Expected a folder path, but "${last}" looks like a file.`);
+	if (!looksLikeFile && allowFile) throw new Error(`Expected a file path with an extension, but "${last}" has none.`);
+	return trimmed;
 }
 
 export const DEFAULT_MULTI_PROVIDER: MultiProviderSettings = {
@@ -253,11 +345,103 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	capabilitySystemEnabled: true,
 	capabilityPreferences: [],
 	capabilityMaxAutonomousCalls: 8,
+	workflowDirectory: '.command-center/workflows',
+	workflowFormat: 'md',
+	templateDirectory: '.command-center/templates',
+	profilePath: '.command-center/profile.json',
+	timeFormat: 'system',
+	clockShowSeconds: true,
+	clockShowDate: true,
+	clockDateFormat: 'long',
+	clockLabel: '',
+	intelligenceCards: [
+		{ id: 'daily', hidden: false },
+		{ id: 'capture', hidden: false },
+		{ id: 'actions', hidden: false },
+		{ id: 'workspaces', hidden: false },
+	],
+	actionLanes: [
+		{ id: 'overdue', label: 'Overdue', filter: 'overdue', hideWhenEmpty: true },
+		{ id: 'due-today', label: 'Due today', filter: 'due-today', hideWhenEmpty: true },
+		{ id: 'upcoming', label: 'Scheduled', filter: 'upcoming', hideWhenEmpty: true },
+		{ id: 'undated', label: 'Undated', filter: 'undated', hideWhenEmpty: true },
+	],
 };
 
 /** Bounds for the Metacognitive Depth slider (Directive 1.6). */
 export const METACOGNITIVE_DEPTH_MIN = 1;
 export const METACOGNITIVE_DEPTH_MAX = 10;
+
+/** Default intelligence card order/visibility, used to reconcile saved data. */
+export const DEFAULT_INTELLIGENCE_CARDS: IntelligenceCardEntry[] = [
+	{ id: 'daily', hidden: false },
+	{ id: 'capture', hidden: false },
+	{ id: 'actions', hidden: false },
+	{ id: 'workspaces', hidden: false },
+];
+
+/** Default kanban lanes for the Action items card. */
+export const DEFAULT_ACTION_LANES: ActionLaneConfig[] = [
+	{ id: 'overdue', label: 'Overdue', filter: 'overdue', hideWhenEmpty: true },
+	{ id: 'due-today', label: 'Due today', filter: 'due-today', hideWhenEmpty: true },
+	{ id: 'upcoming', label: 'Scheduled', filter: 'upcoming', hideWhenEmpty: true },
+	{ id: 'undated', label: 'Undated', filter: 'undated', hideWhenEmpty: true },
+];
+
+/** Known intelligence card ids in their canonical order. */
+const INTELLIGENCE_CARD_ORDER: IntelligenceCardId[] = ['daily', 'capture', 'actions', 'workspaces'];
+
+/** Valid action-lane filter values, used to drop malformed saved data. */
+const ACTION_LANE_FILTERS: ActionLaneFilter[] = ['overdue', 'due-today', 'upcoming', 'undated', 'done', 'all'];
+
+/**
+ * Reconcile a saved intelligence-card list against the cards that ship.
+ * Preserves the user's order and visibility choices; appends any newly shipped
+ * card at its default position and drops unknown ids. Returns the default
+ * list when `saved` is missing or malformed so a fresh vault always renders.
+ */
+export function resolveIntelligenceCards(saved: unknown): IntelligenceCardEntry[] {
+	if (!Array.isArray(saved)) return DEFAULT_INTELLIGENCE_CARDS.map(entry => ({ ...entry }));
+	const known = new Set<IntelligenceCardId>(INTELLIGENCE_CARD_ORDER);
+	const seen = new Set<string>();
+	const merged: IntelligenceCardEntry[] = [];
+	for (const raw of saved) {
+		if (!raw || typeof raw !== 'object') continue;
+		const entry = raw as { id?: unknown; hidden?: unknown };
+		if (typeof entry.id !== 'string' || !known.has(entry.id as IntelligenceCardId) || seen.has(entry.id)) continue;
+		seen.add(entry.id);
+		merged.push({ id: entry.id as IntelligenceCardId, hidden: Boolean(entry.hidden) });
+	}
+	for (const fallback of DEFAULT_INTELLIGENCE_CARDS) {
+		if (seen.has(fallback.id)) continue;
+		seen.add(fallback.id);
+		merged.push({ ...fallback });
+	}
+	return merged;
+}
+
+/**
+ * Reconcile saved action-lane config. Drops lanes with bad filter values or
+ * empty labels, dedupes ids, and falls back to the default lanes when nothing
+ * usable remains, so the Action items card is never blank by accident.
+ */
+export function resolveActionLanes(saved: unknown): ActionLaneConfig[] {
+	if (!Array.isArray(saved)) return DEFAULT_ACTION_LANES.map(lane => ({ ...lane }));
+	const seen = new Set<string>();
+	const merged: ActionLaneConfig[] = [];
+	for (const raw of saved) {
+		if (!raw || typeof raw !== 'object') continue;
+		const lane = raw as { id?: unknown; label?: unknown; filter?: unknown; hideWhenEmpty?: unknown };
+		const label = typeof lane.label === 'string' ? lane.label.trim() : '';
+		if (!label) continue;
+		const filter = ACTION_LANE_FILTERS.includes(lane.filter as ActionLaneFilter) ? (lane.filter as ActionLaneFilter) : 'all';
+		let id = typeof lane.id === 'string' && lane.id ? lane.id : `${filter}-${merged.length}`;
+		while (seen.has(id)) id = `${id}-${merged.length}`;
+		seen.add(id);
+		merged.push({ id, label, filter, hideWhenEmpty: lane.hideWhenEmpty !== false });
+	}
+	return merged.length > 0 ? merged : DEFAULT_ACTION_LANES.map(lane => ({ ...lane }));
+}
 
 // Re-export the dynamic settings tab for convenience
 export { PluginSettingsTab } from './PluginSettingsTab';

@@ -12,6 +12,7 @@ import {
 	PluginSettingsTab,
 	structuredSafeDefaults,
 	mergeMultiProvider,
+	validateAssetPath,
 } from './settings/settings-model';
 import { PersistenceManager } from './persistence';
 import type { StoredTask, StoredSessions } from './persistence';
@@ -39,6 +40,7 @@ import type { Task, TaskResult, ToolConfirmationDecision, ToolConfirmationReques
 import { TOKEN_LIMITS } from './types';
 import type { Conversation, Turn } from './conversation';
 import { ConversationManager } from './conversation';
+import { withGlobalChatInteractionStyle } from './prompts/interaction-style';
 import { createObsidianTools, createWebSearchTool } from './obsidian-tools';
 import { registerExtendedVaultTools } from './extended-vault-tools';
 import {
@@ -401,7 +403,7 @@ export default class CommandCenterPlugin extends Plugin {
 				const normalized = await this.executionRouter.execute({
 					resolution,
 					request: {
-						systemPrompt: this.configManager.requireStyleGuide(),
+						systemPrompt: withGlobalChatInteractionStyle(this.configManager.requireStyleGuide()),
 						userPrompt: task.prompt,
 						taskId: task.id,
 						onStream: task.onStream,
@@ -658,6 +660,15 @@ export default class CommandCenterPlugin extends Plugin {
 					if (!request) return true;
 					return (await this.requestDashboardApproval(request)) === 'approved';
 				},
+				{
+					getAssetPaths: () => ({
+						workflowDirectory: this.settings.workflowDirectory,
+						workflowFormat: this.settings.workflowFormat,
+						templateDirectory: this.settings.templateDirectory,
+						profilePath: this.settings.profilePath,
+					}),
+					updateAssetPaths: async patch => this.updateAssetPaths(patch),
+				},
 			);
 			await view.openOnboarding(engine, async (config) => {
 				await this.folderIndexer.initialize(config.managedFolders);
@@ -722,6 +733,10 @@ export default class CommandCenterPlugin extends Plugin {
 		this.capacityEngine = undefined as unknown as CapacityEngine;
 		this.dailyEngine = undefined as unknown as DailyEngine;
 		await this.configManager.reset();
+		// Clear any persisted in-progress interview so the next onboarding
+		// starts fresh rather than resuming the superseded session.
+		const progressFile = this.app.vault.getAbstractFileByPath('.command-center/interview-progress.json');
+		if (progressFile instanceof TFile) await this.app.fileManager.trashFile(progressFile).catch(() => undefined);
 		this.folderIndexer = new FolderIndexer(this.app);
 		this.folderIndexer.start();
 	}
@@ -828,6 +843,75 @@ export default class CommandCenterPlugin extends Plugin {
 	 */
 	setDaemonPath(newPath: string): boolean {
 		return this.daemon.setPiPath(newPath);
+	}
+
+	/**
+	 * Programmatic asset-path override. The plugin (e.g. the onboarding
+	 * interview or a workflow that reorganizes the vault) can update where
+	 * generated workflows, templates, and the profile are written, and
+	 * optionally migrate existing files to the new locations. Settings UI
+	 * changes route through here too, so there is a single owner of these
+	 * paths and every live component reconfigures from one place.
+	 */
+	async updateAssetPaths(
+		patch: Partial<{
+			workflowDirectory: string;
+			workflowFormat: 'md' | 'json';
+			templateDirectory: string;
+			profilePath: string;
+		}>,
+		options: { migrate?: boolean } = {},
+	): Promise<void> {
+		const next: Partial<CommandCenterSettings> = {};
+		if (patch.workflowDirectory !== undefined) next.workflowDirectory = validateAssetPath(patch.workflowDirectory);
+		if (patch.templateDirectory !== undefined) next.templateDirectory = validateAssetPath(patch.templateDirectory);
+		if (patch.profilePath !== undefined) {
+			const validated = validateAssetPath(patch.profilePath, { allowFile: true });
+			if (!validated.endsWith('.json')) throw new Error('Profile path must end with .json');
+			next.profilePath = validated;
+		}
+		if (patch.workflowFormat !== undefined) {
+			if (patch.workflowFormat !== 'md' && patch.workflowFormat !== 'json') throw new Error('Workflow format must be "md" or "json".');
+			next.workflowFormat = patch.workflowFormat;
+		}
+		Object.assign(this.settings, next);
+		await this.saveSettings();
+		if (options.migrate) await this.migrateAssetFiles();
+		this.refreshCommandDeck();
+		console.debug('[CC] Asset paths updated:', next);
+	}
+
+	/** Move existing generated assets from their previous locations to the current configured paths. */
+	private async migrateAssetFiles(): Promise<void> {
+		const oldWorkflowDir = '.command-center/workflows';
+		const oldTemplateDir = '.command-center/templates';
+		const moves: Array<[string, string]> = [];
+		if (this.settings.workflowDirectory !== oldWorkflowDir) moves.push([oldWorkflowDir, this.settings.workflowDirectory]);
+		if (this.settings.templateDirectory !== oldTemplateDir) moves.push([oldTemplateDir, this.settings.templateDirectory]);
+		for (const [from, to] of moves) {
+			const source = this.app.vault.getAbstractFileByPath(normalizePath(from));
+			if (!source) continue;
+			try {
+				await this.ensureFolder(to);
+				await this.app.vault.rename(source, normalizePath(to));
+			} catch (error) {
+				console.warn(`[CC] Could not migrate ${from} → ${to}:`, error);
+			}
+		}
+	}
+
+	private async ensureFolder(path: string): Promise<void> {
+		const normalized = normalizePath(path);
+		const existing = this.app.vault.getAbstractFileByPath(normalized);
+		if (existing) return;
+		const parent = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : '';
+		if (parent) await this.ensureFolder(parent);
+		await this.app.vault.createFolder(normalized);
+	}
+
+	/** Re-scan the Command Deck so newly placed workflows appear without a reload. */
+	refreshCommandDeck(): void {
+		this.getCommandCenterView()?.refreshCommandDeck();
 	}
 
 	/**

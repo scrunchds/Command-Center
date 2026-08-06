@@ -82,7 +82,13 @@ export class DashboardOnboarding {
 		this.renderer.registerDomEvent(this.send, 'click', () => void this.submit());
 		this.status = this.composer.createDiv({ cls: 'cc-onboarding-status' });
 		try {
-			await this.render('assistant', await this.engine.start());
+			// Resume an in-progress interview if one was persisted, instead of
+			// always starting fresh. This makes onboarding persistent across
+			// dashboard close/reopen and Obsidian restarts.
+			const resumed = await this.restoreProgress();
+			if (!resumed) {
+				await this.render('assistant', await this.engine.start());
+			}
 			this.input.focus();
 		} catch (error) {
 			this.setStatus((error as Error).message, true);
@@ -139,6 +145,7 @@ export class DashboardOnboarding {
 			if (reply.connectorApproval) this.renderConnectorApproval(reply.connectorApproval.connector);
 			if (reply.complete) {
 				if (reply.config) await this.options.onComplete?.(reply.config);
+				this.clearPersistedProgress();
 				this.options.onClose?.();
 				new Notice('Command center onboarding complete.');
 			}
@@ -156,6 +163,7 @@ export class DashboardOnboarding {
 		if (this.busy) return;
 		try {
 			this.engine.rewind();
+			this.persistProgress();
 			// Re-render the last assistant message state by showing the previous
 			// question text.
 			this.setStatus('You can now correct or extend your previous answer.');
@@ -191,24 +199,42 @@ export class DashboardOnboarding {
 		}
 	}
 
-	/** Restore a previously persisted interview session. */
-	private async restoreProgress(): Promise<void> {
+	/** Restore a previously persisted interview session. Returns true if state was restored. */
+	private async restoreProgress(): Promise<boolean> {
 		try {
 			const file = this.plugin.app.vault.getAbstractFileByPath('.command-center/interview-progress.json');
-			if (file instanceof TFile) {
-				const data = await this.plugin.app.vault.read(file);
-				if (data) {
-					this.engine.deserialize(data);
-					// Replay persisted turns into the history.
-					for (const turn of this.engine.getTurns()) {
-						if (turn.role === 'user' || turn.role === 'assistant') {
-							await this.render(turn.role, turn.content);
-						}
-					}
-					this.updatePhase();
+			if (!(file instanceof TFile)) return false;
+			const data = await this.plugin.app.vault.read(file);
+			if (!data) return false;
+			this.engine.deserialize(data);
+			const turns = this.engine.getTurns();
+			if (!turns.length) return false;
+			// Replay persisted turns into the visible history.
+			for (const turn of turns) {
+				if (turn.role === 'user' || turn.role === 'assistant') {
+					await this.render(turn.role, turn.content);
 				}
 			}
-		} catch { /* No saved interview yet. */ }
+			this.updatePhase();
+			// Re-surface any pending approval gate that was interrupted.
+			const synthesis = this.engine.getPendingSynthesis();
+			if (synthesis) this.renderApproval(synthesis);
+			const connector = this.engine.getPendingConnector();
+			if (connector) this.renderConnectorApproval(connector);
+			this.setStatus('Resumed your previous interview. Continue where you left off.');
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/** Delete the persisted progress file once onboarding completes. */
+	private clearPersistedProgress(): void {
+		const path = '.command-center/interview-progress.json';
+		const file = this.plugin.app.vault.getAbstractFileByPath(path);
+		if (file instanceof TFile) {
+			void this.plugin.app.fileManager.trashFile(file).catch(() => undefined);
+		}
 	}
 
 	private renderApproval(synthesis: InterviewSynthesis): void {
@@ -234,6 +260,7 @@ export class DashboardOnboarding {
 			try {
 				const result = await this.engine.completeSynthesis(selected(templates), selected(workflows));
 				await this.options.onComplete?.(result.config);
+				this.clearPersistedProgress();
 				// Setup is complete: leave the onboarding surface immediately so the
 				// dashboard cannot continue to suggest that setup is pending.
 				this.options.onClose?.();
@@ -287,6 +314,7 @@ export class DashboardOnboarding {
 			try {
 				const result = await this.engine.approvePendingWorkflows();
 				await this.options.onComplete?.(result.config);
+				this.clearPersistedProgress();
 				this.options.onClose?.();
 				new Notice(`Command center initialized. Created ${result.workflowPaths.length} workflow(s).`);
 			} catch (error) {

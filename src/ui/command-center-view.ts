@@ -22,6 +22,7 @@ import type { OnboardingConfig } from '../onboarding/OnboardingTypes';
 import type { ApiConnectorConfig } from '../connectors/ApiConnectorManager';
 import type { WriteGateRecord } from '../security/WriteGate';
 import { renderIntelligenceCards } from './IntelligenceCards';
+import { resolveIntelligenceCards, resolveActionLanes } from '../settings/settings-model';
 import { CUSTOM_WIDGET_PREFIX, CustomCards } from './CustomCards';
 import { BrowserPanel } from './BrowserPanel';
 import { openInNativeWebViewer } from './native-webviewer';
@@ -31,6 +32,8 @@ import {
 } from './layout-model';
 import { CommandDeck, type DeckEntry } from './CommandDeck';
 import { CalendarPanel } from './CalendarPanel';
+import { DailySchedulePanel } from './DailySchedulePanel';
+import { ClockPanel } from './ClockPanel';
 import { ChatBoxPanel } from './ChatBoxPanel';
 import { VaultNavigator } from './VaultNavigator';
 import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings/settings-model';
@@ -137,6 +140,8 @@ export class CommandCenterView extends ItemView {
 	private deckEl: HTMLElement | null = null;
 	private commandDeck: CommandDeck | null = null;
 	private calendarPanel: CalendarPanel | null = null;
+	private schedulePanel: DailySchedulePanel | null = null;
+	private clockPanel: ClockPanel | null = null;
 	private vaultNavigator: VaultNavigator | null = null;
 	private customCards: CustomCards | null = null;
 	private customCardsEl: HTMLElement | null = null;
@@ -208,10 +213,12 @@ export class CommandCenterView extends ItemView {
 		const widgetHost = this.widgetHostEl;
 		this.dashboardWorkspaceEl = widgetHost.createEl('section', { cls: 'command-center-section cc-dashboard-workspace' });
 		this.renderDashboardWorkspace();
+		this.renderClock(widgetHost);
 		this.renderCommandDeck(widgetHost);
 		this.renderNavigator(widgetHost);
 		this.renderIntelligence(widgetHost);
 		this.renderCalendar(widgetHost);
+		this.renderSchedule(widgetHost);
 		this.renderBrowser(widgetHost);
 		this.renderCustomCards(widgetHost);
 		this.renderApprovalQueue(widgetHost);
@@ -637,6 +644,9 @@ export class CommandCenterView extends ItemView {
 		this.deckEl = null;
 		this.calendarPanel?.dispose();
 		this.calendarPanel = null;
+		this.schedulePanel = null;
+		this.clockPanel?.dispose();
+		this.clockPanel = null;
 		this.vaultNavigator?.dispose();
 		this.vaultNavigator = null;
 		this.customCards?.dispose();
@@ -887,7 +897,7 @@ export class CommandCenterView extends ItemView {
 			const label = this.customCards?.labelFor(id);
 			return label ? `${label} (custom card)` : id.slice(CUSTOM_WIDGET_PREFIX.length);
 		}
-		return ({ workspace: 'Operational overview', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', browser: 'Browser', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', chatbox: 'Chatbox', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id;
+		return ({ workspace: 'Operational overview', clock: 'Clock', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', schedule: 'Daily schedule', browser: 'Browser', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', chatbox: 'Chatbox', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id;
 	}
 	private updateWidget(id: string, patch: Partial<DashboardWidgetLayout>): void {
 		this.plugin.settings.dashboardLayout = this.normalizedLayout().map(widget => widget.id === id ? { ...widget, ...patch, ...(id === 'approvals' ? { hidden: false, collapsed: false } : {}) } : widget);
@@ -981,14 +991,18 @@ export class CommandCenterView extends ItemView {
 	}
 
 	/** Recompute and repaint the intelligence cards. */
-	private async refreshIntelligence(force = false): Promise<void> {
+	async refreshIntelligence(force = false): Promise<void> {
 		if (!this.intelligenceEl) return;
 		try {
 			const snapshot = await this.plugin.vaultData.snapshot(force);
 			if (!this.intelligenceEl || !this.isViewOpen) return;
-			renderIntelligenceCards(this.intelligenceEl, this.app, snapshot);
+			renderIntelligenceCards(this.intelligenceEl, this.app, snapshot, {
+				cards: resolveIntelligenceCards(this.plugin.settings.intelligenceCards),
+				lanes: resolveActionLanes(this.plugin.settings.actionLanes),
+			});
 			// One snapshot feeds every zero-cost surface.
 			this.calendarPanel?.update(snapshot);
+			this.schedulePanel?.update(snapshot);
 			this.vaultNavigator?.refresh();
 			// The overview strip shows live counts (overdue tasks, etc.).
 			this.refreshOverview();
@@ -1012,6 +1026,33 @@ export class CommandCenterView extends ItemView {
 		this.markWidget(section, 'deck');
 		this.deckEl = section.createDiv();
 		this.commandDeck = new CommandDeck(this.app, {
+			// The configured workflow directory is the primary discovery root;
+			// the hidden generated directory is kept as a fallback so legacy
+			// workflows remain launchable after a path change until migrated.
+			directories: this.deckDirectories(),
+			onLaunch: entry => void this.launchDeckEntry(entry),
+			onCreate: () => this.startNewWorkflow(),
+		});
+		this.commandDeck.mount(this.deckEl);
+	}
+
+	/** Directories the deck scans: the user-configured workflow folder plus the hidden default. */
+	private deckDirectories(): string[] {
+		const dirs = new Set<string>();
+		const configured = this.plugin.settings.workflowDirectory;
+		if (configured) dirs.add(configured);
+		dirs.add('.command-center/workflows');
+		return [...dirs];
+	}
+
+	/** Re-scan after the operator changes where workflows are stored. */
+	refreshCommandDeck(): void {
+		this.commandDeck?.dispose();
+		this.commandDeck = null;
+		if (!this.deckEl) return;
+		this.deckEl.empty();
+		this.commandDeck = new CommandDeck(this.app, {
+			directories: this.deckDirectories(),
 			onLaunch: entry => void this.launchDeckEntry(entry),
 			onCreate: () => this.startNewWorkflow(),
 		});
@@ -1149,6 +1190,46 @@ export class CommandCenterView extends ItemView {
 			},
 		});
 		this.calendarPanel.mount(host);
+	}
+
+	private renderClock(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-clock-section' });
+		this.markWidget(section, 'clock');
+		this.sectionHeading(
+			section,
+			'Clock',
+			'Live wall clock and current date.',
+			'The time format follows your system locale by default; override it in Settings → Command Center → Paths → Time format.',
+		);
+		const host = section.createDiv();
+		this.clockPanel = new ClockPanel(this.app, {
+			getTimeFormat: () => this.plugin.settings.timeFormat,
+			getShowSeconds: () => this.plugin.settings.clockShowSeconds,
+			getShowDate: () => this.plugin.settings.clockShowDate,
+			getDateFormat: () => this.plugin.settings.clockDateFormat,
+			getLabel: () => this.plugin.settings.clockLabel,
+		});
+		this.clockPanel.mount(host);
+	}
+
+	private renderSchedule(container: HTMLElement): void {
+		const section = container.createEl('section', { cls: 'command-center-section cc-schedule-section' });
+		this.markWidget(section, 'schedule');
+		this.sectionHeading(
+			section,
+			'Daily schedule',
+			'Today’s due tasks ordered by time, then unscheduled.',
+			'Add a time to a task with “⏰ HH:MM” or [time:: HH:MM] to place it on the timeline. Click a row to jump to its source note.',
+		);
+		const host = section.createDiv();
+		this.schedulePanel = new DailySchedulePanel(this.app, {
+			dailyNotePathFor: date => this.plugin.vaultData.dailyNotePathFor(date),
+		});
+		this.schedulePanel.mount(host);
+		// Seed with the most recent zero-cost snapshot so the panel is not empty
+		// until the next intelligence refresh.
+		const peeked = this.plugin.vaultData.peek();
+		if (peeked) this.schedulePanel.update(peeked);
 	}
 
 	private async launchDeckEntry(entry: DeckEntry): Promise<void> {

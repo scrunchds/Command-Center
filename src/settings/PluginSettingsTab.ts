@@ -42,8 +42,16 @@ import {
 	METACOGNITIVE_DEPTH_MIN,
 	METACOGNITIVE_DEPTH_MAX,
 	DEFAULT_DASHBOARD_LAYOUT,
+	validateAssetPath,
+	resolveIntelligenceCards,
+	resolveActionLanes,
+	DEFAULT_ACTION_LANES,
+	DEFAULT_INTELLIGENCE_CARDS,
 	type DashboardWidgetLayout,
 	type DashboardWidgetSize,
+	type IntelligenceCardId,
+	type ActionLaneConfig,
+	type ActionLaneFilter,
 } from '../settings/settings-model';
 import { mergeLayout, nudgeLayout } from '../ui/layout-model';
 import { CUSTOM_WIDGET_PREFIX } from '../ui/card-syntax';
@@ -112,7 +120,7 @@ function makeSyncState(): ModelSyncState {
    PluginSettingsTab
    ═══════════════════════════════════════════════════════════ */
 
-type SettingsTabId = 'all' | 'core' | 'features' | 'providers' | 'routing' | 'health' | 'dashboard';
+type SettingsTabId = 'all' | 'core' | 'features' | 'providers' | 'routing' | 'health' | 'dashboard' | 'paths';
 
 export class PluginSettingsTab extends PluginSettingTab {
 	plugin: CommandCenterPlugin;
@@ -190,6 +198,9 @@ export class PluginSettingsTab extends PluginSettingTab {
 		if (this.selectedTab === 'all' || this.selectedTab === 'features') {
 			this.renderFeatureToggles(content);
 			this.renderCapabilitySettingsSection(content);
+		}
+		if (this.selectedTab === 'all' || this.selectedTab === 'paths') {
+			this.renderAssetPathsSettings(content);
 		}
 		if (this.selectedTab === 'all' || this.selectedTab === 'providers') {
 			this.renderProviderCredentials(content);
@@ -679,6 +690,137 @@ export class PluginSettingsTab extends PluginSettingTab {
 					new Notice('Local-only mode enabled. Configure endpoints in providers → lm studio / ollama.');
 				}));
 		}
+	}
+
+	/* ═══════════════════════════════════════════════════════
+	   Section: Asset Paths — user-controlled placement of generated files
+	   ═══════════════════════════════════════════════════════ */
+	private renderAssetPathsSettings(containerEl: HTMLElement): void {
+		this.renderSectionHeader(
+			containerEl,
+			'paths',
+			'📁 Vault Paths',
+			'Control where Command Center writes generated workflows, templates, and the interview profile. Use a visible folder to keep these files in plain sight, or a hidden dotfolder to tuck them away. The plugin and the onboarding interview can also update these paths programmatically.',
+		);
+		const body = this.getSectionBody(containerEl, 'paths');
+
+		const pathSetting = (
+			label: string,
+			desc: string,
+			key: 'workflowDirectory' | 'templateDirectory' | 'profilePath',
+			opts: { allowFile?: boolean } = {},
+		): void => {
+			new Setting(body)
+				.setName(label)
+				.setDesc(desc)
+				.addText(text => {
+					text.setPlaceholder(key === 'profilePath' ? '.command-center/profile.json' : '.command-center/...')
+						.setValue(this.plugin.settings[key])
+						.onChange(value => {
+							void (async () => {
+								try {
+									const normalized = validateAssetPath(value, opts);
+									await this.plugin.updateAssetPaths({ [key]: normalized });
+									this.showSaved();
+								} catch (error) {
+									new Notice(`Invalid path: ${(error as Error).message}`);
+									text.setValue(this.plugin.settings[key]);
+								}
+							})();
+						});
+				});
+		};
+
+		pathSetting(
+			'Workflow directory',
+			'Where approved workflows are written. A visible folder (e.g. "Workflows") keeps them editable in your vault; ".command-center/workflows" hides them.',
+			'workflowDirectory',
+		);
+		pathSetting(
+			'Template directory',
+			'Where approved templates are written. A visible folder (e.g. "Templates") surfaces them in Obsidian\'s template picker.',
+			'templateDirectory',
+		);
+		pathSetting(
+			'Profile path',
+			'Vault-relative path of the interview-derived profile JSON. Must end with .json.',
+			'profilePath',
+			{ allowFile: true },
+		);
+
+		new Setting(body)
+			.setName('Time format')
+			.setDesc('How times render across the clock and schedule widgets. “System” inherits your OS locale’s 12h/24h preference; override it to force one style.')
+			.addDropdown(dropdown => {
+				dropdown.addOption('system', 'System default');
+				dropdown.addOption('12h', '12-hour (AM/PM)');
+				dropdown.addOption('24h', '24-hour');
+				dropdown.setValue(this.plugin.settings.timeFormat);
+				dropdown.onChange(value => {
+					void this.saveSetting('timeFormat', value as 'system' | '12h' | '24h');
+				});
+				return dropdown;
+			});
+
+		new Setting(body)
+			.setName('Clock — show seconds')
+			.setDesc('Display a seconds field on the clock widget.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.clockShowSeconds).onChange(value => this.saveSetting('clockShowSeconds', value)));
+
+		new Setting(body)
+			.setName('Clock — show date')
+			.setDesc('Show the current date beneath the clock.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.clockShowDate).onChange(value => this.saveSetting('clockShowDate', value)));
+
+		new Setting(body)
+			.setName('Clock — date format')
+			.setDesc('Verbosity of the date line beneath the clock.')
+			.addDropdown(dropdown => {
+				dropdown.addOption('long', 'Long (Monday, August 6, 2026)');
+				dropdown.addOption('short', 'Short (Mon, Aug 6)');
+				dropdown.addOption('numeric', 'Numeric (2026-08-06)');
+				dropdown.setValue(this.plugin.settings.clockDateFormat);
+				dropdown.onChange(value => this.saveSetting('clockDateFormat', value as 'long' | 'short' | 'numeric'));
+				return dropdown;
+			});
+
+		new Setting(body)
+			.setName('Clock — label')
+			.setDesc('Optional text shown above the clock, such as a timezone name or office. Leave blank for none.')
+			.addText(text => text.setPlaceholder('e.g. Home office').setValue(this.plugin.settings.clockLabel).onChange(value => this.saveSetting('clockLabel', value.trim())));
+
+		new Setting(body)
+			.setName('Workflow file format')
+			.setDesc('Markdown writes human-editable frontmatter you can modify by hand and re-run. JSON writes the raw agent-bound DAG contract.')
+			.addDropdown(dropdown => {
+				dropdown.addOption('md', 'Markdown (.md)');
+				dropdown.addOption('json', 'JSON (.json)');
+				dropdown.setValue(this.plugin.settings.workflowFormat);
+				dropdown.onChange(value => {
+					void this.plugin.updateAssetPaths({ workflowFormat: value as 'md' | 'json' });
+					this.showSaved();
+				});
+				return dropdown;
+			});
+
+		new Setting(body)
+			.setName('Migrate existing files now')
+			.setDesc('Move generated workflows and templates from their previous default locations into the currently configured directories. Safe to run repeatedly; nothing is deleted.')
+			.addButton(button => button.setButtonText('Migrate').onClick(() => {
+				void (async () => {
+					button.setButtonText('Migrating…');
+					button.setDisabled(true);
+					try {
+						await this.plugin.updateAssetPaths({}, { migrate: true });
+						new Notice('Asset migration complete.');
+					} catch (error) {
+						new Notice(`Migration failed: ${(error as Error).message}`);
+					} finally {
+						button.setButtonText('Migrate');
+						button.setDisabled(false);
+					}
+				})();
+			}));
 	}
 
 	private renderCapabilitySettingsSection(containerEl: HTMLElement): void {
@@ -1844,6 +1986,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 			{ id: 'providers', label: 'Providers', desc: 'Credentials, endpoints, and model sync' },
 			{ id: 'routing', label: 'Routing', desc: 'Task routing and fallback pipeline' },
 			{ id: 'dashboard', label: 'Dashboard', desc: 'Reorder, show or hide, and resize dashboard widgets' },
+			{ id: 'paths', label: 'Paths', desc: 'Where generated workflows, templates, and the profile are stored in your vault' },
 		];
 		// Advanced mode shows health dashboard and debug tools
 		if (this.plugin.settings.uiMode === 'advanced') {
@@ -1997,6 +2140,189 @@ export class PluginSettingsTab extends PluginSettingTab {
 				btn.onClick(() => this.moveWidget(widget.id, 1));
 			});
 		}
+
+		this.renderIntelligenceCustomization(body);
+	}
+
+	/** "Happening now" card order/visibility + configurable Action-items lanes. */
+	private renderIntelligenceCustomization(body: HTMLElement): void {
+		body.createDiv({ cls: 'cc-subsection-title', text: 'Happening now \u2014 cards' });
+		body.createEl('p', {
+			cls: 'cc-settings-description',
+			text: 'Reorder, show, or hide the four intelligence cards. The Action items card renders its own Kanban-style lanes (configured below).',
+		});
+		const cards = resolveIntelligenceCards(this.plugin.settings.intelligenceCards);
+		const cardLabels: Record<IntelligenceCardId, string> = {
+			daily: 'Daily intelligence',
+			capture: 'Capture',
+			actions: 'Action items',
+			workspaces: 'Workspaces',
+		};
+		for (let i = 0; i < cards.length; i++) {
+			const entry = cards[i]!;
+			const row = new Setting(body)
+				.setName(cardLabels[entry.id] ?? entry.id)
+				.setClass('cc-layout-setting-row');
+			row.addToggle(toggle => {
+				toggle.setValue(!entry.hidden);
+				toggle.onChange(value => this.patchIntelligenceCard(entry.id, { hidden: !value }));
+			});
+			row.addButton(btn => {
+				btn.setButtonText('\u2191');
+				btn.setDisabled(i === 0);
+				btn.onClick(() => this.nudgeIntelligenceCard(entry.id, -1));
+			});
+			row.addButton(btn => {
+				btn.setButtonText('\u2193');
+				btn.setDisabled(i === cards.length - 1);
+				btn.onClick(() => this.nudgeIntelligenceCard(entry.id, 1));
+			});
+		}
+		const resetCards = body.createEl('button', { text: 'Reset card order' });
+		resetCards.addEventListener('click', () => {
+			this.plugin.settings.intelligenceCards = DEFAULT_INTELLIGENCE_CARDS.map(c => ({ ...c }));
+			this.plugin.saveSettings().catch(() => {});
+			void this.plugin.getCommandCenterView()?.refreshIntelligence?.(true);
+			this.update();
+		});
+
+		body.createDiv({ cls: 'cc-subsection-title', text: 'Action items \u2014 Kanban lanes' });
+		body.createEl('p', {
+			cls: 'cc-settings-description',
+			text: 'Define the lanes (columns) shown on the Action items card. Each lane filters tasks deterministically from vault metadata \u2014 no methodology is imposed. Lanes render in order; set \u201cHide when empty\u201d to collapse empty columns.',
+		});
+		const lanes = resolveActionLanes(this.plugin.settings.actionLanes);
+		const filterLabels: Record<ActionLaneFilter, string> = {
+			'overdue': 'Overdue',
+			'due-today': 'Due today',
+			'upcoming': 'Scheduled (future)',
+			'undated': 'Undated (open)',
+			'done': 'Completed',
+			'all': 'All tasks',
+		};
+		for (let i = 0; i < lanes.length; i++) {
+			const lane = lanes[i]!;
+			const row = new Setting(body)
+				.setName(`Lane: ${lane.label}`)
+				.setClass('cc-layout-setting-row');
+			row.addText(text => {
+				text.setPlaceholder('Lane label')
+					.setValue(lane.label)
+					.onChange(value => this.patchActionLane(lane.id, { label: value.trim() || lane.label }));
+			});
+			row.addDropdown(dropdown => {
+				for (const filter of Object.keys(filterLabels) as ActionLaneFilter[]) {
+					dropdown.addOption(filter, filterLabels[filter]);
+				}
+				dropdown.setValue(lane.filter);
+				dropdown.onChange(value => this.patchActionLane(lane.id, { filter: value as ActionLaneFilter }));
+			});
+			row.addToggle(toggle => {
+				toggle.setTooltip('Hide this lane when it has no matching tasks');
+				toggle.setValue(lane.hideWhenEmpty);
+				toggle.onChange(value => this.patchActionLane(lane.id, { hideWhenEmpty: value }));
+			});
+			row.addButton(btn => {
+				btn.setButtonText('\u2191');
+				btn.setDisabled(i === 0);
+				btn.onClick(() => this.nudgeActionLane(lane.id, -1));
+			});
+			row.addButton(btn => {
+				btn.setButtonText('\u2193');
+				btn.setDisabled(i === lanes.length - 1);
+				btn.onClick(() => this.nudgeActionLane(lane.id, 1));
+			});
+			row.addButton(btn => {
+				btn.setButtonText('Remove');
+				btn.onClick(() => this.removeActionLane(lane.id));
+			});
+		}
+		const addLaneRow = new Setting(body).setName('Add lane');
+		addLaneRow.addButton(btn => {
+			btn.setButtonText('+ New lane');
+			btn.onClick(() => this.addActionLane());
+		});
+		const resetLanes = body.createEl('button', { text: 'Reset lanes' });
+		resetLanes.addEventListener('click', () => {
+			this.plugin.settings.actionLanes = DEFAULT_ACTION_LANES.map(l => ({ ...l }));
+			this.plugin.saveSettings().catch(() => {});
+			void this.plugin.getCommandCenterView()?.refreshIntelligence?.(true);
+			this.update();
+		});
+	}
+
+	/** Patch one intelligence card entry (hidden flag) and refresh. */
+	private patchIntelligenceCard(id: IntelligenceCardId, patch: { hidden: boolean }): void {
+		const cards = resolveIntelligenceCards(this.plugin.settings.intelligenceCards);
+		this.plugin.settings.intelligenceCards = cards.map(c => (c.id === id ? { ...c, ...patch } : c));
+		this.plugin.saveSettings().catch(() => {});
+		void this.plugin.getCommandCenterView()?.refreshIntelligence?.(true);
+		this.update();
+	}
+
+	/** Move an intelligence card up (-1) or down (+1). */
+	private nudgeIntelligenceCard(id: IntelligenceCardId, delta: -1 | 1): void {
+		const cards = resolveIntelligenceCards(this.plugin.settings.intelligenceCards);
+		const from = cards.findIndex(c => c.id === id);
+		if (from === -1) return;
+		const to = from + delta;
+		if (to < 0 || to >= cards.length) return;
+		const [moved] = cards.splice(from, 1);
+		if (!moved) return;
+		cards.splice(to, 0, moved);
+		this.plugin.settings.intelligenceCards = cards;
+		this.plugin.saveSettings().catch(() => {});
+		void this.plugin.getCommandCenterView()?.refreshIntelligence?.(true);
+		this.update();
+	}
+
+	/** Resolve the current lane list to a safe working copy. */
+	private currentActionLanes(): ActionLaneConfig[] {
+		return resolveActionLanes(this.plugin.settings.actionLanes);
+	}
+
+	/** Patch one action lane field, persist, and refresh. */
+	private patchActionLane(id: string, patch: Partial<ActionLaneConfig>): void {
+		const lanes = this.currentActionLanes();
+		this.plugin.settings.actionLanes = lanes.map(l => (l.id === id ? { ...l, ...patch } : l));
+		this.plugin.saveSettings().catch(() => {});
+		void this.plugin.getCommandCenterView()?.refreshIntelligence?.(true);
+		this.update();
+	}
+
+	/** Move an action lane up (-1) or down (+1). */
+	private nudgeActionLane(id: string, delta: -1 | 1): void {
+		const lanes = this.currentActionLanes();
+		const from = lanes.findIndex(l => l.id === id);
+		if (from === -1) return;
+		const to = from + delta;
+		if (to < 0 || to >= lanes.length) return;
+		const [moved] = lanes.splice(from, 1);
+		if (!moved) return;
+		lanes.splice(to, 0, moved);
+		this.plugin.settings.actionLanes = lanes;
+		this.plugin.saveSettings().catch(() => {});
+		void this.plugin.getCommandCenterView()?.refreshIntelligence?.(true);
+		this.update();
+	}
+
+	/** Remove an action lane. */
+	private removeActionLane(id: string): void {
+		this.plugin.settings.actionLanes = this.currentActionLanes().filter(l => l.id !== id);
+		this.plugin.saveSettings().catch(() => {});
+		void this.plugin.getCommandCenterView()?.refreshIntelligence?.(true);
+		this.update();
+	}
+
+	/** Append a new action lane with sensible defaults. */
+	private addActionLane(): void {
+		const lanes = this.currentActionLanes();
+		const id = `lane-${Date.now()}`;
+		lanes.push({ id, label: 'New lane', filter: 'all', hideWhenEmpty: false });
+		this.plugin.settings.actionLanes = lanes;
+		this.plugin.saveSettings().catch(() => {});
+		void this.plugin.getCommandCenterView()?.refreshIntelligence?.(true);
+		this.update();
 	}
 
 	/** Apply a patch to one widget's layout entry, persist, and refresh the tab. */

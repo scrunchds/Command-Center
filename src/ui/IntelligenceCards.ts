@@ -16,6 +16,7 @@
 
 import { type App, Notice, TFile, setIcon } from 'obsidian';
 import type { BaseView, CaptureEntry, VaultSnapshot, VaultTask, WorkspaceSummary } from '../intelligence/VaultDataBridge';
+import type { ActionLaneConfig, ActionLaneFilter, IntelligenceCardEntry, IntelligenceCardId } from '../settings/settings-model';
 
 const MAX_ROWS = 6;
 
@@ -82,6 +83,31 @@ function relative(timestamp: number | null): string {
 	const hours = Math.round(minutes / 60);
 	if (hours < 24) return `${hours}h ago`;
 	return `${Math.round(hours / 24)}d ago`;
+}
+
+/** Configuration passed into the renderer so cards/lanes honor user choices. */
+export interface IntelligenceRenderConfig {
+	cards: IntelligenceCardEntry[];
+	lanes: ActionLaneConfig[];
+}
+
+/** Today's date as ISO YYYY-MM-DD, without UTC drift. */
+function todayIso(): string {
+	const now = new Date();
+	const pad = (n: number) => String(n).padStart(2, '0');
+	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** Apply a lane's deterministic filter to a single task. */
+function taskMatchesLane(task: VaultTask, filter: ActionLaneFilter, today: string): boolean {
+	switch (filter) {
+		case 'overdue': return !task.done && task.overdue;
+		case 'due-today': return !task.done && !task.overdue && task.due === today;
+		case 'upcoming': return !task.done && task.due !== null && task.due > today;
+		case 'undated': return !task.done && task.due === null;
+		case 'done': return task.done;
+		case 'all': return true;
+	}
 }
 
 /** Daily Intelligence — today's note, its sections, metrics, and capacity rules. */
@@ -154,51 +180,65 @@ function renderCapture(host: HTMLElement, app: App, snapshot: VaultSnapshot, cap
 }
 
 /**
- * Action items — open checkbox tasks and property-driven work, grouped into
- * Kanban-style lanes by deterministic urgency. Lanes are derived from dates the
- * user already wrote in the vault; no methodology or column names are imposed.
+ * Action items — checkbox tasks and property-driven work, grouped into
+ * user-configurable Kanban-style lanes. Lanes are derived from dates the user
+ * already wrote in the vault; no methodology or column names are imposed. A
+ * "done" lane surfaces completed work only when the user adds one, so the
+ * default board stays focused on open tasks.
  */
-function renderActions(host: HTMLElement, app: App, snapshot: VaultSnapshot, tasks: VaultTask[]): void {
-	const open = tasks.filter(task => !task.done);
+function renderActions(host: HTMLElement, app: App, snapshot: VaultSnapshot, tasks: VaultTask[], lanes: ActionLaneConfig[]): void {
+	const today = todayIso();
 	const body = card(
 		host,
 		'Action items',
-		`${open.length} open · ${snapshot.totals.overdueTasks} overdue`,
-		'Open tasks from across the vault, grouped by urgency. Click a row to jump to that exact line.',
+		`${snapshot.totals.openTasks} open · ${snapshot.totals.overdueTasks} overdue`,
+		'Open tasks from across the vault, grouped into your configured lanes. Click a row to jump to that exact line.',
 	);
-	if (open.length === 0) {
-		empty(body, 'No open tasks were found in the vault.');
+	const laneState = (filter: ActionLaneFilter): string | undefined => {
+		if (filter === 'overdue') return 'overdue';
+		if (filter === 'due-today') return 'pending';
+		if (filter === 'done') return undefined;
+		return undefined;
+	};
+	const visibleLanes = lanes.filter(lane => lane && lane.label);
+	if (visibleLanes.length === 0) {
+		empty(body, 'No lanes are configured for the Action items card. Add at least one in Settings → Dashboard.');
 		return;
 	}
-	const today = new Date().toISOString().slice(0, 10);
-	const lanes: Array<{ label: string; state?: string; items: VaultTask[] }> = [
-		{ label: 'Overdue', state: 'overdue', items: open.filter(task => task.overdue) },
-		{ label: 'Due today', state: 'pending', items: open.filter(task => !task.overdue && task.due === today) },
-		{ label: 'Scheduled', items: open.filter(task => !task.overdue && task.due !== null && task.due > today) },
-		{ label: 'Undated', items: open.filter(task => task.due === null) },
-	];
 	const board = body.createDiv({ cls: 'cc-intel-lanes' });
-	for (const lane of lanes) {
-		if (lane.items.length === 0) continue;
+	let anyRendered = false;
+	for (const lane of visibleLanes) {
+		const items = tasks.filter(task => taskMatchesLane(task, lane.filter, today));
+		if (items.length === 0 && lane.hideWhenEmpty) continue;
+		anyRendered = true;
+		const state = laneState(lane.filter);
 		const column = board.createDiv({ cls: 'cc-intel-lane' });
-		if (lane.state) column.addClass(`is-${lane.state}`);
+		if (state) column.addClass(`is-${state}`);
 		const header = column.createDiv({ cls: 'cc-intel-lane-header' });
 		header.createSpan({ text: lane.label });
-		header.createSpan({ text: String(lane.items.length), cls: 'cc-intel-lane-count' });
-		for (const task of lane.items.slice(0, MAX_ROWS)) {
+		header.createSpan({ text: String(items.length), cls: 'cc-intel-lane-count' });
+		if (items.length === 0) {
+			column.createDiv({ text: '—', cls: 'cc-intel-empty' });
+			continue;
+		}
+		for (const task of items.slice(0, MAX_ROWS)) {
+			const icon = task.done ? 'check-square' : task.overdue ? 'alert-triangle' : 'square';
 			row(column, app, {
-				icon: task.overdue ? 'alert-triangle' : 'square',
+				icon,
 				primary: task.text,
 				secondary: task.basename,
 				badge: task.due ?? undefined,
-				state: lane.state,
+				state,
 				path: task.path,
 				line: task.line,
 			});
 		}
-		if (lane.items.length > MAX_ROWS) {
-			column.createDiv({ text: `+${lane.items.length - MAX_ROWS} more`, cls: 'cc-intel-footnote' });
+		if (items.length > MAX_ROWS) {
+			column.createDiv({ text: `+${items.length - MAX_ROWS} more`, cls: 'cc-intel-footnote' });
 		}
+	}
+	if (!anyRendered) {
+		empty(body, 'No tasks match any configured lane, and all matching lanes are set to hide when empty.');
 	}
 }
 
@@ -257,16 +297,28 @@ function renderBase(host: HTMLElement, app: App, base: BaseView, nested = false)
 }
 
 /**
- * Render the full four-card grid. Pure function of the supplied snapshot so it
- * can be re-invoked on any vault change without additional cost.
+ * Render the configured intelligence cards in the user's chosen order, skipping
+ * any they have hidden. Pure function of the supplied snapshot and config so
+ * it can be re-invoked on any vault change without additional cost.
  */
-export function renderIntelligenceCards(host: HTMLElement, app: App, snapshot: VaultSnapshot): void {
+export function renderIntelligenceCards(
+	host: HTMLElement,
+	app: App,
+	snapshot: VaultSnapshot,
+	config: IntelligenceRenderConfig = { cards: [], lanes: [] },
+): void {
 	host.empty();
 	const grid = host.createDiv({ cls: 'cc-intel-grid' });
-	renderDaily(grid, app, snapshot);
-	renderCapture(grid, app, snapshot, snapshot.captures);
-	renderActions(grid, app, snapshot, snapshot.tasks);
-	renderWorkspaces(grid, app, snapshot, snapshot.workspaces);
+	const renderers: Record<IntelligenceCardId, () => void> = {
+		daily: () => renderDaily(grid, app, snapshot),
+		capture: () => renderCapture(grid, app, snapshot, snapshot.captures),
+		actions: () => renderActions(grid, app, snapshot, snapshot.tasks, config.lanes),
+		workspaces: () => renderWorkspaces(grid, app, snapshot, snapshot.workspaces),
+	};
+	for (const entry of config.cards) {
+		if (entry.hidden) continue;
+		renderers[entry.id]?.();
+	}
 	host.createDiv({
 		cls: 'cc-intel-provenance',
 		text: `${snapshot.totals.notes} notes scanned locally in ${snapshot.durationMs}ms · no tokens used · updated ${relative(snapshot.generatedAt)}`,

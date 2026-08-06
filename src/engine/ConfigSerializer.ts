@@ -118,7 +118,15 @@ export class ConfigSerializer {
 	}
 
 	private assertSafePath(value: string): void {
-		const path = normalizePath(value.trim().replace(/^\/+|\/+$/g, ''));
+		// Strip emoji/decorative wrappers models sometimes prepend to paths,
+		// then validate the cleaned value. This keeps a model-suggested
+		// "📁 Workflows" from creating a literal emoji-named folder.
+		const cleaned = value
+			.replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200d]/gu, '')
+			.replace(/[\u2500-\u257f\u2190-\u21ff\u2b00-\u2bff\u2600-\u27bf]/gu, '')
+			.replace(/[\u201c\u201d\u2018\u2019\u00ab\u00bb"`]/g, '')
+			.trim();
+		const path = normalizePath(cleaned.replace(/^\/+|\/+$/g, ''));
 		if (!path || path === '.' || path.startsWith('../') || path.includes('/../') || path === CONFIG_DIRECTORY) throw new Error(`Unsafe configured path: ${value}`);
 	}
 	private async ensureDirectory(): Promise<void> {

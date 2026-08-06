@@ -1,5 +1,5 @@
 import type CommandCenterPlugin from '../main';
-import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MIN_TRANSCRIPTION_DURATION_MS, SILENCE_LEVEL_THRESHOLD, type TranscriptionCandidate } from './transcriber';
+import { buildTranscriptionCandidates, TranscriberAdapter, sanitizeDictation, MIN_TRANSCRIPTION_DURATION_MS, SILENCE_LEVEL_THRESHOLD, TRANSCRIPTION_PROVIDER_ORDER, type TranscriptionCandidate } from './transcriber';
 import { AudioRecorder } from './audio-recorder';
 import { TtsAdapter, playTtsBlob } from './tts-adapter';
 
@@ -142,10 +142,13 @@ export class AccessibilityAudio {
 
 	private canUseProviderTts(providerId?: import('../providers/provider-types').ProviderId): boolean {
 		const settings = this.plugin.settings;
-		// Resolve an enabled, TTS-capable provider.
+		// Any TTS-capable, enabled provider is acceptable. The previous
+		// hardcoded list (openai/openrouter/xai/mistral) silently dropped
+		// deepinfra, groq, custom, lmstudio, and ollama back to browser TTS
+		// even when the user selected them as the TTS engine.
 		const candidates = providerId
 			? [providerId]
-			: (['openai', 'openrouter', 'xai', 'mistral'] as const).filter(id => settings.multiProvider.credentials[id]?.enabled);
+			: (TRANSCRIPTION_PROVIDER_ORDER as readonly import('../providers/provider-types').ProviderId[]).filter(id => settings.multiProvider.credentials[id]?.enabled);
 		return candidates.some(id => TtsAdapter.supportsProvider(id));
 	}
 
@@ -166,9 +169,12 @@ export class AccessibilityAudio {
 
 	private resolveTtsProvider(preferred?: import('../providers/provider-types').ProviderId): import('../providers/provider-types').ProviderId | undefined {
 		const settings = this.plugin.settings;
+		// Walk the full transcription order so local providers (lmstudio,
+		// ollama) and other OpenAI-compatible TTS endpoints (deepinfra, groq,
+		// custom) are honored, not just the four cloud names.
 		const order: import('../providers/provider-types').ProviderId[] = preferred
-			? [preferred, ...(['openai', 'openrouter', 'xai', 'mistral'] as const).filter(id => id !== preferred)]
-			: ['openai', 'openrouter', 'xai', 'mistral'];
+			? [preferred, ...(TRANSCRIPTION_PROVIDER_ORDER as readonly import('../providers/provider-types').ProviderId[]).filter(id => id !== preferred)]
+			: [...(TRANSCRIPTION_PROVIDER_ORDER as readonly import('../providers/provider-types').ProviderId[])];
 		for (const id of order) {
 			if (settings.multiProvider.credentials[id]?.enabled && TtsAdapter.supportsProvider(id)) {
 				return id;
