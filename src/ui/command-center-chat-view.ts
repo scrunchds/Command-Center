@@ -6,6 +6,7 @@ import { loadWorkflowFromCanvas, loadWorkflowFromNote } from '../workflows/nativ
 import { workflowForBase } from '../commands';
 import { collectWorkflowInputs } from './workflow-modal';
 import { resolveChatContext, type ChatContextAttachment, type ResolvedChatContext } from './chat-context';
+import { SlashCommandTypeahead } from './slash-command-typeahead';
 import { DEFAULT_REACT_CONFIG } from '../react';
 import type { ReActTraceEvent } from '../react/react-trace';
 import { AudioRecorder } from '../audio/audio-recorder';
@@ -210,6 +211,10 @@ export class CommandCenterChatView extends ItemView {
 			attr: { type: 'button', 'aria-label': 'Send message', title: 'Send (enter)' },
 		});
 		setIcon(this.submitEl, 'send');
+
+		new SlashCommandTypeahead(this.app, this.textareaEl, command => {
+			this.addMessage('assistant', `Ran command: **${command.name}** (\`${command.id}\`).`);
+		});
 
 		this.registerDomEvent(this.modeSelectEl, 'change', () => {
 			this.mode = this.modeSelectEl.value as ChatMode;
@@ -1056,9 +1061,13 @@ export class CommandCenterChatView extends ItemView {
 		if (!input || this.isSending) return;
 		const resolved = this.activeResolvedContext(await resolveChatContext(this.plugin.app, input, { suggestRecent: true }));
 		const prompt = resolved.cleanedPrompt || input;
-		// Keep the user prompt intact; attached context is surfaced in the UI and
-		// should not be concatenated into the chat prompt here.
-		const enrichedPrompt = prompt;
+		// Retained @-mention pills are part of the conversation the operator
+		// intended to have, so their content is prepended to the prompt sent to
+		// the model. Workflow mode keeps the cleaned prompt because the attached
+		// workflow defines its own context handling and the prompt becomes a
+		// workflow input.
+		const contextPrefix = resolved.contextString ? `${resolved.contextString}\n\n---\n\n` : '';
+		const enrichedPrompt = this.mode === 'workflow' ? prompt : `${contextPrefix}${prompt}`;
 		this.textareaEl.value = '';
 		this.detectedContext = { cleanedPrompt: '', contextString: '', attachments: [] };
 		this.dismissedAttachments.clear();

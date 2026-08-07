@@ -1780,3 +1780,33 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 }
 .cc-chatbox-send:disabled { opacity: 0.5; cursor: default; }
 .cc-chatbox-hint { flex: 1 1 auto; font-size: var(--font-smallest); color: var(--text-faint); }
+
+/* ── Goal prompt modal (generate & run agentic workflow) ───────────── */
+.cc-goal-prompt-input {
+	width: 100%;
+	min-height: 5rem;
+	resize: vertical;
+}
+
+/* ── Slash-command typeahead (chat composer) ──────────────────────── */
+.cc-slash-popover {
+	z-index: 1000;
+	position: fixed;
+	max-height: 280px;
+	overflow-y: auto;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	box-shadow: var(--shadow-s);
+	padding: 4px 0;
+}
+.cc-slash-row {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 6px 10px;
+	cursor: pointer;
+}
+.cc-slash-row.is-selected { background: var(--background-modifier-hover); }
+.cc-slash-name { font-size: var(--font-small); }
+.cc-slash-id { font-size: var(--font-smallest); color: var(--text-faint); }

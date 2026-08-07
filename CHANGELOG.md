@@ -4,6 +4,17 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-08-07
+
+### Added
+- **GraphRAG retrieval** (`src/rag/graph-rag.ts`): a graph-augmented retrieval layer that reuses Obsidian's native link graph (`metadataCache.resolvedLinks`, the same data the Graph view uses) to expand 1–2 hops from BM25+semantic seed matches, pulling in the relevant chunks of connected notes (forward links + backlinks) and re-ranking them with a graph-boosted score that rewards hub/MOC notes. It degrades to plain hybrid retrieval when the vault has no links, and refreshes its adjacency map on the `metadataCache` `resolved` event so it stays current. A new `graphSearchVault` agent tool exposes graph-aware retrieval so agents can deliberately request it over the flat `searchVault` when an answer depends on how notes connect. The `graphSearchVault` tool is registered as an agent capability.
+- **Reranker model selection** (`src/rag/reranker.ts`, `src/settings/settings-model.ts`, `src/settings/PluginSettingsTab.ts`): a dedicated rerank model can re-score retrieved chunks after fusion. Two modes are supported — API (calls a native `POST /v1/rerank` endpoint shared by Cohere, Jina, and Voyage) and LLM (asks any configured chat model to score candidates, routed through the existing `ProviderDispatcher`/`NativeAutoRouter`). Rerank models are discovered automatically: the `ModelPurpose` classification (`rerank`/`embedding`/`audio`/`image`/`chat`) is applied to every model returned by a provider's live-model list, so the settings dropdown surfaces only rerank-capable models for the selected provider. Settings → Command Center → Features exposes the mode, provider, model (with manual fallback when none are discovered), and candidate limit. `mergeReranker` backfills defaults and clamps invalid saved values on upgrade. Failures degrade to seed ranking.
+
+### Fixed
+- **Chat `@`-mention context now reaches the model** (`src/ui/command-center-chat-view.ts`): retained `@`-mention pills were resolved into `ResolvedChatContext.contextString` but `sendCurrentMessage` discarded that context, so the README promise that "only retained pills are sent" was not honored. The retained context is now prepended to the prompt sent to the model in Quick and ReAct modes (workflow mode keeps the cleaned prompt because the attached workflow defines its own context handling).
+- **Onboarding workflows now default to agentic execution** (`src/onboarding/InterviewEngine.ts`): every step generated during the setup interview is coerced to the `react-orchestrator` worker profile, so each step executes as an autonomous tool-calling sub-agent (a ReAct loop with vault tools) rather than a single prompt, consistent with the plugin's agentic model. The interview system prompt was updated to instruct the model to set `workerProfile: "react-orchestrator"`.
+- **Slash-command typeahead in the chat composer** (`src/ui/slash-command-typeahead.ts`, `src/ui/command-center-chat-view.ts`): typing `/` in the chat textarea now surfaces a popover of matching Obsidian commands; arrow keys navigate, Enter executes the selected command and clears the input (so no chat message is sent), and Escape closes it. This makes the chat panel a command surface like an agentic assistant's `/command` bar.
+
 ## [1.10.1] - 2026-08-07
 
 ### Fixed

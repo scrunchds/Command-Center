@@ -9,6 +9,7 @@ import {
 	CommandCenterSettings,
 	DEFAULT_SETTINGS,
 	DEFAULT_MULTI_PROVIDER,
+	mergeReranker,
 	PluginSettingsTab,
 	structuredSafeDefaults,
 	mergeMultiProvider,
@@ -56,27 +57,32 @@ import { sanitizeBaseUrl } from './providers/provider-types';
 import { PROVIDER_REGISTRY } from './providers/provider-registry';
 import { ProviderDispatcher } from './dispatcher';
 import { ModelRouter } from './routing/ModelRouter';
-import { WorkflowEngine } from './workflows/workflow-engine';
+import { WorkflowEngine, type WorkflowAgenticExecutor, type WorkflowStepExecutionResult } from './workflows/workflow-engine';
 import type {
 	WorkflowDefinition,
 	WorkflowExecutionContext,
+	WorkflowStep,
 } from './workflows/workflow-types';
 import type {
 	WorkflowBatchOptions,
 	WorkflowTargetExecution,
 } from './workflows/workflow-engine';
+import { WorkflowSynthesizer } from './workflows/WorkflowSynthesizer';
 import { DebouncedFrontmatterSync } from './workflows/frontmatter-sync';
 import {
 	exportWorkflowToCanvas,
 	loadWorkflowFromCanvas,
 	loadWorkflowFromNote,
 } from './workflows/native-workflow-parser';
+import { collectWorkflowInputs } from './ui/workflow-modal';
 import type { ResolvedChatContext } from './ui/chat-context';
 import type { VoicePromptMode, VoicePromptFocus } from './ui/voice-prompt-modal';
 import { AgentMemoryStore } from './memory/memory-store';
 import { EmbeddingAdapter } from './rag/embeddings';
 import { HybridRetriever } from './rag/hybrid-retriever';
-import { createVaultSearchTool } from './rag/rag-tool';
+import { GraphRAG } from './rag/graph-rag';
+import { RerankerAdapter, DEFAULT_RERANKER } from './rag/reranker';
+import { createVaultSearchTool, createGraphSearchTool } from './rag/rag-tool';
 import { CONFIG_PATH } from './engine/ConfigSerializer';
 import type { OnboardingConfig } from './onboarding/OnboardingTypes';
 import { FolderIndexer } from './indexing/FolderIndexer';
@@ -119,6 +125,8 @@ export default class CommandCenterPlugin extends Plugin {
 	memoryBank!: ReActMemoryBank;
 	agentMemory!: AgentMemoryStore;
 	hybridRetriever!: HybridRetriever;
+	graphRag!: GraphRAG;
+	reranker!: RerankerAdapter;
 	folderIndexer!: FolderIndexer;
 	inboxTriager!: InboxTriager;
 	capacityEngine!: CapacityEngine;
@@ -153,6 +161,7 @@ export default class CommandCenterPlugin extends Plugin {
 	dispatcher!: ProviderDispatcher;
 	router!: ModelRouter;
 	workflowEngine!: WorkflowEngine;
+	workflowSynthesizer!: WorkflowSynthesizer;
 	nativeAutoRouter!: NativeAutoRouter;
 	executionRouter!: ExecutionRouter;
 	pythonWorker!: PythonWorkerTransport;
@@ -278,7 +287,12 @@ export default class CommandCenterPlugin extends Plugin {
 		const vaultSearchTool = createVaultSearchTool(this.hybridRetriever, {
 			canReadVault: () => true,
 		});
-		this.daemon.registerTools([vaultSearchTool]);
+		this.graphRag = new GraphRAG(this.hybridRetriever, this.app, { hopDepth: 1, useBacklinks: true });
+		this.graphRag.refreshGraph();
+		const graphSearchTool = createGraphSearchTool(this.graphRag, {
+			canReadVault: () => true,
+		});
+		this.daemon.registerTools([vaultSearchTool, graphSearchTool]);
 		this.providerFactory = new ProviderFactory(
 			this.daemon,
 			() => this.settings.multiProvider,
@@ -291,6 +305,15 @@ export default class CommandCenterPlugin extends Plugin {
 		// Mandatory route/normalization boundary for modality-aware command flows.
 		this.nativeAutoRouter = new NativeAutoRouter(this.app, this.providerFactory, () => this.settings);
 		await this.nativeAutoRouter.reload();
+		// ── Reranker (GraphRAG / hybrid retrieval re-scoring) ────────────
+		this.reranker = new RerankerAdapter({
+			settings: this.settings.reranker,
+			dispatcher: this.dispatcher,
+			router: this.nativeAutoRouter,
+			resolveEndpoint: (providerId) => this.resolveRerankEndpoint(providerId),
+			logger: { warn: (message, error) => console.warn(message, error) },
+		});
+		this.graphRag.setReranker(this.reranker);
 		this.pythonWorker = new PythonWorkerTransport({
 			workerSource: BUNDLED_PYTHON_WORKER,
 			cwd: vaultPath,
@@ -360,10 +383,15 @@ export default class CommandCenterPlugin extends Plugin {
 				contextCharLimit,
 			},
 		);
+		this.workflowSynthesizer = new WorkflowSynthesizer(
+			this.dispatcher,
+			() => this.configManager.requireStyleGuide(),
+		);
 		this.workflowEngine = new WorkflowEngine(
 			this.dispatcher,
 			this.router,
 			() => this.configManager.requireStyleGuide(),
+			this.createAgenticStepExecutor(),
 		);
 		const executor: TaskExecutor = {
 			execute: async (task: Task): Promise<TaskResult> => {
@@ -582,6 +610,12 @@ export default class CommandCenterPlugin extends Plugin {
 			});
 		});
 
+		// Refresh the GraphRAG link adjacency when Obsidian resolves links, so
+		// graph-augmented retrieval stays current as notes and wikilinks change.
+		this.registerEvent(this.app.metadataCache.on('resolved', () => {
+			this.graphRag.refreshGraph();
+		}));
+
 		if (this.settings.enableDaemon) {
 			await this.daemon.prepareNodeExecutable();
 			this.daemon.start();
@@ -793,6 +827,19 @@ export default class CommandCenterPlugin extends Plugin {
 			baseUrl: 'http://localhost:11434',
 			providerId: 'ollama',
 			model: 'nomic-embed-text',
+		};
+	}
+
+	/** Resolve a provider's base URL + API key for the native rerank API call. */
+	private resolveRerankEndpoint(providerId: string): { baseUrl: string; apiKey: string } | undefined {
+		if (!providerId) return undefined;
+		const credentials = this.settings.multiProvider.credentials[providerId as keyof typeof PROVIDER_REGISTRY];
+		if (!credentials?.enabled || !credentials.baseUrl) return undefined;
+		const meta = PROVIDER_REGISTRY[providerId as keyof typeof PROVIDER_REGISTRY];
+		if (meta?.requiresKey && !this.credentialVault.has(providerId)) return undefined;
+		return {
+			baseUrl: sanitizeBaseUrl(credentials.baseUrl),
+			apiKey: this.credentialVault.get(providerId).trim(),
 		};
 	}
 
@@ -1032,6 +1079,7 @@ export default class CommandCenterPlugin extends Plugin {
 		const base = structuredSafeDefaults();
 		this.settings = Object.assign(base, loaded as Partial<CommandCenterSettings>);
 		this.settings.multiProvider = mergeMultiProvider(DEFAULT_MULTI_PROVIDER, this.settings.multiProvider);
+		this.settings.reranker = mergeReranker(DEFAULT_RERANKER, this.settings.reranker);
 		this.settings.dashboardLayout = Array.isArray(this.settings.dashboardLayout)
 			? this.settings.dashboardLayout
 			: DEFAULT_SETTINGS.dashboardLayout.map(widget => ({ ...widget }));
@@ -1113,6 +1161,8 @@ export default class CommandCenterPlugin extends Plugin {
 		// Settings changes take effect without a plugin reload. The registry is
 		// the live tool surface used by all future provider turns.
 		void this.refreshExternalCapabilities();
+		// Propagate reranker setting changes without a plugin reload.
+		if (this.reranker) this.reranker.updateSettings(this.settings.reranker);
 	}
 
 	/* ─── Task history ──────────────────────────────── */
@@ -1384,6 +1434,103 @@ export default class CommandCenterPlugin extends Plugin {
 		await this.app.workspace.getLeaf(false).openFile(created);
 		new Notice(`Workflow exported to ${path}`);
 		return created;
+	}
+
+	/**
+	 * Build the autonomous tool-calling executor that turns `react-*`
+	 * workflow steps into mini-Claude ReAct loops. Each step dispatches a
+	 * full Reason→Act→Observe session with the gated capability surface, so
+	 * a step is not a single prompt but an agent that can search, read, and
+	 * write inside the write gate.
+	 */
+	private createAgenticStepExecutor(): WorkflowAgenticExecutor {
+		return {
+			executeStep: async (step: WorkflowStep, prompt: string, targetPath, onStream) => {
+				this.requireInitialized();
+				const ready = await this.ensureDaemonRunning();
+				if (!ready) throw new Error(`Pi daemon failed to start: ${this.daemon.startError ?? 'unknown error'}`);
+				const taskId = `${step.id}:${targetPath ?? 'single'}:${Date.now()}`;
+				const task: Task = {
+					id: taskId,
+					workerProfile: 'react-orchestrator',
+					workerRole: step.assignedAgent,
+					prompt,
+					targetPath,
+					status: 'queued',
+					createdAt: Date.now(),
+					onStream,
+				};
+				const result = await executeReActTask(
+					this.daemon,
+					this.getGatedTools(),
+					task,
+					this.memoryBank,
+					this.router,
+				);
+				const output = result.output ?? result.summary ?? '';
+				const meta: Record<string, unknown> = result.metadata ?? {};
+				const tokens =
+					typeof meta.totalTokens === 'number' ? meta.totalTokens :
+					typeof meta.tokens === 'number' ? meta.tokens : 0;
+				const latencyMs = typeof meta.latencyMs === 'number' ? meta.latencyMs : 0;
+				return {
+					result: output,
+					output,
+					tokens,
+					latencyMs,
+					metadata: meta,
+				} satisfies WorkflowStepExecutionResult;
+			},
+		};
+	}
+
+	/**
+	 * Synthesize a workflow DAG from a natural-language goal, surface it as a
+	 * write-gate approval card, and — on approval — execute it. Every generated
+	 * step runs as an autonomous tool-calling sub-agent behind the gate.
+	 */
+	async synthesizeAndRunWorkflow(goal: string): Promise<WorkflowExecutionContext | null> {
+		this.requireInitialized();
+		const trimmed = goal.trim();
+		if (!trimmed) throw new Error('Workflow goal is empty.');
+
+		const streamId = `workflow-synth:${Date.now()}`;
+		const view = this.getCommandCenterView();
+		view?.startTaskStream(streamId, 'synthesizing workflow…');
+		view?.appendStreamOutput(`Designing a workflow for: ${trimmed}\n`, streamId);
+
+		let definition: WorkflowDefinition;
+		try {
+			definition = await this.workflowSynthesizer.synthesize(trimmed, {
+				onStream: delta => view?.appendStreamOutput(delta, streamId),
+			});
+		} catch (error) {
+			view?.appendStreamOutput(`\nSynthesis failed: ${(error as Error).message}`, streamId);
+			view?.finalizeStreamOutput(streamId);
+			throw error;
+		}
+
+		const summary = renderWorkflowPlanForApproval(definition);
+		const decision = await this.requestDashboardApproval({
+			toolName: 'Generate & run agentic workflow',
+			targetPaths: [],
+			proposedChanges: summary,
+			timeoutMs: 0,
+		});
+		if (decision !== 'approved') {
+			view?.appendStreamOutput('\nWorkflow not approved. Execution cancelled.', streamId);
+			view?.finalizeStreamOutput(streamId);
+			return null;
+		}
+
+		const inputs = Object.keys(definition.inputs).length > 0
+			? await collectWorkflowInputs(this.app, definition)
+			: {};
+		if (inputs === null) {
+			view?.finalizeStreamOutput(streamId);
+			return null;
+		}
+		return this.executeWorkflow(definition, inputs);
 	}
 
 	/** Execute a compiled workflow while streaming all step output into Live Output. */
@@ -1845,4 +1992,26 @@ async function executeReActTask(
 		summary: response.result?.summary ?? 'ReAct session completed.',
 		metadata: response.result?.metadata,
 	};
+}
+
+/** Render a synthesized workflow DAG as a human-reviewable plan for the approval card. */
+function renderWorkflowPlanForApproval(definition: WorkflowDefinition): string {
+	const lines: string[] = [];
+	lines.push(`# ${definition.name}`);
+	if (definition.description) lines.push('');
+	lines.push(definition.description);
+	lines.push('');
+	lines.push(`**Steps:** ${definition.steps.length} · **Inputs:** ${Object.keys(definition.inputs).length || 'none'}`);
+	lines.push('');
+	lines.push('Each step runs as an autonomous, tool-calling sub-agent (ReAct loop) behind the write gate.');
+	lines.push('');
+	for (const step of definition.steps) {
+		const deps = step.dependsOn.length ? ` → depends on ${step.dependsOn.map(d => `\`${d}\``).join(', ')}` : '';
+		const cond = step.condition ? ` · when \`${step.condition}\`` : '';
+		lines.push(`- **${step.name}** (\`${step.id}\`, ${step.assignedAgent}/${step.requiredTier}, ${step.actionType})${deps}${cond}`);
+		lines.push(`  > ${step.promptTemplate.replace(/\n/g, '\n  > ').slice(0, 400)}${step.promptTemplate.length > 400 ? ' …' : ''}`);
+	}
+	lines.push('');
+	lines.push('Approve to execute. Every vault mutation a step attempts still requires its own write-gate click unless Auto Write is enabled.');
+	return lines.join('\n');
 }

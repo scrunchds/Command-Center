@@ -4,6 +4,7 @@ import type { OnboardingConfig } from './OnboardingTypes';
 import { parseModelJson } from '../providers/json-repair';
 import { GENERATED_WORKFLOW_DIRECTORY, WorkflowGenerator, type WorkflowFormat, type WorkflowProposal } from '../workflows/WorkflowGenerator';
 import { WorkflowBuilder } from '../workflows/WorkflowBuilder';
+import { AGENTIC_WORKER_PROFILE } from '../workflows/WorkflowSynthesizer';
 import type { ConfigManager } from '../engine/ConfigManager';
 import { LOGIC_DISCOVERY_SYSTEM_PROMPT } from '../ingestion/LogicDiscovery';
 import { getCapabilityRegistry } from '../capabilities';
@@ -410,6 +411,11 @@ export class InterviewEngine {
 			if (!proposal.id?.trim() || !proposal.name?.trim() || !proposal.description?.trim() || !proposal.fileName?.trim() || !proposal.definition) throw new Error(`Workflow proposal ${index + 1} is incomplete.`);
 			if (ids.has(proposal.id)) throw new Error(`Workflow proposal ID is duplicated: ${proposal.id}.`);
 			ids.add(proposal.id);
+			// Make every onboarding-generated step an autonomous tool-calling
+			// sub-agent (a ReAct mini-Claude), consistent with the plugin's
+			// agentic model. The engine routes any `react*` workerProfile through
+			// the ReAct loop with the gated capability surface.
+			for (const step of proposal.definition.steps) step.workerProfile = AGENTIC_WORKER_PROFILE;
 			// Validate every agent/tier/fallback/action binding before approval is
 			// shown, so asset creation cannot partially fail on malformed metadata.
 			builder.build(proposal.definition);
@@ -460,7 +466,7 @@ If the user is unsure or requests suggestions, offer 2–3 context-specific opti
 
 After explicit confirmation, perform synthesis. Propose 2–4 templates derived only from discovered domains/project types/style and 2–3 native workflows derived only from reported friction/rules. Output only fenced JSON:
 {"signal":"${SYNTHESIS_COMPLETE_SIGNAL}","config":{complete OnboardingConfig},"templates":[{"id":"...","name":"...","description":"...","fileName":"...md","content":"complete Markdown"}],"workflows":[{"id":"...","name":"...","description":"...","fileName":"...json","definition":{"id":"...","name":"...","description":"...","version":"1","inputs":{},"steps":[{"id":"...","name":"...","workerProfile":"...","promptTemplate":"...","dependsOn":[],"stepNumber":1,"assignedAgent":"Orchestrator|TriageAgent|IndexerAgent|HealthReadinessAgent|SystemArchitect","requiredTier":"tier1_local|tier2_reasoning","fallbackPolicy":"fallback_to_cloud|ask_user","actionType":"read|summarize|propose|write|index"}]}}]}
-Every workflow step MUST include stepNumber, assignedAgent, requiredTier, fallbackPolicy, and actionType. Bind Orchestrator, HealthReadinessAgent, and SystemArchitect to tier2_reasoning; bind TriageAgent and IndexerAgent to tier1_local. Use workerProfile only as the compatible native worker profile for that assigned agent. Build dependency-aware multi-agent plans, not flat scripts.
+Every workflow step MUST include stepNumber, assignedAgent, requiredTier, fallbackPolicy, and actionType. Bind Orchestrator, HealthReadinessAgent, and SystemArchitect to tier2_reasoning; bind TriageAgent and IndexerAgent to tier1_local. Set every step's workerProfile to "react-orchestrator" so each step executes as an autonomous, tool-calling sub-agent (a ReAct loop with vault tools) rather than a single prompt. Build dependency-aware multi-agent plans, not flat scripts.
 The config must contain only interview-derived values and no credentials or endpoint values. It must include canonical topology.inboxFolders, topology.dailyNotesFolder, topology.dailyNoteNameTemplate, capacity.rules, triage.defaultAction/destinations/frogRolloverThreshold, focus.defaultPriorityCap, compute.endpoints as an empty array (transport configuration belongs exclusively to native Settings), every managed path/purpose/scope, optional style dailyNoteLayout/timestampConvention/reflectionPrompts/formattingDirectives when supplied, and the compatibility dailyNotes/inbox/health fields. Do not add activeTemplates or enabledWorkflows; the plugin records those only after user approval.`;
 	}
 }

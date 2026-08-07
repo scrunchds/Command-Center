@@ -2011,6 +2011,76 @@ pass('31c.1: ConversationManager caches context per conversation and refreshes o
 }
 }
 
+/* ═══ 31b. GraphRAG, Reranker, and Model-Purpose Classification ═══ */
+async function verifyGraphRagAndReranker() {
+console.log('\n─── 31b. GraphRAG, Reranker, and Model-Purpose Classification ───');
+{
+const { classifyModelPurpose } = await import(pathToFileURL(SRC + '/providers/provider-types.ts').href);
+assert.equal(classifyModelPurpose('rerank-english-v3.0'), 'rerank');
+assert.equal(classifyModelPurpose('jina-reranker-v2-base-multilingual'), 'rerank');
+assert.equal(classifyModelPurpose('rerank-2'), 'rerank');
+assert.equal(classifyModelPurpose('text-embedding-3-small'), 'embedding');
+assert.equal(classifyModelPurpose('nomic-embed-text'), 'embedding');
+assert.equal(classifyModelPurpose('whisper-1'), 'audio');
+assert.equal(classifyModelPurpose('gpt-4o'), 'chat');
+assert.equal(classifyModelPurpose('claude-3-5-sonnet'), 'chat');
+pass('31b.a: classifyModelPurpose detects rerank/embed/audio/chat models from id heuristics');
+}
+{
+const { GraphRAG } = await import(pathToFileURL(SRC + '/rag/graph-rag.ts').href);
+const seedMatch = { chunk: { id: 'a:1-2', text: 'deploy notes', metadata: { filePath: 'Ops/Deploy.md', heading: 'Release', startLine: 1, endLine: 2 } }, score: 0.9, bm25Score: 2, vectorScore: 0.8, snippet: 'deploy' };
+const neighborMatch = { chunk: { id: 'b:1-2', text: 'rollback steps', metadata: { filePath: 'Ops/Rollback.md', heading: 'Recovery', startLine: 1, endLine: 2 } }, score: 0.6, bm25Score: 1, vectorScore: 0.5, snippet: 'rollback' };
+const delegate = { search: async (_q, limit) => limit && typeof limit === 'object' ? [seedMatch, neighborMatch] : [seedMatch] };
+const app = { metadataCache: { resolvedLinks: { 'Ops/Deploy.md': { 'Ops/Rollback.md': 1 } } } };
+const graph = new GraphRAG(delegate, app, { hopDepth: 1, useBacklinks: true });
+graph.refreshGraph();
+const results = await graph.search('deploy', 5);
+assert.ok(results.length > 0, 'GraphRAG should return results');
+assert.equal(results[0].chunk.metadata.filePath, 'Ops/Deploy.md', 'seed should rank first');
+pass('31b.b: GraphRAG expands one hop along resolvedLinks and returns seed-ranked results');
+}
+{
+const { GraphRAG } = await import(pathToFileURL(SRC + '/rag/graph-rag.ts').href);
+const seedMatch = { chunk: { id: 'a:1-2', text: 'deploy', metadata: { filePath: 'Ops/Deploy.md', heading: '', startLine: 1, endLine: 2 } }, score: 0.9, bm25Score: 2, vectorScore: 0.8, snippet: 'deploy' };
+const delegate = { search: async () => [seedMatch] };
+const app = { metadataCache: { resolvedLinks: {} } };
+const graph = new GraphRAG(delegate, app, { hopDepth: 1 });
+const results = await graph.search('deploy', 5);
+assert.equal(results.length, 1, 'empty graph degrades to seed ranking');
+pass('31b.c: GraphRAG degrades to hybrid seed ranking when the vault has no links');
+}
+{
+const { RerankerAdapter } = await import(pathToFileURL(SRC + '/rag/reranker.ts').href);
+const matchA = { chunk: { id: 'a:1', text: 'relevant doc', metadata: { filePath: 'a.md', heading: '', startLine: 1, endLine: 2 } }, score: 0.9, bm25Score: 2, vectorScore: 0.8, snippet: 'a' };
+const matchB = { chunk: { id: 'b:1', text: 'irrelevant doc', metadata: { filePath: 'b.md', heading: '', startLine: 1, endLine: 2 } }, score: 0.5, bm25Score: 1, vectorScore: 0.4, snippet: 'b' };
+const dispatcher = { dispatchTo: async () => ({ success: true, output: '2: 95\n1: 10' }) };
+const adapter = new RerankerAdapter({ settings: { mode: 'llm', providerId: 'auto', model: '', candidateLimit: 20, maxCandidates: 40, minScore: 0 }, dispatcher });
+assert.equal(adapter.enabled, true, 'llm mode should be enabled');
+const reranked = await adapter.rerank('query', [matchB, matchA]);
+assert.equal(reranked[0].chunk.id, 'a:1', 'llm reranker should re-sort by model-assigned relevance');
+assert.equal(reranked[1].chunk.id, 'b:1', 'lower-scoring doc should sort second');
+pass('31b.d: RerankerAdapter llm mode parses model scores and re-sorts candidates');
+}
+{
+const { RerankerAdapter } = await import(pathToFileURL(SRC + '/rag/reranker.ts').href);
+const matchA = { chunk: { id: 'a:1', text: 'doc a', metadata: { filePath: 'a.md', heading: '', startLine: 1, endLine: 2 } }, score: 0.9, bm25Score: 2, vectorScore: 0.8, snippet: 'a' };
+const failing = { dispatchTo: async () => ({ success: false }) };
+const adapter = new RerankerAdapter({ settings: { mode: 'llm', providerId: 'auto', model: '', candidateLimit: 20, maxCandidates: 40, minScore: 0 }, dispatcher: failing });
+const reranked = await adapter.rerank('query', [matchA]);
+assert.equal(reranked[0].chunk.id, 'a:1', 'rerank failure should preserve original order');
+pass('31b.e: RerankerAdapter degrades to seed ranking on dispatcher failure');
+}
+{
+const { mergeReranker, DEFAULT_RERANKER } = await import(pathToFileURL(SRC + '/rag/reranker.ts').href);
+assert.deepEqual(mergeReranker(DEFAULT_RERANKER, undefined), DEFAULT_RERANKER, 'undefined saved config keeps defaults');
+assert.equal(mergeReranker(DEFAULT_RERANKER, { mode: 'invalid', model: 'x' }).mode, 'none', 'invalid mode falls back to none');
+assert.equal(mergeReranker(DEFAULT_RERANKER, { mode: 'api', providerId: 'cohere', model: 'rerank-english-v3.0' }).model, 'rerank-english-v3.0', 'valid config is applied');
+assert.equal(mergeReranker(DEFAULT_RERANKER, { minScore: 1.5 }).minScore, 1, 'minScore clamped to [0,1]');
+assert.equal(mergeReranker(DEFAULT_RERANKER, { candidateLimit: -3 }).candidateLimit, 1, 'candidateLimit bounded to >= 1');
+pass('31b.f: mergeReranker backfills defaults and clamps invalid saved values');
+}
+}
+
 /* ═══ 32. Headless CLI Command Bridge ═══ */
 async function verifyHeadlessCliBridge() {
 console.log('\n─── 32. Headless CLI Command Bridge ───');
@@ -2364,6 +2434,7 @@ await verifyAudio();
 await verifyHybridRag();
 await verifyAgentMemory();
 await verifyRagAgentIntegration();
+await verifyGraphRagAndReranker();
 await verifyHeadlessCliBridge();
 await verifyBaseUrlSanitization();
 await verifyProviderAutoReach();

@@ -53,11 +53,31 @@ export interface ProviderModel {
 	supportsCaching: boolean;
 	costTier: 'free' | 'cheap' | 'moderate' | 'expensive';
 	strengths: TaskType[];
+	/** Functional purpose (chat/embedding/rerank/audio/image); defaults to 'chat'. */
+	purpose?: ModelPurpose;
 }
 
 /* ─── Task Routing ─────────────────────────────────────── */
 
 export type TaskType = 'coding' | 'vision' | 'reading' | 'reasoning' | 'fast';
+
+/**
+ * Functional purpose a model is built for. Most providers expose chat, but
+ * some also ship dedicated embedding, rerank, audio, and image models that
+ * the live-models fetch must classify so the host can route the right model
+ * to the right job (embeddings for RAG, rerank for retrieval re-scoring).
+ */
+export type ModelPurpose = 'chat' | 'embedding' | 'rerank' | 'audio' | 'image' | 'unknown';
+
+/** Heuristically classify a model id into a functional purpose. */
+export function classifyModelPurpose(id: string): ModelPurpose {
+	const slug = id.toLowerCase();
+	if (/rerank|reranker|re-rank/.test(slug)) return 'rerank';
+	if (/embed|embedding/.test(slug)) return 'embedding';
+	if (/tts|speech|transcrib|whisper|voxtral|audio/.test(slug)) return 'audio';
+	if (/dall-?e|image|flux|stable-|sdxl|paint|vision-gen|imagen|seedream/.test(slug)) return 'image';
+	return 'chat';
+}
 
 export const TASK_TYPE_LABELS: Record<TaskType, string> = {
 	coding: 'Coding / Architecture',

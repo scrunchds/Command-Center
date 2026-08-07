@@ -704,6 +704,83 @@ export class PluginSettingsTab extends PluginSettingTab {
 					new Notice('Local-only mode enabled. Configure endpoints in providers → lm studio / ollama.');
 				}));
 		}
+
+		// ── Reranker (GraphRAG / hybrid retrieval re-scoring) ──────────────
+		this.renderRerankerSettings(body);
+	}
+
+	/* ═══════════════════════════════════════════════════════
+	   Reranker — GraphRAG / hybrid retrieval re-scoring model selection
+	   ═══════════════════════════════════════════════════════ */
+	private renderRerankerSettings(containerEl: HTMLElement): void {
+		if (this.plugin.settings.uiMode === 'simple') return;
+		const reranker = this.plugin.settings.reranker;
+		const providerIds = ['auto', ...PROVIDER_ORDER] as Array<'auto' | ProviderId>;
+
+		new Setting(containerEl)
+			.setName('Reranker mode')
+			.setDesc('Re-rank retrieved chunks with a dedicated rerank model. API mode uses a native rerank endpoint (Cohere, Jina, Voyage); LLM mode asks a chat model to score candidates; none keeps the built-in reciprocal rank fusion and graph scoring.')
+			.addDropdown(dropdown => dropdown
+				.addOption('none', 'None (built-in scoring)')
+				.addOption('api', 'API (dedicated rerank endpoint)')
+				.addOption('llm', 'LLM (chat model scoring)')
+				.setValue(reranker.mode)
+				.onChange((value: string) => {
+					reranker.mode = value as typeof reranker.mode;
+					void this.plugin.saveSettings();
+					this.update();
+				}));
+
+		if (reranker.mode === 'none') return;
+
+		new Setting(containerEl)
+			.setName('Reranker provider')
+			.setDesc('Provider to route rerank requests through. Auto uses the native auto-router to pick a reasoning-capable model.')
+			.addDropdown(dropdown => {
+				for (const id of providerIds) dropdown.addOption(id === 'auto' ? 'auto' : PROVIDER_REGISTRY[id]?.label ?? id, id);
+				dropdown.setValue(reranker.providerId).onChange((value: string) => {
+					reranker.providerId = value as typeof reranker.providerId;
+					void this.plugin.saveSettings();
+					this.update();
+				});
+			});
+
+		// Rerank model dropdown: prefer models the provider classifies as
+		// 'rerank' (discovered from live model lists), but allow any manual id.
+		const resolveProviderId = (): ProviderId | undefined =>
+			reranker.providerId === 'auto' ? undefined : reranker.providerId;
+		const liveModels = resolveProviderId() ? this.plugin.settings.multiProvider.liveModels?.[resolveProviderId()!] : undefined;
+		const rerankModels = (liveModels ?? []).filter(model => model.purpose === 'rerank');
+		new Setting(containerEl)
+			.setName('Reranker model')
+			.setDesc(rerankModels.length
+				? 'Discovered rerank models from this provider are listed first.'
+				: 'No rerank models discovered for this provider. Type a model id (e.g. rerank-english-v3.0, jina-reranker-v2-base-multilingual).')
+			.addDropdown(dropdown => {
+				dropdown.addOption('', '(provider default)');
+				for (const model of rerankModels) dropdown.addOption(model.id, model.label);
+				dropdown.setValue(reranker.model).onChange((value: string) => {
+					reranker.model = value;
+					void this.plugin.saveSettings();
+				});
+			});
+			if (!rerankModels.length) {
+				new Setting(containerEl)
+					.setName('Reranker model id')
+					.setDesc('Manual model id when no rerank models were auto-discovered.')
+					.addText(text => text
+						.setPlaceholder('rerank-english-v3.0')
+						.setValue(reranker.model)
+						.onChange((value: string) => { reranker.model = value.trim(); void this.plugin.saveSettings(); }));
+			}
+
+		new Setting(containerEl)
+			.setName('Candidate limit')
+			.setDesc('Maximum chunks sent to the reranker per pass. Higher improves recall at token cost.')
+			.addSlider(slider => slider
+				.setLimits(5, 40, 1)
+				.setValue(reranker.maxCandidates)
+				.onChange((value: number) => { reranker.maxCandidates = value; void this.plugin.saveSettings(); }));
 	}
 
 	/* ═══════════════════════════════════════════════════════

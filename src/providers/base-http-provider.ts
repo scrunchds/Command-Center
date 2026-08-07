@@ -18,7 +18,7 @@ import type {
 } from './provider-types';
 import {
 	DEFAULT_PROVIDER_CONFIG, classifyHttpError, classifyThrowError,
-	detectLocalRuntime, isLocalBaseUrl, sanitizeBaseUrl,
+	detectLocalRuntime, isLocalBaseUrl, sanitizeBaseUrl, classifyModelPurpose,
 } from './provider-types';
 import { getDefaultModelForProvider } from './provider-registry';
 import { JitModelManager } from './jit-manager';
@@ -464,6 +464,7 @@ export abstract class BaseHttpProvider implements IProviderAdapter {
 			supportsCaching: /claude|anthropic/i.test(id),
 			costTier: /mini|flash|haiku|fast/i.test(id) ? 'cheap' : /opus|ultra|expensive|o1/i.test(id) ? 'expensive' : 'moderate',
 			strengths: ['reasoning', 'fast'] as TaskType[],
+			purpose: classifyModelPurpose(id),
 		};
 	}
 

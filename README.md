@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.13%2B-7C3AED?logo=obsidian)](https://obsidian.md/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%20%7C%2022%20%7C%2024-339933?logo=node.js&logoColor=white)](package.json)
-[![Tests](https://img.shields.io/badge/tests-420%20passing-brightgreen)](#quality-security-and-release-controls)
+[![Tests](https://img.shields.io/badge/tests-426%20passing-brightgreen)](#quality-security-and-release-controls)
 [![Attestations](https://img.shields.io/badge/attestations-Sigstore-blue?logo=sigstore)](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
 [![Desktop only](https://img.shields.io/badge/platform-desktop--only-informational)](manifest.json)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20development-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/DustinS)
@@ -166,6 +166,8 @@ Command Center can ground model calls in vault content without rebuilding the in
 - Chunk metadata retains path, H1/H2 hierarchy, normalized wikilinks, and inclusive line ranges.
 - Path + mtime + size keys skip unchanged reads and embeddings.
 - BM25 lexical ranking and cosine semantic ranking are merged through weighted reciprocal rank fusion (RRF).
+- **GraphRAG** layers on top of hybrid retrieval: a seed BM25+semantic search, then a 1–2-hop expansion across Obsidian's native wikilink/backlink graph (`metadataCache.resolvedLinks`, the same data the Graph view uses), re-ranking seeds and connected-neighbor chunks with a graph-boosted score that rewards hub notes (MOCs). It degrades to plain hybrid retrieval when the vault has no links. Agents can request it explicitly via the `graphSearchVault` tool.
+- **Optional reranker**: a dedicated rerank model can re-score retrieved chunks after fusion. Configure it under Settings → Command Center → Features: API mode calls a native rerank endpoint (Cohere `rerank-*`, Jina `jina-reranker-*`, Voyage `rerank-*` — all discovered automatically from each provider's live model list); LLM mode asks any chat model to score candidates; None keeps the built-in RRF/graph scoring.
 - Folder scopes constrain retrieval, and cited snippets remain inside a hard prompt budget.
 - Unavailable embedding services degrade to deterministic local term-frequency vectors.
 
@@ -927,7 +929,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.10.1`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.11.0`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**.
 

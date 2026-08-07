@@ -6,6 +6,8 @@
  */
 
 import type { MultiProviderSettings, ProviderId } from '../providers/provider-types';
+import { DEFAULT_RERANKER } from '../rag/reranker';
+import type { RerankerSettings } from '../rag/reranker';
 import type { CapabilityUserPreference } from '../capabilities/CapabilityTypes';
 import { DEFAULT_FALLBACK_CONFIG } from '../providers/provider-types';
 import { DEFAULT_ROUTING } from '../routing/routing-table';
@@ -131,6 +133,8 @@ export interface CommandCenterSettings {
 	webSearchEnabled: boolean;
 	/** Enable vault-grounded RAG (hybrid retrieval). Disable for strict privacy. */
 	ragEnabled: boolean;
+	/** Reranker configuration for GraphRAG and hybrid retrieval re-ranking. */
+	reranker: RerankerSettings;
 	/** Enable persistent agent memory across sessions. */
 	memoryEnabled: boolean;
 	/** Enable the ReAct multi-agent engine for complex tasks. */
@@ -307,6 +311,10 @@ export function mergeMultiProvider(
 	return merged;
 }
 
+/** Reranker types + merge live in src/rag/reranker.ts (no Obsidian dependency). */
+export type { RerankerSettings } from '../rag/reranker';
+export { mergeReranker } from '../rag/reranker';
+
 export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	activeProfile: 'default-orchestrator',
 	maxTokens: 4096,
@@ -335,6 +343,7 @@ export const DEFAULT_SETTINGS: CommandCenterSettings = {
 	autoReadAiResponses: false,
 	webSearchEnabled: false,
 	ragEnabled: true,
+	reranker: { ...DEFAULT_RERANKER },
 	memoryEnabled: true,
 	reactAgentEnabled: true,
 	workflowsEnabled: true,

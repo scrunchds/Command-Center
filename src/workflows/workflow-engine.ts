@@ -22,6 +22,20 @@ export interface WorkflowStepExecutionResult {
 type WorkflowExecutor = Pick<ProviderDispatcher, 'dispatch'> | Pick<PiAgentDaemon, 'executeTask'>;
 type WorkflowJitLifecycle = { withJitModel<T>(taskType: TaskType, work: () => Promise<T>): Promise<T> };
 
+/**
+ * Autonomous tool-calling executor for a single workflow step (a "mini-Claude"
+ * ReAct loop with vault tools). When present, the engine routes any step whose
+ * `workerProfile` starts with `react` here instead of a single dispatch.
+ */
+export interface WorkflowAgenticExecutor {
+	executeStep(
+		step: WorkflowStep,
+		prompt: string,
+		targetPath: string | undefined,
+		onStream?: (delta: string) => void,
+	): Promise<WorkflowStepExecutionResult>;
+}
+
 export interface WorkflowExecutionOptions {
 	/** Receives provider/daemon deltas and engine lifecycle messages. */
 	onStream?: (delta: string, step: WorkflowStep, targetFile?: TFile) => void;
@@ -284,11 +298,20 @@ function numberMetadata(metadata: Record<string, unknown> | undefined, key: stri
 
 /** Executes workflow tiers through either the multi-provider dispatcher or Pi daemon. */
 export class WorkflowEngine {
+	private readonly agenticExecutor?: WorkflowAgenticExecutor;
+	private readonly jitLifecycle?: WorkflowJitLifecycle;
+	private readonly getStyleGuide?: () => string;
+
 	constructor(
 		private readonly executor: WorkflowExecutor,
-		private readonly jitLifecycle?: WorkflowJitLifecycle,
-		private readonly getStyleGuide?: () => string,
-	) {}
+		jitLifecycle?: WorkflowJitLifecycle,
+		getStyleGuide?: () => string,
+		agenticExecutor?: WorkflowAgenticExecutor,
+	) {
+		this.jitLifecycle = jitLifecycle;
+		this.getStyleGuide = getStyleGuide;
+		this.agenticExecutor = agenticExecutor;
+	}
 
 	async execute(
 		definition: WorkflowDefinition,
@@ -465,9 +488,12 @@ export class WorkflowEngine {
 			: undefined;
 		options.onStream?.(`\n▶ ${step.name}\n`, step, options.targetFile);
 		try {
-			const result = 'dispatch' in this.executor
-				? await this.dispatchProvider(definition, step, prompt, onDelta, options.targetFile)
-				: await this.dispatchDaemon(definition, step, prompt, onDelta, options.targetFile);
+			// Agentic (react-*) steps run as autonomous tool-calling sub-agents.
+			const result = this.shouldRunAgentic(step)
+				? await this.dispatchAgentic(step, prompt, onDelta, options.targetFile)
+				: 'dispatch' in this.executor
+					? await this.dispatchProvider(definition, step, prompt, onDelta, options.targetFile)
+					: await this.dispatchDaemon(definition, step, prompt, onDelta, options.targetFile);
 			const measuredLatency = Date.now() - startedAt;
 			const executionResult: WorkflowStepExecutionResult = {
 				...result,
@@ -490,6 +516,28 @@ export class WorkflowEngine {
 			options.onStream?.(`✕ ${step.name}: ${(error as Error).message}\n`, step, options.targetFile);
 			throw error;
 		}
+	}
+
+	/** True when the step should run as an autonomous tool-calling sub-agent. */
+	private shouldRunAgentic(step: WorkflowStep): boolean {
+		return Boolean(this.agenticExecutor) && typeof step.workerProfile === 'string' && step.workerProfile.startsWith('react');
+	}
+
+	private async dispatchAgentic(
+		step: WorkflowStep,
+		prompt: string,
+		onStream?: (delta: string) => void,
+		targetFile?: TFile,
+	): Promise<WorkflowStepExecutionResult> {
+		if (!this.agenticExecutor) throw new Error('No agentic step executor is configured.');
+		const startedAt = Date.now();
+		const result = await this.agenticExecutor.executeStep(
+			step,
+			prompt,
+			targetFile?.path,
+			onStream,
+		);
+		return { ...result, latencyMs: result.latencyMs || (Date.now() - startedAt) };
 	}
 
 	private async dispatchProvider(

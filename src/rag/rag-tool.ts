@@ -18,6 +18,13 @@ export interface VaultSearchToolOptions {
 	logger?: Pick<Console, 'warn'>;
 }
 
+/** Overrides used to expose the same retrieval surface under a distinct tool name. */
+export interface VaultSearchToolIdentity {
+	name?: string;
+	label?: string;
+	description?: string;
+}
+
 export interface InjectRagContextOptions {
 	/** Existing memory or host context to place before retrieved vault context. */
 	existingContext?: string;
@@ -38,17 +45,19 @@ export interface VaultSearchResultDetails extends Record<string, unknown> {
 export class VaultSearchTool {
 	private readonly retriever: SearchRetriever;
 	private readonly options: VaultSearchToolOptions;
+	private readonly identity: VaultSearchToolIdentity;
 
-	constructor(retriever: SearchRetriever, options: VaultSearchToolOptions = {}) {
+	constructor(retriever: SearchRetriever, options: VaultSearchToolOptions = {}, identity: VaultSearchToolIdentity = {}) {
 		this.retriever = retriever;
 		this.options = options;
+		this.identity = identity;
 	}
 
 	toToolDefinition(): ToolDefinition {
 		return {
-			name: 'searchVault',
-			label: 'Search Vault (Hybrid RAG)',
-			description: 'Search readable vault notes using hybrid BM25 and semantic retrieval. Returns source paths, line ranges, headings, and cited Markdown chunks.',
+			name: this.identity.name ?? 'searchVault',
+			label: this.identity.label ?? 'Search Vault (Hybrid RAG)',
+			description: this.identity.description ?? 'Search readable vault notes using hybrid BM25 and semantic retrieval. Returns source paths, line ranges, headings, and cited Markdown chunks.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -159,6 +168,23 @@ export async function injectRagContext(
 
 export function createVaultSearchTool(retriever: SearchRetriever, options?: VaultSearchToolOptions): ToolDefinition {
 	return new VaultSearchTool(retriever, options).toToolDefinition();
+}
+
+/**
+ * Build the GraphRAG search tool — same retrieval surface as `searchVault`
+ * but backed by the `GraphRAG` retriever, which expands 1–2 hops along
+ * Obsidian's native link graph before re-ranking. Exposed under a distinct
+ * name so agents can deliberately request graph-aware retrieval.
+ */
+export function createGraphSearchTool(
+	retriever: SearchRetriever,
+	options?: VaultSearchToolOptions,
+): ToolDefinition {
+	return new VaultSearchTool(retriever, options, {
+		name: 'graphSearchVault',
+		label: 'Search Vault (GraphRAG)',
+		description: 'Search vault notes using graph-augmented retrieval: hybrid BM25 + semantic seed matches, then a 1–2 hop expansion across Obsidian wikilinks and backlinks, re-ranked for topical relevance. Prefer this over searchVault when an answer depends on how notes connect (MOCs, linked references, multi-hop context).',
+	}).toToolDefinition();
 }
 
 function normalizeFolderScope(value: unknown): string[] {

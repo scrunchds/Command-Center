@@ -13,7 +13,7 @@
  * @see https://openrouter.ai/docs/api/api-reference/models/get-a-model-by-its-slug
  */
 
-import type { ProviderModel, TaskType } from './provider-types';
+import { ProviderModel, TaskType, classifyModelPurpose } from './provider-types';
 import { OpenAICompatibleProvider } from './openai-compatible';
 
 /* ─── Pricing → costTier mapping ──────────────────────── */
@@ -173,6 +173,7 @@ export class OpenRouterProvider extends OpenAICompatibleProvider {
 			supportsCaching,
 			costTier,
 			strengths,
+			purpose: classifyModelPurpose(id),
 		};
 	}
 

@@ -6,6 +6,7 @@ import { loadWorkflowFromCanvas, loadWorkflowFromNote } from './workflows/native
 import { collectWorkflowBatchInputs, collectWorkflowInputs } from './ui/workflow-modal';
 import type { WorkflowDefinition } from './workflows/workflow-types';
 import { VoicePromptModal, type VoicePromptFocus } from './ui/voice-prompt-modal';
+import { GoalPromptModal } from './ui/goal-prompt-modal';
 
 function record(value: unknown): Record<string, unknown> | undefined {
 	return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -118,6 +119,26 @@ export function registerCommands(plugin: CommandCenterPlugin) {
 				);
 			})();
 			return true;
+		},
+	});
+
+	plugin.addCommand({
+		id: 'generate-and-run-agentic-workflow',
+		name: 'Generate & run agentic workflow…',
+		callback: () => {
+			void (async () => {
+				try {
+					const goal = await GoalPromptModal.prompt(plugin.app);
+					if (!goal) return;
+					new Notice('Designing workflow…');
+					const context = await plugin.synthesizeAndRunWorkflow(goal);
+					if (!context) return;
+					const completed = Object.values(context.stepStatuses).filter(status => status === 'completed').length;
+					new Notice(`Agentic workflow complete: ${completed} steps.`);
+				} catch (error) {
+					new Notice(`Agentic workflow failed: ${(error as Error).message}`);
+				}
+			})();
 		},
 	});
 
