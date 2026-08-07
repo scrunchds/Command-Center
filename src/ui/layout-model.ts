@@ -16,7 +16,7 @@ export type WidgetHeight = (typeof WIDGET_HEIGHTS)[number];
 
 export type WidgetSize = 'compact' | 'standard' | 'expanded';
 
-/** One widget's placement. `span`/`height` are optional for older saved data. */
+/** One widget's placement. `span`/`height`/`view` are optional for older saved data. */
 export interface LayoutEntry {
 	id: string;
 	hidden: boolean;
@@ -24,6 +24,8 @@ export interface LayoutEntry {
 	size: WidgetSize;
 	span?: number;
 	height?: WidgetHeight;
+	/** Alternative view id for widgets that offer more than one presentation. */
+	view?: string;
 }
 
 /** Column span implied by a legacy size name, used when `span` is absent. */

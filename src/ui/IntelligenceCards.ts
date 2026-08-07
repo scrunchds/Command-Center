@@ -89,6 +89,8 @@ function relative(timestamp: number | null): string {
 export interface IntelligenceRenderConfig {
 	cards: IntelligenceCardEntry[];
 	lanes: ActionLaneConfig[];
+	/** Active view for the Action items card: 'kanban' (default), 'list', or 'compact'. */
+	actionsView?: string;
 }
 
 /** Today's date as ISO YYYY-MM-DD, without UTC drift. */
@@ -186,14 +188,22 @@ function renderCapture(host: HTMLElement, app: App, snapshot: VaultSnapshot, cap
  * "done" lane surfaces completed work only when the user adds one, so the
  * default board stays focused on open tasks.
  */
-function renderActions(host: HTMLElement, app: App, snapshot: VaultSnapshot, tasks: VaultTask[], lanes: ActionLaneConfig[]): void {
-	const today = todayIso();
+function renderActions(host: HTMLElement, app: App, snapshot: VaultSnapshot, tasks: VaultTask[], lanes: ActionLaneConfig[], config: IntelligenceRenderConfig): void {
+	const view = config.actionsView ?? 'kanban';
 	const body = card(
 		host,
 		'Action items',
 		`${snapshot.totals.openTasks} open · ${snapshot.totals.overdueTasks} overdue`,
 		'Open tasks from across the vault, grouped into your configured lanes. Click a row to jump to that exact line.',
 	);
+	if (view === 'compact') {
+		renderActionsCompact(body, tasks);
+		return;
+	}
+	if (view === 'list') {
+		renderActionsList(body, app, tasks);
+		return;
+	}
 	const laneState = (filter: ActionLaneFilter): string | undefined => {
 		if (filter === 'overdue') return 'overdue';
 		if (filter === 'due-today') return 'pending';
@@ -205,6 +215,7 @@ function renderActions(host: HTMLElement, app: App, snapshot: VaultSnapshot, tas
 		empty(body, 'No lanes are configured for the Action items card. Add at least one in Settings → Dashboard.');
 		return;
 	}
+	const today = todayIso();
 	const board = body.createDiv({ cls: 'cc-intel-lanes' });
 	let anyRendered = false;
 	for (const lane of visibleLanes) {
@@ -240,6 +251,63 @@ function renderActions(host: HTMLElement, app: App, snapshot: VaultSnapshot, tas
 	if (!anyRendered) {
 		empty(body, 'No tasks match any configured lane, and all matching lanes are set to hide when empty.');
 	}
+}
+
+/**
+ * Flat list view of open action items, sorted by due date then overdue state.
+ * Same row affordances as the kanban view: click to jump to the exact line.
+ */
+function renderActionsList(host: HTMLElement, app: App, tasks: VaultTask[]): void {
+	const open = tasks.filter(task => !task.done);
+	if (open.length === 0) {
+		empty(host, 'No open tasks.');
+		return;
+	}
+	const sorted = [...open].sort((a, b) => {
+		const ad = a.due ?? '';
+		const bd = b.due ?? '';
+		if (ad !== bd) return ad < bd ? -1 : 1;
+		return a.overdue === b.overdue ? 0 : a.overdue ? -1 : 1;
+	});
+	const list = host.createDiv({ cls: 'cc-intel-list' });
+	for (const task of sorted.slice(0, MAX_ROWS * 2)) {
+		row(list, app, {
+			icon: task.overdue ? 'alert-triangle' : 'square',
+			primary: task.text,
+			secondary: task.basename,
+			badge: task.due ?? undefined,
+			state: task.overdue ? 'overdue' : undefined,
+			path: task.path,
+			line: task.line,
+		});
+	}
+	if (sorted.length > MAX_ROWS * 2) host.createDiv({ text: `+${sorted.length - MAX_ROWS * 2} more`, cls: 'cc-intel-footnote' });
+}
+
+/**
+ * Compact view: one summary line per lane-equivalent group, no row list.
+ * Designed for a small dashboard footprint while still surfacing counts.
+ */
+function renderActionsCompact(host: HTMLElement, tasks: VaultTask[]): void {
+	const today = todayIso();
+	const groups: Array<{ filter: ActionLaneFilter; label: string }> = [
+		{ filter: 'overdue', label: 'Overdue' },
+		{ filter: 'due-today', label: 'Due today' },
+		{ filter: 'upcoming', label: 'Upcoming' },
+		{ filter: 'undated', label: 'Undated' },
+	];
+	const summary = host.createDiv({ cls: 'cc-intel-compact' });
+	for (const group of groups) {
+		const count = tasks.filter(task => taskMatchesLane(task, group.filter, today)).length;
+		const chip = summary.createDiv({ cls: 'cc-intel-compact-chip' });
+		chip.toggleClass('is-overdue', group.filter === 'overdue' && count > 0);
+		chip.createSpan({ text: String(count), cls: 'cc-intel-compact-count' });
+		chip.createSpan({ text: group.label, cls: 'cc-intel-compact-label' });
+	}
+	host.createDiv({
+		cls: 'cc-intel-footnote',
+		text: `${tasks.filter(t => !t.done).length} open total · ${tasks.filter(t => t.done).length} done`,
+	});
 }
 
 /** Workspaces — managed folders with live note counts and index state. */
@@ -312,7 +380,7 @@ export function renderIntelligenceCards(
 	const renderers: Record<IntelligenceCardId, () => void> = {
 		daily: () => renderDaily(grid, app, snapshot),
 		capture: () => renderCapture(grid, app, snapshot, snapshot.captures),
-		actions: () => renderActions(grid, app, snapshot, snapshot.tasks, config.lanes),
+		actions: () => renderActions(grid, app, snapshot, snapshot.tasks, config.lanes, config),
 		workspaces: () => renderWorkspaces(grid, app, snapshot, snapshot.workspaces),
 	};
 	for (const entry of config.cards) {

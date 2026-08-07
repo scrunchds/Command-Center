@@ -90,7 +90,7 @@ export function createObsidianTools(app: App): ToolDefinition[] {
 function readNote(app: App): ToolDefinition {
 	return {
 		name: 'read_note', label: 'Read Note',
-		description: 'Read a vault note by path. Returns frontmatter and body.',
+		description: 'Read a vault note by path. Returns frontmatter and body. Use this to verify any claim about a note’s contents, tags, or frontmatter before stating it — the vault is the source of truth.',
 		parameters: { type: 'object', properties: {
 			path: { type: 'string', description: 'Note path (e.g., "folder/note.md")' },
 			includeFrontmatter: { type: 'boolean', description: 'Include YAML frontmatter', default: true },
@@ -204,7 +204,8 @@ function searchVault(app: App): ToolDefinition {
 		name: 'search_vault', label: 'Search Vault',
 		description:
 			'Search vault notes with multi-term BM25 relevance scoring.\n' +
-			'Supports: tag:name path:folder heading:text fm:key=value "exact phrase" -exclude.',
+			'Supports: tag:name path:folder heading:text fm:key=value "exact phrase" -exclude.\n' +
+			'Use this to verify whether a tag, frontmatter field, path, or note actually exists before claiming it does — the vault is the source of truth.',
 		parameters: { type: 'object', properties: {
 			query: { type: 'string', description: 'Search text with optional qualifiers' },
 			maxResults: { type: 'number', description: 'Max results (default: 10, max: 50)', default: 10 },
@@ -247,7 +248,7 @@ function searchVault(app: App): ToolDefinition {
 function listFiles(app: App): ToolDefinition {
 	return {
 		name: 'list_files', label: 'List Files',
-		description: 'List files/folders in a vault directory.',
+		description: 'List the files and folders in a vault directory. Use path "/" (default) with recursive true to show the user their real, current vault structure. This is the authoritative source of truth for what exists in the vault — never describe folders or files that this tool has not returned.',
 		parameters: { type: 'object', properties: {
 			path: { type: 'string', description: 'Directory path (default: "/")', default: '/' },
 			recursive: { type: 'boolean', description: 'Recursive listing', default: false },

@@ -116,6 +116,9 @@ Command Center — Agentic OS for Obsidian
 .command-center-identity { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
 .command-center-subtitle { color: var(--text-muted); font-size: var(--font-small); }
 .command-center-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.command-center-header-actions .cc-header-btn { display: inline-flex; align-items: center; gap: 6px; }
+.command-center-header-actions .cc-header-btn svg { width: 15px; height: 15px; }
+.command-center-header-actions .cc-header-btn svg + * { display: inline; }
 .cc-dashboard-telemetry { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin-bottom: 18px; }
 /* Auto-fill responsive grid: each widget gets a track between 380px and
    full-width. The grid adds columns as the pane widens and drops to one
@@ -149,7 +152,7 @@ Command Center — Agentic OS for Obsidian
 .cc-dashboard-widget-grid > [data-widget-height='tall'] { min-height: 26rem; }
 .cc-dashboard-widget-grid > [data-widget-height='taller'] { min-height: 40rem; }
 .cc-dashboard-widget-grid > .is-widget-hidden { display: none; }
-.cc-dashboard-widget-grid > .is-widget-collapsed > :not(h3):not(.command-center-section-header) { display: none; }
+.cc-dashboard-widget-grid > .is-widget-collapsed > :not(h3):not(.command-center-section-header):not(.cc-deck-header) { display: none; }
 .cc-dashboard-widget-grid > .is-widget-collapsed { min-height: 48px; overflow: hidden; }
 /* In-dashboard layout editor: a chrome-free list of every widget with
    reorder, size, collapse, and hide controls. No drag grips. */
@@ -162,7 +165,10 @@ Command Center — Agentic OS for Obsidian
 .cc-layout-row button { padding: 2px 8px; font-size: var(--font-smallest); }
 /* The auto-fill grid handles responsiveness natively — no breakpoint queries needed. */
 @media (max-width: 720px) { .cc-layout-row { grid-template-columns: 1fr repeat(2, auto); } .cc-layout-row select, .cc-layout-row button:nth-last-child(-n+2) { grid-row: 2; } }
-.cc-telemetry-card { min-width: 0; padding: 10px 12px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-secondary); }
+.cc-telemetry-card { min-width: 0; padding: 10px 12px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-secondary); cursor: pointer; text-align: left; transition: background 0.12s ease, border-color 0.12s ease; }
+button.cc-telemetry-card { color: inherit; font: inherit; }
+button.cc-telemetry-card:hover { background: var(--background-modifier-hover); border-color: var(--interactive-accent); }
+button.cc-telemetry-card:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
 
 /* ─── Built-in browser view ───────────────────────── */
 .cc-browser-view { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
@@ -1203,7 +1209,9 @@ Command Center — Agentic OS for Obsidian
 .cc-onboarding-history { display: flex; flex: 1 1 auto; flex-direction: column; gap: 9px; min-height: 260px; max-height: 55vh; overflow-y: auto; padding: 10px; border: 1px solid var(--background-modifier-border); border-radius: 7px; background: var(--background-primary); }
 .cc-onboarding-message { display: flex; }
 .cc-onboarding-user { justify-content: flex-end; }
-.cc-onboarding-bubble { max-width: 88%; padding: 8px 11px; border: 1px solid var(--background-modifier-border); border-radius: 11px; background: var(--background-secondary); overflow-wrap: anywhere; }
+.cc-onboarding-bubble { max-width: 88%; padding: 8px 11px; border: 1px solid var(--background-modifier-border); border-radius: 11px; background: var(--background-secondary); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.cc-onboarding-bubble, .cc-onboarding-bubble * { user-select: text; -webkit-user-select: text; }
+.cc-onboarding-bubble a, .cc-onboarding-bubble code, .cc-onboarding-bubble pre, .cc-onboarding-bubble blockquote, .cc-onboarding-bubble li { user-select: text; -webkit-user-select: text; }
 .cc-onboarding-user .cc-onboarding-bubble { border-color: hsla(var(--interactive-accent-hsl), 0.35); background: hsla(var(--interactive-accent-hsl), 0.14); }
 .cc-onboarding-bubble > :first-child { margin-top: 0; }
 .cc-onboarding-bubble > :last-child { margin-bottom: 0; }
@@ -1216,7 +1224,7 @@ Command Center — Agentic OS for Obsidian
 .cc-onboarding-next-steps h4 { margin: 0 0 8px; font-size: var(--font-ui-medium); }
 .cc-onboarding-next-steps ol { margin: 0; padding-left: 20px; font-size: var(--font-small); line-height: 1.8; }
 .cc-onboarding-next-steps-hint { margin-top: 10px; color: var(--text-muted); font-size: var(--font-smallest); }
-.cc-read-aloud { display: inline-flex; align-items: center; margin-top: 6px; padding: 2px 7px; color: var(--text-muted); font-size: var(--font-smallest); }
+.cc-read-aloud { display: inline-flex; align-items: center; margin-top: 6px; padding: 2px 7px; color: var(--text-muted); font-size: var(--font-smallest); user-select: none; -webkit-user-select: none; }
 /* Code block copy button: positioned in the top-right corner of the <pre> block. */
 pre.cc-code-with-copy { position: relative; }
 .cc-copy-code {
@@ -1355,8 +1363,13 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 .cc-intel-base .cc-intel-row-badge { text-transform: uppercase; letter-spacing: 0.05em; }
 
 /* ── Section header UX: title + purpose + actionable hint ───────────── */
-.cc-widget-title-group { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cc-widget-title-group { display: flex; flex-direction: row; align-items: flex-start; gap: 2px; min-width: 0; }
+.cc-widget-title-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .cc-widget-title-group h3 { margin: 0; }
+.cc-widget-collapse-chevron { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; margin-right: 4px; background: transparent; border: 0; box-shadow: none; color: var(--text-muted); cursor: pointer; border-radius: var(--radius-s); flex: 0 0 auto; }
+.cc-widget-collapse-chevron:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.cc-widget-collapse-chevron svg { width: 14px; height: 14px; }
+.cc-widget-collapse-chevron:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .cc-widget-header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; margin-left: auto; }
 .command-center-section-header .cc-widget-caption { text-transform: none; letter-spacing: normal; font-weight: var(--font-normal); line-height: 1.45; }
 .cc-widget-hint { margin: 0 0 9px; padding: 6px 9px; border-left: 2px solid var(--background-modifier-border); border-radius: var(--radius-s); background: var(--background-secondary); color: var(--text-muted); font-size: var(--font-smallest); line-height: 1.5; }
@@ -1405,6 +1418,32 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 .cc-calendar-add { display: flex; gap: 6px; }
 .cc-calendar-add input { flex: 1; min-width: 0; }
 .cc-calendar-add button { flex: 0 0 auto; }
+
+/* ── Clock views ───────────────────────────────────────── */
+.cc-clock-panel { display: flex; flex-direction: column; gap: 2px; }
+.cc-clock-time { font-size: var(--font-ui-large); font-variant-numeric: tabular-nums; }
+.cc-clock-minimal .cc-clock-time { font-size: var(--font-ui-title); }
+.cc-clock-label { color: var(--text-muted); font-size: var(--font-smallest); }
+.cc-clock-date { color: var(--text-muted); font-size: var(--font-small); }
+.cc-clock-minimal .cc-clock-label, .cc-clock-minimal .cc-clock-date { display: none; }
+
+/* ── Calendar views: week + agenda ─────────────────────── */
+.cc-calendar-week .cc-calendar-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cc-calendar-agenda .cc-calendar-grid { display: flex; flex-direction: column; gap: 8px; }
+.cc-calendar-agenda .cc-calendar-detail { display: none; }
+.cc-calendar-agenda-day { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); background: var(--background-secondary); }
+.cc-calendar-agenda-day.is-today { border-color: var(--interactive-accent); }
+.cc-calendar-agenda-header { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
+.cc-calendar-agenda-day .cc-calendar-task { cursor: pointer; }
+.cc-calendar-agenda-day .cc-calendar-task.is-overdue .cc-calendar-task-text > div:first-child { color: var(--color-red); }
+
+/* ── Intelligence action-item views: list + compact ─────── */
+.cc-intel-list { display: flex; flex-direction: column; gap: 2px; }
+.cc-intel-compact { display: flex; flex-wrap: wrap; gap: 6px; }
+.cc-intel-compact-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 8px; border: 1px solid var(--background-modifier-border); border-radius: 999px; background: var(--background-primary); }
+.cc-intel-compact-chip.is-overdue { border-color: hsla(var(--color-red-hsl), 0.45); background: hsla(var(--color-red-hsl), 0.12); }
+.cc-intel-compact-count { font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
+.cc-intel-compact-label { color: var(--text-muted); font-size: calc(var(--font-smallest) * 0.85); text-transform: uppercase; letter-spacing: 0.04em; }
 
 /* ── Vault navigator (Principle 6: one doorway to everything) ───────── */
 .cc-navigator { display: flex; flex-direction: column; gap: 7px; min-width: 0; }

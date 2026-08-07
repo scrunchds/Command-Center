@@ -54,6 +54,7 @@ import {
 	type ActionLaneFilter,
 } from '../settings/settings-model';
 import { mergeLayout, nudgeLayout } from '../ui/layout-model';
+import { resolveWidgetView, widgetLabel as widgetLabelFor, widgetViews } from '../ui/widget-descriptors';
 import { CUSTOM_WIDGET_PREFIX } from '../ui/card-syntax';
 import { detectPiPath, clearPiDetectionCache } from '../daemon';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
@@ -177,6 +178,19 @@ export class PluginSettingsTab extends PluginSettingTab {
 	/** Refresh the settings UI after an interaction (re-renders declaratively). */
 	override update(): void {
 		super.update();
+	}
+
+	/** Deep-link into a named settings section: expands it if collapsed, then
+	 * scrolls its header into view. Called by the dashboard telemetry cards via
+	 * `plugin.openSettingsSection` so an operator can jump straight to the
+	 * setting behind a status. */
+	revealSection(sectionId: string): void {
+		if (this.collapsedSections.has(sectionId)) {
+			this.collapsedSections.delete(sectionId);
+			this.update();
+		}
+		const header = this.containerEl.querySelector<HTMLElement>(`[data-section-id="${sectionId}"]`);
+		header?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 	}
 
 	private renderImperativeSettings(el: HTMLElement): void {
@@ -2115,6 +2129,18 @@ export class PluginSettingsTab extends PluginSettingTab {
 				});
 			});
 
+			// View dropdown (only for widgets that offer alternative views)
+			const viewOptions = widgetViews(widget.id);
+			if (viewOptions.length > 0) {
+				row.addDropdown(dropdown => {
+					for (const option of viewOptions) dropdown.addOption(option.id, option.label);
+					dropdown.setValue(resolveWidgetView(widget.id, widget.view));
+					dropdown.onChange(value => {
+					this.patchWidget(widget.id, { view: value });
+				});
+				});
+			}
+
 			// Collapse toggle (button)
 			row.addButton(btn => {
 				btn.setButtonText(widget.collapsed ? 'Expand' : 'Collapse');
@@ -2363,27 +2389,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 	/** Human-readable name for a widget id, including custom cards. */
 	private widgetLabel(id: string): string {
-		if (id.startsWith(CUSTOM_WIDGET_PREFIX)) {
-			return `${id.slice(CUSTOM_WIDGET_PREFIX.length)} (custom card)`;
-		}
-		return ({
-			workspace: 'Operational overview',
-			deck: 'Command deck',
-			navigator: 'Vault doorway',
-			calendar: 'Calendar',
-			browser: 'Browser',
-			intelligence: 'Happening now',
-			approvals: 'Mutation approvals',
-			orchestrator: 'Orchestrator',
-			queue: 'Task queue',
-			react: 'ReAct monitor',
-			bases: 'Bases controller',
-			daily: 'Daily cycle',
-			system: 'System state',
-			daemon: 'Daemon controls',
-			live: 'Live output',
-			history: 'Task history',
-		} as Record<string, string>)[id] ?? id;
+		return widgetLabelFor(id);
 	}
 
 	private renderSectionHeader(
@@ -2393,7 +2399,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		description?: string,
 	): HTMLElement {
 		const collapsed = this.collapsedSections.has(sectionId);
-		const headerDiv = containerEl.createDiv({ cls: 'cc-section-header' });
+		const headerDiv = containerEl.createDiv({ cls: 'cc-section-header', attr: { 'data-section-id': sectionId } });
 
 		const leftDiv = headerDiv.createDiv({ cls: 'cc-section-header-left' });
 		const collapseBtn = leftDiv.createSpan({

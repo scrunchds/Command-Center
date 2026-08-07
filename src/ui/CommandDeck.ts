@@ -37,6 +37,12 @@ export interface CommandDeckOptions {
 	onLaunch: (entry: DeckEntry) => void | Promise<void>;
 	/** Invoked when the operator asks to build a new workflow conversationally. */
 	onCreate?: () => void;
+	/** When set, the deck header shows an inline collapse chevron that calls
+	 * this to toggle the widget's collapsed state (kept in the layout by the
+	 * owning view, not by the deck itself). */
+	onToggleCollapsed?: () => void;
+	/** Current collapsed state, used only to render the chevron's icon. */
+	collapsed?: boolean;
 }
 
 const DEFAULT_ICONS: Record<DeckEntry['kind'], string> = {
@@ -75,8 +81,22 @@ export class CommandDeck {
 		host.addClass('cc-command-deck');
 		const header = host.createDiv({ cls: 'cc-deck-header' });
 		const group = header.createDiv({ cls: 'cc-widget-title-group' });
-		group.createEl('h3', { text: 'Command deck' });
-		group.createSpan({
+		if (this.options.onToggleCollapsed) {
+			const chevron = group.createEl('button', {
+				cls: 'cc-widget-collapse-chevron',
+				attr: {
+					type: 'button',
+					'aria-label': this.options.collapsed ? 'Expand Command deck' : 'Collapse Command deck',
+					'aria-expanded': String(!this.options.collapsed),
+					title: this.options.collapsed ? 'Expand' : 'Collapse',
+				},
+			});
+			setIcon(chevron, this.options.collapsed ? 'chevron-right' : 'chevron-down');
+			chevron.addEventListener('click', () => this.options.onToggleCollapsed?.());
+		}
+		const textCol = group.createDiv({ cls: 'cc-widget-title-text' });
+		textCol.createEl('h3', { text: 'Command deck' });
+		textCol.createSpan({
 			cls: 'cc-widget-caption',
 			text: 'Every workflow file in your vault, as a one-click button.',
 		});

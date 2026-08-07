@@ -21,6 +21,8 @@ export interface ClockPanelOptions {
 	getShowDate: () => boolean;
 	getDateFormat: () => 'long' | 'short' | 'numeric';
 	getLabel: () => string;
+	/** Active view id; defaults to 'digital'. 'minimal' hides the date and label. */
+	getView?: () => string;
 }
 
 /** A live wall clock + optional date and label, mounted into a dashboard section. */
@@ -53,9 +55,12 @@ export class ClockPanel {
 		if (!this.timeEl || !this.dateEl || !this.labelEl || !this.hostEl) return;
 		const now = new Date();
 
+		const minimal = (this.options.getView?.() ?? 'digital') === 'minimal';
+		this.hostEl.toggleClass('cc-clock-minimal', minimal);
+
 		this.timeEl.setText(formatTime(now, this.options.getTimeFormat(), this.options.getShowSeconds()));
 
-		const showDate = this.options.getShowDate();
+		const showDate = !minimal && this.options.getShowDate();
 		this.dateEl.toggleClass('is-hidden', !showDate);
 		if (showDate) {
 			const fmt = this.options.getDateFormat();
@@ -78,7 +83,7 @@ export class ClockPanel {
 			}
 		}
 
-		const label = this.options.getLabel().trim();
+		const label = !minimal && this.options.getLabel().trim();
 		this.labelEl.toggleClass('is-hidden', !label);
 		if (label) this.labelEl.setText(label);
 	}
@@ -92,5 +97,11 @@ export class ClockPanel {
 		this.labelEl = null;
 		this.timeEl = null;
 		this.dateEl = null;
+	}
+
+	/** Repaint immediately. Used by the host when the view changes so a new
+	 * mode appears without waiting for the next one-second tick. */
+	refresh(): void {
+		this.tick();
 	}
 }

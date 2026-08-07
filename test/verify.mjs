@@ -2484,6 +2484,11 @@ async function verifyLayoutModel() {
 	assert.equal(sized.find(e => e.id === 'workspace').height, 'tall');
 	pass('25f: preserves saved span and height');
 
+	// 25f2: a saved view survives the merge
+	const viewed = mergeLayout([w('calendar', { view: 'week' })], defaults, []);
+	assert.equal(viewed.find(e => e.id === 'calendar').view, 'week');
+	pass('25f2: preserves a saved view');
+
 	// 25g: legacy entries with no span fall back to their size
 	assert.equal(spanForSize('compact'), 4);
 	assert.equal(spanForSize('standard'), 6);
@@ -2539,6 +2544,26 @@ async function verifyLayoutModel() {
 	mergeLayout(input, defaults, []);
 	assert.equal(input.length, 1);
 	pass('25o: does not mutate the saved layout in place');
+
+	// 25p: widget view resolution falls back to the default and rejects unknowns
+	const views = await import(pathToFileURL(join(SRC, 'ui', 'widget-descriptors.ts')).href);
+	assert.equal(views.resolveWidgetView('clock', undefined), 'digital');
+	assert.equal(views.resolveWidgetView('calendar', 'agenda'), 'agenda');
+	assert.equal(views.resolveWidgetView('calendar', 'bogus'), 'month');
+	assert.equal(views.resolveWidgetView('deck', 'anything'), '');
+	assert.ok(views.widgetHasViews('intelligence') && !views.widgetHasViews('deck'));
+	pass('25p: resolves widget views with safe fallback');
+
+	// 25q: widget labels are centralized and cover every built-in widget,
+	// including the three (clock, schedule, chatbox) the settings tab used to miss.
+	assert.equal(views.widgetLabel('clock'), 'Clock');
+	assert.equal(views.widgetLabel('schedule'), 'Daily schedule');
+	assert.equal(views.widgetLabel('chatbox'), 'Chatbox');
+	assert.equal(views.widgetLabel('approvals'), 'Mutation approvals');
+	assert.equal(views.widgetLabel('nonexistent'), 'nonexistent');
+	assert.equal(views.widgetLabel('custom:Notes/My Card.md'), 'Notes/My Card.md (custom card)');
+	assert.equal(views.widgetLabel('custom:Notes/My Card.md', () => 'My Card'), 'My Card (custom card)');
+	pass('25q: centralized widget labels cover all built-ins and custom cards');
 }
 
 

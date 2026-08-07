@@ -14,6 +14,9 @@ import { DEFAULT_ROUTING } from '../routing/routing-table';
 
 export type DashboardWidgetSize = 'compact' | 'standard' | 'expanded';
 
+/** Alternative presentation for a widget, when it offers more than one. */
+export type DashboardWidgetView = string;
+
 /**
  * UI complexity mode — progressively discloses settings and features.
  * - simple:  minimal configuration, auto-detection, basic toggles only
@@ -34,6 +37,8 @@ export interface DashboardWidgetLayout {
 	span?: number;
 	/** Discrete panel height, set by dragging the bottom edge. */
 	height?: DashboardWidgetHeight;
+	/** Alternative view id for widgets that offer more than one presentation. */
+	view?: DashboardWidgetView;
 }
 
 /** Named heights rather than free pixels, so themes and spacing stay coherent. */

@@ -11,6 +11,7 @@ import {
 	WorkspaceLeaf,
 	normalizePath,
 	App,
+	setIcon,
 	type EventRef,
 } from 'obsidian';
 import type CommandCenterPlugin from '../main';
@@ -23,7 +24,7 @@ import type { ApiConnectorConfig } from '../connectors/ApiConnectorManager';
 import type { WriteGateRecord } from '../security/WriteGate';
 import { renderIntelligenceCards } from './IntelligenceCards';
 import { resolveIntelligenceCards, resolveActionLanes } from '../settings/settings-model';
-import { CUSTOM_WIDGET_PREFIX, CustomCards } from './CustomCards';
+import { CustomCards } from './CustomCards';
 import { BrowserPanel } from './BrowserPanel';
 import { openInNativeWebViewer } from './native-webviewer';
 import {
@@ -38,6 +39,7 @@ import { ChatBoxPanel } from './ChatBoxPanel';
 import { VaultNavigator } from './VaultNavigator';
 import { DEFAULT_DASHBOARD_LAYOUT, type DashboardWidgetLayout, type DashboardWidgetSize } from '../settings/settings-model';
 import { DashboardOnboarding } from './DashboardOnboarding';
+import { resolveWidgetView, widgetLabel as widgetLabelFor, widgetViews } from './widget-descriptors';
 import { CredentialVaultModal } from '../security/CredentialVaultModal';
 import { ChatActionCard } from './chat-action-card';
 import type { ProviderId } from '../providers/provider-types';
@@ -236,6 +238,7 @@ export class CommandCenterView extends ItemView {
 			'Daemon',
 			'The background agent process that runs multi-step reasoning and tool loops.',
 			'Leave it running. Start it if the dot reads stopped, or restart it after changing providers or connectors.',
+			'daemon',
 		);
 
 		const controls = daemonSection.createDiv({
@@ -295,6 +298,7 @@ export class CommandCenterView extends ItemView {
 			'Task queue',
 			'Live counts of agent work that is waiting, running, finished, or failed.',
 			'Watch this while a workflow runs. A rising failed count means check Live output for the error.',
+			'queue',
 		);
 		const grid = statsSection.createDiv({
 			cls: 'command-center-stats-grid',
@@ -315,6 +319,7 @@ export class CommandCenterView extends ItemView {
 			'Task history',
 			'A record of recently completed and failed agent tasks with their duration.',
 			'Use this to confirm something actually ran. Click Clear once you have reviewed the list.',
+			'history',
 		);
 		const clearBtn = histHeader.createEl('button', { text: 'Clear' });
 		this.registerDomEvent(clearBtn, 'click', () => {
@@ -342,6 +347,7 @@ export class CommandCenterView extends ItemView {
 			'Live output',
 			'Raw text streaming from agents and tools as it is produced.',
 			'Read this when a task stalls or fails; the last lines usually name the cause.',
+			'live',
 		);
 		const clearStreamBtn = streamHeader.createEl('button', {
 			text: 'Clear all',
@@ -365,6 +371,7 @@ export class CommandCenterView extends ItemView {
 			'ReAct monitor',
 			'Step-by-step trace of multi-step reasoning: each thought, tool call, observation, and correction.',
 			'Ignore it for simple requests. Open it when you want to see why an agent chose an action, or turn on Debug / step mode to advance one step at a time. Click any row for full detail.',
+			'react',
 		);
 		const reactActions = reactHeaderActions.createDiv({ cls: 'cc-react-actions' });
 		this.debugToggleBtn = reactActions.createEl('button', {
@@ -513,6 +520,7 @@ export class CommandCenterView extends ItemView {
 			'Operational overview',
 			'Live status of the dashboard’s moving parts.',
 			'Glance here first. If a chip turns red, click its action to fix it.',
+			'workspace',
 		);
 		this.dashboardWorkspaceEl.appendChild(this.renderOverviewStrip());
 
@@ -678,19 +686,22 @@ export class CommandCenterView extends ItemView {
 
 	private renderHeader(title: HTMLElement): void {
 		const actions = title.createDiv({ cls: 'command-center-header-actions' });
-		const exportWorkflowBtn = actions.createEl('button', { text: 'Export workflow to canvas' });
+		const exportWorkflowBtn = actions.createEl('button', { text: 'Export workflow to canvas', attr: { 'aria-label': 'Export the active workflow as a canvas file' } });
+		setIcon(exportWorkflowBtn, 'download');
 		this.registerDomEvent(exportWorkflowBtn, 'click', () => void this.plugin.exportActiveWorkflowToCanvas());
 		const customize = actions.createEl('button', {
 			text: 'Customize dashboard',
+			cls: 'mod-cta cc-header-btn',
 			attr: { 'aria-expanded': 'false', 'aria-controls': 'cc-dashboard-layout-editor' },
 		});
+		setIcon(customize, 'layout-dashboard');
 		this.customizeButtonEl = customize;
 		this.registerDomEvent(customize, 'click', () => this.toggleLayoutEditor(customize));
-		const browser = actions.createEl('button', { text: 'Open browser' });
-		// Route through the plugin so an already-open browser leaf is revealed and
-		// reused, rather than stacking a fresh empty split every click.
+		const browser = actions.createEl('button', { text: 'Open browser', attr: { 'aria-label': 'Open the embedded browser panel' } });
+		setIcon(browser, 'globe');
 		this.registerDomEvent(browser, 'click', () => void this.plugin.activateCommandCenterBrowserView());
-		const vault = actions.createEl('button', { text: 'Open secrets' });
+		const vault = actions.createEl('button', { text: 'Open secrets', attr: { 'aria-label': 'Open the credential vault' } });
+		setIcon(vault, 'keyhole');
 		this.registerDomEvent(vault, 'click', () => new CredentialVaultModal(this.app, this.plugin, () => this.renderTelemetry()).open());
 	}
 
@@ -698,16 +709,22 @@ export class CommandCenterView extends ItemView {
 		if (!this.telemetryEl) return;
 		this.telemetryEl.empty();
 		const route = this.plugin.nativeAutoRouter.resolve('text');
+		// Each card is a button so the operator can jump straight to the setting
+		// behind the status. The section ids match PluginSettingsTab sections.
 		const items = [
-			{ label: 'Route', value: `${route.providerId} · ${route.modelId ?? 'default'}`, state: route.source === 'fail-closed' ? 'warning' : 'ok' },
-			{ label: 'Depth', value: `${this.plugin.nativeAutoRouter.getDepth()} / 10`, state: 'neutral' },
-			{ label: 'Pi daemon', value: this.plugin.daemon.isRunning() ? 'Running' : 'Stopped', state: this.plugin.daemon.isRunning() ? 'ok' : 'warning' },
-			{ label: 'Secrets', value: `${this.plugin.credentialVault.count()} stored`, state: this.plugin.credentialVault.count() > 0 ? 'ok' : 'secure' },
+			{ label: 'Route', value: `${route.providerId} · ${route.modelId ?? 'default'}`, state: route.source === 'fail-closed' ? 'warning' : 'ok', action: () => this.plugin.openSettingsSection('providers') },
+			{ label: 'Depth', value: `${this.plugin.nativeAutoRouter.getDepth()} / 10`, state: 'neutral', action: () => this.plugin.openSettingsSection('metacognitive') },
+			{ label: 'Pi daemon', value: this.plugin.daemon.isRunning() ? 'Running' : 'Stopped', state: this.plugin.daemon.isRunning() ? 'ok' : 'warning', action: () => this.scrollWidgetIntoView('daemon') },
+			{ label: 'Secrets', value: `${this.plugin.credentialVault.count()} stored`, state: this.plugin.credentialVault.count() > 0 ? 'ok' : 'secure', action: () => new CredentialVaultModal(this.app, this.plugin, () => this.renderTelemetry()).open() },
 		] as const;
 		for (const item of items) {
-			const card = this.telemetryEl.createDiv({ cls: `cc-telemetry-card is-${item.state}` });
+			const card = this.telemetryEl.createEl('button', {
+				cls: `cc-telemetry-card is-${item.state}`,
+				attr: { type: 'button', 'aria-label': `${item.label}: ${item.value}. Open related settings.` },
+			});
 			card.createDiv({ text: item.label, cls: 'cc-telemetry-label' });
 			card.createDiv({ text: item.value, cls: 'cc-telemetry-value' });
+			this.registerDomEvent(card, 'click', item.action);
 		}
 		// Compact provider readiness row: one dot per enabled provider so the
 		// dashboard shows at a glance which providers are configured and ready.
@@ -799,6 +816,13 @@ export class CommandCenterView extends ItemView {
 			for (const value of ['compact', 'standard', 'expanded'] as const) size.createEl('option', { value, text: value });
 			size.value = widget.size;
 			this.registerDomEvent(size, 'change', () => this.updateWidget(widget.id, { size: size.value as DashboardWidgetSize }));
+			const viewOptions = widgetViews(widget.id);
+			if (viewOptions.length > 0) {
+				const viewSel = row.createEl('select', { attr: { 'aria-label': `${this.widgetLabel(widget.id)} view` } });
+				for (const option of viewOptions) viewSel.createEl('option', { value: option.id, text: option.label });
+				viewSel.value = resolveWidgetView(widget.id, widget.view);
+				this.registerDomEvent(viewSel, 'change', () => this.updateWidget(widget.id, { view: viewSel.value }));
+			}
 			const protectedWidget = widget.id === 'approvals';
 			const collapse = row.createEl('button', { text: widget.collapsed ? 'Expand' : 'Collapse' });
 			collapse.disabled = protectedWidget;
@@ -833,6 +857,11 @@ export class CommandCenterView extends ItemView {
 	 * settings tab can refresh an open dashboard after a layout edit. */
 	refreshDashboardLayout(): void {
 		this.applyDashboardLayout();
+		// A layout edit from the settings tab may have changed a widget's view;
+		// repaint the view-capable panels so the new mode appears live.
+		this.clockPanel?.refresh();
+		this.calendarPanel?.refresh();
+		void this.refreshIntelligence(false);
 	}
 
 	private applyDashboardLayout(): void {
@@ -853,6 +882,27 @@ export class CommandCenterView extends ItemView {
 			// each widget's own content and listeners untouched.
 			this.widgetHostEl.appendChild(element);
 		}
+		this.refreshCollapseChevrons();
+	}
+
+	/** Sync every widget collapse chevron's icon + a11y attrs with its section's
+	 * live collapsed state. Called after `applyDashboardLayout` so chevrons stay
+	 * correct no matter where the toggle came from (inline chevron, in-dashboard
+	 * layout editor, or the settings tab). The deck's chevron uses the same class
+	 * and is covered here too. */
+	private refreshCollapseChevrons(): void {
+		if (!this.widgetHostEl) return;
+		for (const section of Array.from(this.widgetHostEl.querySelectorAll<HTMLElement>('[data-widget-id]'))) {
+			const id = section.dataset.widgetId;
+			if (!id || id === 'approvals') continue;
+			const chevron = section.querySelector<HTMLElement>('.cc-widget-collapse-chevron');
+			if (!chevron) continue;
+			const collapsed = section.hasClass('is-widget-collapsed');
+			setIcon(chevron, collapsed ? 'chevron-right' : 'chevron-down');
+			chevron.setAttribute('aria-expanded', String(!collapsed));
+			chevron.setAttribute('aria-label', collapsed ? `Expand ${this.widgetLabel(id)}` : `Collapse ${this.widgetLabel(id)}`);
+			chevron.setAttribute('title', collapsed ? 'Expand' : 'Collapse');
+		}
 	}
 
 	/**
@@ -869,39 +919,87 @@ export class CommandCenterView extends ItemView {
 
 	private markWidget(element: HTMLElement, id: string): void { element.dataset.widgetId = id; }
 
+	/** Scroll a dashboard widget section into view. Used by the telemetry
+	 * cards to jump the operator to the relevant panel (e.g. Pi daemon). */
+	private scrollWidgetIntoView(id: string): void {
+		this.widgetHostEl?.querySelector<HTMLElement>(`[data-widget-id="${id}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+	}
+
 	/**
 	 * Standard widget header: what the panel is, what it is for, and what to do
 	 * with it. Every dashboard section uses this so the operator never has to
 	 * guess a panel's purpose or its next action.
 	 *
-	 * @param host     Section element the header belongs to.
-	 * @param title    Short panel name.
-	 * @param purpose  One sentence describing what the panel shows.
-	 * @param action   One sentence describing what the operator should do here.
+	 * @param host      Section element the header belongs to.
+	 * @param title     Short panel name.
+	 * @param purpose   One sentence describing what the panel shows.
+	 * @param action    One sentence describing what the operator should do here.
+	 * @param widgetId  When set, the header gains an inline collapse chevron that
+	 *                 toggles this widget's collapsed state without opening
+	 *                 the full layout editor. 'approvals' is always shown expanded.
 	 * @returns The header row, so callers can append buttons beside the title.
 	 */
-	private sectionHeading(host: HTMLElement, title: string, purpose: string, action: string): HTMLElement {
+	private sectionHeading(host: HTMLElement, title: string, purpose: string, action: string, widgetId?: string): HTMLElement {
 		const header = host.createDiv({ cls: 'command-center-section-header' });
 		const group = header.createDiv({ cls: 'cc-widget-title-group' });
-		group.createEl('h3', { text: title });
-		group.createSpan({ text: purpose, cls: 'cc-widget-caption' });
+		if (widgetId && widgetId !== 'approvals') {
+			this.renderCollapseChevron(group, host, widgetId);
+		}
+		const textCol = group.createDiv({ cls: 'cc-widget-title-text' });
+		textCol.createEl('h3', { text: title });
+		textCol.createSpan({ text: purpose, cls: 'cc-widget-caption' });
 		const actions = header.createDiv({ cls: 'cc-widget-header-actions' });
 		host.createDiv({ text: action, cls: 'cc-widget-hint' });
 		return actions;
 	}
+
+	/** Inline collapse/expand chevron for a widget. The chevron lives in the
+	 * title group so it stays visible when the panel is collapsed (the CSS
+	 * `.is-widget-collapsed > :not(h3):not(.command-center-section-header)` rule
+	 * keeps the header on screen). Toggling routes through `updateWidget`, so a
+	 * single click re-renders consistently with the Customize-dashboard editor. */
+	private renderCollapseChevron(group: HTMLElement, section: HTMLElement, widgetId: string): void {
+		const collapsed = this.normalizedLayout().find(widget => widget.id === widgetId)?.collapsed ?? false;
+		const btn = group.createEl('button', {
+			cls: 'cc-widget-collapse-chevron',
+			attr: {
+				type: 'button',
+				'aria-label': collapsed ? `Expand ${this.widgetLabel(widgetId)}` : `Collapse ${this.widgetLabel(widgetId)}`,
+				'aria-expanded': String(!collapsed),
+				title: collapsed ? 'Expand' : 'Collapse',
+			},
+		});
+		setIcon(btn, collapsed ? 'chevron-right' : 'chevron-down');
+		this.registerDomEvent(btn, 'click', () => {
+			const isCollapsed = section.hasClass('is-widget-collapsed');
+			this.updateWidget(widgetId, { collapsed: !isCollapsed });
+			// updateWidget -> applyDashboardLayout -> refreshCollapseChevrons
+			// repaints every chevron, including this one, to the new state.
+		});
+	}
 	private widgetLabel(id: string): string {
-		// Custom cards are named by their backing note, resolved at call time.
-		if (id.startsWith(CUSTOM_WIDGET_PREFIX)) {
-			const label = this.customCards?.labelFor(id);
-			return label ? `${label} (custom card)` : id.slice(CUSTOM_WIDGET_PREFIX.length);
-		}
-		return ({ workspace: 'Operational overview', clock: 'Clock', deck: 'Command deck', navigator: 'Vault doorway', calendar: 'Calendar', schedule: 'Daily schedule', browser: 'Browser', intelligence: 'Happening now', approvals: 'Mutation approvals', orchestrator: 'Orchestrator', chatbox: 'Chatbox', queue: 'Task queue', react: 'ReAct monitor', bases: 'Bases controller', daily: 'Daily cycle', system: 'System state', daemon: 'Daemon controls', live: 'Live output', history: 'Task history' } as Record<string, string>)[id] ?? id;
+		return widgetLabelFor(id, cid => this.customCards?.labelFor(cid) ?? null);
 	}
 	private updateWidget(id: string, patch: Partial<DashboardWidgetLayout>): void {
 		this.plugin.settings.dashboardLayout = this.normalizedLayout().map(widget => widget.id === id ? { ...widget, ...patch, ...(id === 'approvals' ? { hidden: false, collapsed: false } : {}) } : widget);
 		void this.plugin.saveSettings();
 		this.applyDashboardLayout();
 		this.renderLayoutEditor();
+		if ('view' in patch) this.applyWidgetContentRefresh(id);
+	}
+
+	/** Re-render a panel whose view may have changed. Size, visibility, and
+	 * order are handled by applyDashboardLayout; views need a content repaint. */
+	private applyWidgetContentRefresh(id: string): void {
+		if (id === 'clock') this.clockPanel?.refresh();
+		else if (id === 'calendar') this.calendarPanel?.refresh();
+		else if (id === 'intelligence') void this.refreshIntelligence(false);
+	}
+
+	/** Resolved view id for a widget, falling back to its default. */
+	private widgetView(id: string): string {
+		const entry = this.normalizedLayout().find(widget => widget.id === id);
+		return resolveWidgetView(id, entry?.view);
 	}
 	private moveWidget(id: string, direction: -1 | 1): void {
 		const layout = this.normalizedLayout();
@@ -982,6 +1080,7 @@ export class CommandCenterView extends ItemView {
 			'Happening now',
 			"Today's note, unprocessed captures, open action items, and your workspaces — read locally from vault metadata, with no model calls.",
 			'Start your day here. Click any row to jump straight to that note or line.',
+			'intelligence',
 		);
 		this.intelligenceEl = section.createDiv({ cls: 'cc-intel-host' });
 		this.intelligenceEl.createDiv({ text: 'Scanning vault metadata…', cls: 'command-center-empty' });
@@ -997,6 +1096,7 @@ export class CommandCenterView extends ItemView {
 			renderIntelligenceCards(this.intelligenceEl, this.app, snapshot, {
 				cards: resolveIntelligenceCards(this.plugin.settings.intelligenceCards),
 				lanes: resolveActionLanes(this.plugin.settings.actionLanes),
+				actionsView: this.widgetView('intelligence'),
 			});
 			// One snapshot feeds every zero-cost surface.
 			this.calendarPanel?.update(snapshot);
@@ -1030,6 +1130,11 @@ export class CommandCenterView extends ItemView {
 			directories: this.deckDirectories(),
 			onLaunch: entry => void this.launchDeckEntry(entry),
 			onCreate: () => this.startNewWorkflow(),
+			collapsed: this.normalizedLayout().find(widget => widget.id === 'deck')?.collapsed ?? false,
+			onToggleCollapsed: () => {
+				const current = this.normalizedLayout().find(widget => widget.id === 'deck')?.collapsed ?? false;
+				this.updateWidget('deck', { collapsed: !current });
+			},
 		});
 		this.commandDeck.mount(this.deckEl);
 	}
@@ -1186,6 +1291,7 @@ export class CommandCenterView extends ItemView {
 				this.plugin.vaultData.invalidate();
 				await this.refreshIntelligence(true);
 			},
+			getView: () => this.widgetView('calendar'),
 		});
 		this.calendarPanel.mount(host);
 	}
@@ -1206,6 +1312,7 @@ export class CommandCenterView extends ItemView {
 			getShowDate: () => this.plugin.settings.clockShowDate,
 			getDateFormat: () => this.plugin.settings.clockDateFormat,
 			getLabel: () => this.plugin.settings.clockLabel,
+			getView: () => this.widgetView('clock'),
 		});
 		this.clockPanel.mount(host);
 	}

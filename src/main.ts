@@ -1,4 +1,4 @@
-import { MarkdownView, Modal, Notice, normalizePath, Plugin, TFile, type WorkspaceLeaf } from 'obsidian';
+import { App, MarkdownView, Modal, Notice, normalizePath, Plugin, TFile, type WorkspaceLeaf } from 'obsidian';
 import {
 	PiAgentDaemon,
 	detectPiPath,
@@ -87,7 +87,7 @@ import { ConfigManager } from './engine/ConfigManager';
 import { VaultDataBridge } from './intelligence/VaultDataBridge';
 import { WriteGate, gateTools } from './security/WriteGate';
 import { TaskWriter } from './intelligence/TaskWriter';
-import { InterviewEngine } from './engine/InterviewEngine';
+import { InterviewEngine } from './onboarding/InterviewEngine';
 import { CommandCenterCommandBridge } from './cli/command-bridge';
 import { NativeAutoRouter } from './routing/NativeAutoRouter';
 import { DataNormalizer } from './execution/DataNormalizer';
@@ -168,6 +168,8 @@ export default class CommandCenterPlugin extends Plugin {
 	/** Coalesces worker/session completions into metadata-cache-visible vault writes. */
 	private frontmatterSync!: DebouncedFrontmatterSync;
 	private commandBridge!: CommandCenterCommandBridge;
+	/** Settings tab instance, retained so the dashboard can deep-link into a specific settings section. */
+	settingTab!: PluginSettingsTab;
 
 	/** Daemon auto-retry state for missing/failed pi binary. */
 	private daemonRetryTimer: number | null = null;
@@ -533,7 +535,8 @@ export default class CommandCenterPlugin extends Plugin {
 		this.addRibbonIcon('globe', 'Command center: Open browser', () =>
 			void this.activateCommandCenterBrowserView(),
 		);
-		this.addSettingTab(new PluginSettingsTab(this.app, this));
+		this.settingTab = new PluginSettingsTab(this.app, this);
+		this.addSettingTab(this.settingTab);
 		registerCommands(this);
 		this.commandBridge = new CommandCenterCommandBridge(this);
 		this.commandBridge.register();
@@ -1730,6 +1733,20 @@ export default class CommandCenterPlugin extends Plugin {
 		const view = this.commandCenterBrowserView ?? (leaf.view instanceof CommandCenterBrowserView ? leaf.view : null);
 		if (view && url) view.open(url);
 		await workspace.revealLeaf(leaf);
+	}
+
+	/** Open the Command Center settings tab and scroll a named section into view.
+	 * Used by the dashboard telemetry cards to deep-link the operator straight to
+	 * the setting behind a status (e.g. Route → Provider Credentials). */
+	openSettingsSection(sectionId: string): void {
+		const appWithSetting = this.app as App & { setting: { open: () => void; openTab: (id: string) => unknown } };
+		if (appWithSetting.setting) {
+			appWithSetting.setting.open();
+			appWithSetting.setting.openTab('Command Center');
+		}
+		// openTab re-renders asynchronously; defer the reveal to the next frame so
+		// the section DOM exists before we try to scroll to it.
+		window.setTimeout(() => this.settingTab.revealSection(sectionId), 50);
 	}
 
 }

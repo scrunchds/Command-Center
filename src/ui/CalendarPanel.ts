@@ -23,6 +23,8 @@ export interface CalendarPanelOptions {
 	tasks: TaskWriter;
 	/** Ask the host to recompute the snapshot after a successful write. */
 	onChanged: () => void | Promise<void>;
+	/** Active view id; defaults to 'month'. 'week' shows one week, 'agenda' lists upcoming days. */
+	getView?: () => string;
 }
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -52,6 +54,7 @@ export class CalendarPanel {
 	private gridEl: HTMLElement | null = null;
 	private detailEl: HTMLElement | null = null;
 	private titleEl: HTMLElement | null = null;
+	private weekdaysEl: HTMLElement | null = null;
 	private snapshot: VaultSnapshot | null = null;
 	private cursor = new Date();
 	private selected = isoDate(new Date());
@@ -83,6 +86,7 @@ export class CalendarPanel {
 		});
 
 		const weekdays = host.createDiv({ cls: 'cc-calendar-weekdays' });
+		this.weekdaysEl = weekdays;
 		for (const day of WEEKDAYS) weekdays.createDiv({ text: day });
 		this.gridEl = host.createDiv({ cls: 'cc-calendar-grid' });
 		this.detailEl = host.createDiv({ cls: 'cc-calendar-detail' });
@@ -94,14 +98,29 @@ export class CalendarPanel {
 		this.render();
 	}
 
+	/** Repaint with the last snapshot. Used when only the view changed. */
+	refresh(): void {
+		if (this.snapshot) this.render();
+	}
+
 	dispose(): void {
 		this.hostEl = null;
 		this.gridEl = null;
 		this.detailEl = null;
 		this.titleEl = null;
+		this.weekdaysEl = null;
 	}
 
 	private shiftMonth(delta: number): void {
+		if (this.view() === 'week') {
+			// In week view, prev/next move the focused week rather than the month.
+			const base = new Date(`${this.selected}T00:00:00`);
+			base.setDate(base.getDate() + delta * 7);
+			this.selected = isoDate(base);
+			this.cursor = new Date(base);
+			this.render();
+			return;
+		}
 		this.cursor = new Date(this.cursor.getFullYear(), this.cursor.getMonth() + delta, 1);
 		this.render();
 	}
@@ -118,56 +137,131 @@ export class CalendarPanel {
 		return map;
 	}
 
+	private view(): string {
+		return this.options.getView?.() ?? 'month';
+	}
+
 	private render(): void {
-		if (!this.gridEl || !this.titleEl) return;
+		if (!this.gridEl || !this.titleEl || !this.hostEl) return;
+		const view = this.view();
+		this.hostEl.toggleClass('cc-calendar-agenda', view === 'agenda');
+		this.weekdaysEl?.toggleClass('is-hidden', view === 'agenda');
+		if (view === 'agenda') {
+			this.renderAgenda();
+			return;
+		}
+		// Month and week share the grid + detail pane.
 		this.titleEl.setText(monthLabel(this.cursor));
 		this.gridEl.empty();
+		this.hostEl.toggleClass('cc-calendar-week', view === 'week');
 
 		const byDay = this.tasksByDay();
-		const year = this.cursor.getFullYear();
-		const month = this.cursor.getMonth();
-		const first = new Date(year, month, 1);
-		const daysInMonth = new Date(year, month + 1, 0).getDate();
 		const todayIso = isoDate(new Date());
 
-		// Leading blanks so the 1st lands on its true weekday.
-		for (let i = 0; i < weekdayIndex(first); i++) this.gridEl.createDiv({ cls: 'cc-calendar-cell is-empty' });
-
-		for (let day = 1; day <= daysInMonth; day++) {
-			const date = new Date(year, month, day);
-			const iso = isoDate(date);
-			const dayTasks = byDay.get(iso) ?? [];
-			const open = dayTasks.filter(task => !task.done);
-			const notePath = this.options.dailyNotePathFor(date);
-			const hasNote = notePath !== null && this.app.vault.getAbstractFileByPath(notePath) instanceof TFile;
-
-			const cell = this.gridEl.createDiv({ cls: 'cc-calendar-cell', attr: { role: 'button', tabindex: '0' } });
-			cell.toggleClass('is-today', iso === todayIso);
-			cell.toggleClass('is-selected', iso === this.selected);
-			cell.toggleClass('has-note', hasNote);
-			cell.toggleClass('is-overdue', open.some(task => task.overdue));
-			cell.setAttribute(
-				'aria-label',
-				`${iso}${hasNote ? ', has a note' : ''}${open.length ? `, ${open.length} open task${open.length === 1 ? '' : 's'}` : ''}`,
-			);
-			cell.createDiv({ text: String(day), cls: 'cc-calendar-day' });
-			const marks = cell.createDiv({ cls: 'cc-calendar-marks' });
-			if (hasNote) marks.createSpan({ cls: 'cc-calendar-dot is-note', attr: { title: 'Daily note exists' } });
-			if (open.length > 0) marks.createSpan({ text: String(open.length), cls: 'cc-calendar-count' });
-
-			const select = () => {
-				this.selected = iso;
-				this.render();
-			};
-			cell.addEventListener('click', select);
-			cell.addEventListener('keydown', event => {
-				if (event.key === 'Enter' || event.key === ' ') {
-					event.preventDefault();
-					select();
-				}
-			});
+		if (view === 'week') {
+			// Anchor the week to the selected day (or today) so the detail pane and
+			// the visible row always agree on which week is in focus.
+			const anchorIso = this.selected && this.selected >= todayIso ? this.selected : todayIso;
+			const anchor = new Date(`${anchorIso}T00:00:00`);
+			const monday = new Date(anchor);
+			monday.setDate(anchor.getDate() - weekdayIndex(anchor));
+			for (let i = 0; i < 7; i++) {
+				const date = new Date(monday);
+				date.setDate(monday.getDate() + i);
+				this.renderDayCell(date, byDay, todayIso);
+			}
+		} else {
+			const year = this.cursor.getFullYear();
+			const month = this.cursor.getMonth();
+			const first = new Date(year, month, 1);
+			const daysInMonth = new Date(year, month + 1, 0).getDate();
+			// Leading blanks so the 1st lands on its true weekday.
+			for (let i = 0; i < weekdayIndex(first); i++) this.gridEl.createDiv({ cls: 'cc-calendar-cell is-empty' });
+			for (let day = 1; day <= daysInMonth; day++) {
+				this.renderDayCell(new Date(year, month, day), byDay, todayIso);
+			}
 		}
 		this.renderDetail(byDay.get(this.selected) ?? []);
+	}
+
+	/** One day cell, shared by the month and week views. */
+	private renderDayCell(date: Date, byDay: Map<string, VaultTask[]>, todayIso: string): void {
+		if (!this.gridEl) return;
+		const iso = isoDate(date);
+		const dayTasks = byDay.get(iso) ?? [];
+		const open = dayTasks.filter(task => !task.done);
+		const notePath = this.options.dailyNotePathFor(date);
+		const hasNote = notePath !== null && this.app.vault.getAbstractFileByPath(notePath) instanceof TFile;
+
+		const cell = this.gridEl.createDiv({ cls: 'cc-calendar-cell', attr: { role: 'button', tabindex: '0' } });
+		cell.toggleClass('is-today', iso === todayIso);
+		cell.toggleClass('is-selected', iso === this.selected);
+		cell.toggleClass('has-note', hasNote);
+		cell.toggleClass('is-overdue', open.some(task => task.overdue));
+		cell.setAttribute(
+			'aria-label',
+			`${iso}${hasNote ? ', has a note' : ''}${open.length ? `, ${open.length} open task${open.length === 1 ? '' : 's'}` : ''}`,
+		);
+		cell.createDiv({ text: String(date.getDate()), cls: 'cc-calendar-day' });
+		const marks = cell.createDiv({ cls: 'cc-calendar-marks' });
+		if (hasNote) marks.createSpan({ cls: 'cc-calendar-dot is-note', attr: { title: 'Daily note exists' } });
+		if (open.length > 0) marks.createSpan({ text: String(open.length), cls: 'cc-calendar-count' });
+
+		const select = () => {
+			this.selected = iso;
+			this.render();
+		};
+		cell.addEventListener('click', select);
+		cell.addEventListener('keydown', event => {
+			if (event.key === 'Enter' || event.key === ' ') {
+				event.preventDefault();
+				select();
+			}
+		});
+	}
+
+	/** Agenda: a flat, forward-looking list of days and their scheduled tasks. */
+	private renderAgenda(): void {
+		if (!this.gridEl || !this.titleEl || !this.detailEl) return;
+		this.titleEl.setText('Agenda');
+		this.gridEl.empty();
+		this.detailEl.empty();
+		this.detailEl.addClass('is-hidden');
+		const byDay = this.tasksByDay();
+		const today = new Date();
+		const todayIsoStr = isoDate(today);
+		let any = false;
+		for (let offset = 0; offset < 14; offset++) {
+			const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+			const iso = isoDate(date);
+			const open = (byDay.get(iso) ?? []).filter(task => !task.done);
+			// Always show today; skip future days with nothing scheduled.
+			if (offset !== 0 && open.length === 0) continue;
+			any = true;
+			const group = this.gridEl.createDiv({ cls: 'cc-calendar-agenda-day' });
+			group.toggleClass('is-today', iso === todayIsoStr);
+			const header = group.createDiv({ cls: 'cc-calendar-agenda-header' });
+			header.createEl('strong', { text: date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) });
+			if (offset === 0) header.createSpan({ text: '· today', cls: 'cc-widget-caption' });
+			if (open.length === 0) {
+				group.createDiv({ text: 'Nothing scheduled.', cls: 'cc-intel-empty' });
+				continue;
+			}
+			for (const task of open.slice(0, 6)) {
+				const rowEl = group.createDiv({ cls: 'cc-calendar-task', attr: { role: 'button', tabindex: '0' } });
+				rowEl.toggleClass('is-overdue', task.overdue);
+				const text = rowEl.createDiv({ cls: 'cc-calendar-task-text' });
+				text.createDiv({ text: task.text });
+				text.createDiv({ text: task.basename, cls: 'cc-intel-row-secondary' });
+				const activate = () => void this.openAt(task.path, task.line);
+				rowEl.addEventListener('click', activate);
+				rowEl.addEventListener('keydown', event => {
+					if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
+				});
+			}
+			if (open.length > 6) group.createDiv({ text: `+${open.length - 6} more`, cls: 'cc-intel-footnote' });
+		}
+		if (!any) this.gridEl.createDiv({ text: 'No upcoming scheduled tasks.', cls: 'cc-intel-empty' });
 	}
 
 	/** The selected day's note link, its dated tasks, and a quick-add row. */

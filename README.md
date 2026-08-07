@@ -84,7 +84,7 @@ Writes go through `Vault.process`, which is atomic and compatible with native Fi
 
 **One surface for recording, finding, deciding, and acting.**
 
-The dashboard is a doorway, not a destination: dates, tasks, notes, folders, tags, Bases views, and workflows are all reachable and actionable from one responsive grid. The vault doorway jumps anywhere in the vault; the calendar creates and completes dated work; the embedded browser keeps documentation beside your notes, expandable inline or poppable into its own pane. Every panel is reorderable, resizable, and hideable per vault, and each one states its purpose and next action so nothing needs to be guessed.
+The dashboard is a doorway, not a destination: dates, tasks, notes, folders, tags, Bases views, and workflows are all reachable and actionable from one responsive grid. The vault doorway jumps anywhere in the vault; the calendar creates and completes dated work; the embedded browser keeps documentation beside your notes, expandable inline or poppable into its own pane. Every panel is reorderable, resizable, and hideable per vault, collapsible in place with a header chevron, and each one states its purpose and next action so nothing needs to be guessed.
 
 > [!NOTE]
 > Principles 1 and 2 sometimes constrain features that would be easier to build otherwise — that is intentional. A dashboard that quietly spends tokens, or an agent that writes without asking, would be more convenient and less trustworthy.
@@ -573,6 +573,15 @@ The widget and the full-pane view are the same component, so behavior and fixes 
 
 Any note in your vault becomes a dashboard card by adding `cc-card: true` to its frontmatter. There is no registry and no settings form: create the note and the card appears, delete it and the card is gone. Cards are reorderable alongside built-in widgets.
 
+#### Dashboard views
+
+Three panels offer alternative presentations you can switch between from the “Customize dashboard” editor or Settings → Dashboard:
+- **Clock** — *Digital* (time, date, label) or *Minimal* (time only).
+- **Calendar** — *Month* (full grid), *Week* (a 7-day row anchored to the selected day; prev/next step by a week), or *Agenda* (a forward list of the next two weeks of scheduled tasks).
+- **Happening now / Action items** — *Kanban* (lanes, the default), *List* (a flat, due-sorted list), or *Compact* (count chips only for a small footprint).
+
+The active view is saved per panel and survives layout migrations. Adding a view to another widget later is a one-line change to the descriptor registry in `src/ui/widget-descriptors.ts`.
+
 ```markdown
 ---
 cc-card: true
@@ -881,7 +890,7 @@ License and attribution documents remain at repository level. Restricting the in
 - The chat view now shows a notice when images are pasted. A future change could save pasted images to the vault and attach them as multimodal context.
 
 ### Dashboard layout customization in the onboarding interview
-- The dashboard layout is directly manipulable: drag a panel by its grip to move it, drag its right edge to set width on a twelve-column grid, and drag its bottom edge to set height. Double-click either grip to restore that panel's default. Every panel also supports reorder, show/hide, collapse/expand, and size via the "Customize dashboard" button, and grips respond to arrow keys so arranging never requires a pointer (`src/ui/layout-model.ts`, `ensureWidgetChrome()`).
+- The dashboard layout is configurable from the "Customize dashboard" button: every panel can be reordered, shown or hidden, collapsed or expanded, resized to a compact/standard/expanded size, and (for the Clock, Calendar, and Action items panels) switched between alternative views. Layout is computed in `src/ui/layout-model.ts` and persisted as a per-vault `dashboardLayout` setting.
 - A future enhancement could add a dashboard layout phase to the onboarding interview (e.g. extending the "style" phase, or adding a new phase after "confirmation").
 - This would require:
   1. Adding `dashboardLayout` to the `OnboardingConfig` type in `src/onboarding/OnboardingTypes.ts`
@@ -892,6 +901,9 @@ The `OnboardingConfig` already has a `style.dailyNoteLayout` field, so a `style.
 
 ### Dashboard telemetry health summary
 - The dashboard now shows provider icons with green/red readiness dots. A future change could show live health check status (connected/error) next to each icon.
+- The four telemetry cards (Route, Depth, Pi daemon, Secrets) are now clickable. Route opens **Settings → Command Center → Provider Credentials**, Depth opens the **Metacognitive Depth** section, Pi daemon scrolls the dashboard to the daemon panel, and Secrets opens the credential vault — so the operator can jump straight from a status to the setting that controls it.
+- The Command deck is now collapsible like every other widget, with the same inline header chevron.
+- The four header buttons (Export workflow to canvas, Customize dashboard, Open browser, Open secrets) now carry icons and the primary action (Customize dashboard) uses the `mod-cta` accent so it reads at a glance.
 
 ### Voice Prompt Modal — candidate-less mic guard
 - The voice prompt modal now shows a warning when no transcription providers are configured. A future change could disable the mic button entirely, matching the chat view behavior.
@@ -915,7 +927,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.9.2`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.10.0`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**.
 

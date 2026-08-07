@@ -1,4 +1,4 @@
-import { INTERVIEW_COMPLETE_SIGNAL } from '../engine/InterviewEngine';
+import { INTERVIEW_COMPLETE_SIGNAL } from './InterviewEngine';
 
 /** Compatibility export delegated to the agnostic interview architecture. */
 export const ONBOARDING_WELCOME = 'Describe how your vault is organized, or ask me to inspect its existing folders before proposing managed indexes.';
