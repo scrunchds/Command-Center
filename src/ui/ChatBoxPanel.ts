@@ -170,6 +170,7 @@ export class ChatBoxPanel {
 		this.appendMessage('user', prompt);
 		const responseBubble = this.appendMessage('assistant', '');
 		if (responseBubble) {
+			responseBubble.addClass('is-typing');
 			responseBubble.createSpan({ cls: 'cc-chatbox-typing', text: '…' });
 		}
 
@@ -183,6 +184,7 @@ export class ChatBoxPanel {
 					if (responseBubble) {
 						const typing = responseBubble.querySelector('.cc-chatbox-typing');
 						if (typing) typing.remove();
+						responseBubble.removeClass('is-typing');
 						responseBubble.appendText(delta);
 						this.scrollToBottom();
 					}
@@ -191,6 +193,7 @@ export class ChatBoxPanel {
 			if (responseBubble) {
 				const typing = responseBubble.querySelector('.cc-chatbox-typing');
 				if (typing) typing.remove();
+				responseBubble.removeClass('is-typing');
 				if (result.error) {
 					// Replace the partial/empty bubble with the error via a fresh message.
 					responseBubble.setText(result.error);

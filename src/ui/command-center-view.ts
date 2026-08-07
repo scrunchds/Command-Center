@@ -144,7 +144,6 @@ export class CommandCenterView extends ItemView {
 	private clockPanel: ClockPanel | null = null;
 	private vaultNavigator: VaultNavigator | null = null;
 	private customCards: CustomCards | null = null;
-	private customCardsEl: HTMLElement | null = null;
 	private browserPanel: BrowserPanel | null = null;
 	private chatBoxPanel: ChatBoxPanel | null = null;
 	private intelligenceTimer: number | null = null;
@@ -651,7 +650,6 @@ export class CommandCenterView extends ItemView {
 		this.vaultNavigator = null;
 		this.customCards?.dispose();
 		this.customCards = null;
-		this.customCardsEl = null;
 		this.browserPanel?.dispose();
 		this.browserPanel = null;
 		this.chatBoxPanel?.dispose();
@@ -1128,8 +1126,8 @@ export class CommandCenterView extends ItemView {
 	 * own host so the layout system can order them beside the built-in widgets.
 	 */
 	private renderCustomCards(container: HTMLElement): void {
-		// Cards create their own sections; this wrapper is only a mount point.
-		this.customCardsEl = container.createDiv({ cls: 'cc-custom-card-host' });
+		// Cards create their own <section> elements directly in the grid so they
+		// are first-class grid items; applyDashboardLayout() reorders them.
 		this.customCards = new CustomCards(this.app, {
 			tasks: this.plugin.taskWriter,
 			component: this,
@@ -1146,7 +1144,7 @@ export class CommandCenterView extends ItemView {
 				if (rosterChanged && this.layoutEditorOpen) this.renderLayoutEditor();
 			},
 		});
-		this.customCards.mount(this.customCardsEl);
+		this.customCards.mount(container);
 	}
 
 	/**

@@ -4,6 +4,16 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - 2026-08-07
+
+### Changed
+- **Audio capture migrated from deprecated `ScriptProcessorNode` to `AudioWorklet`** (`src/audio/audio-recorder.ts`): the raw-PCM tap that feeds the WAV fallback (used when the MediaRecorder Opus path emits a silent or corrupt track on some Windows/Electron builds) now runs on an `AudioWorklet` processor loaded from a Blob URL, eliminating all five `@typescript-eslint/no-deprecated` Web Audio warnings (`ScriptProcessorNode`, `createScriptProcessor`, `onaudioprocess`, `inputBuffer`). Recording, level metering, and the WAV fallback are unchanged; the worklet ships each input block to the main thread via a transferred `Float32Array`, and capture degrades gracefully to the MediaRecorder blob when `AudioWorklet` is unavailable.
+
+### Fixed
+- **Removed `display: contents` from custom-card mount** (`src/styles.css`, `src/ui/command-center-view.ts`): the Obsidian community-plugin CSS linter flagged `display: contents` as only partially supported. Custom-card `<section>` elements now mount directly into the dashboard grid as first-class grid items (the `.cc-custom-card-host` wrapper is gone), so `applyDashboardLayout()` still reorders them with no layout change.
+- **Replaced `:has()` chatbox selector with a state class** (`src/styles.css`, `src/ui/ChatBoxPanel.ts`): the linter warned that `.cc-chatbox-bubble:has(.cc-chatbox-typing)` can cause broad selector invalidation. The typing bubble now toggles an `is-typing` class (set when the `…` indicator appears, cleared on first streamed token or error), and the rule targets `.cc-chatbox-bubble.is-typing`.
+- **Replaced the unknown `webview` type selector with a class selector** (`src/styles.css`): `.cc-browser-panel-viewport webview.cc-browser-panel-frame, … iframe.cc-browser-panel-frame` is now `.cc-browser-panel-viewport .cc-browser-panel-frame`, resolving the “Unexpected unknown type selector” warning. Both the Electron `<webview>` and the sandboxed `<iframe>` fallback already share the class.
+
 ## [1.9.1] - 2026-08-06
 
 ### Fixed

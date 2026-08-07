@@ -37,8 +37,10 @@ export class AudioRecorder {
 	private analyser: AnalyserNode | null = null;
 	// Raw PCM capture (WAV fallback). Populated from the same AudioContext graph
 	// that drives the level meter, bypassing the MediaRecorder Opus encoder which
-	// on some Windows/Electron builds emits a silent or corrupt track.
-	private pcmNode: ScriptProcessorNode | null = null;
+	// on some Windows/Electron builds emits a silent or corrupt track. An
+	// AudioWorklet processor (running off the main thread) ships each input
+	// block here via its MessagePort; ScriptProcessorNode is deprecated.
+	private pcmNode: AudioWorkletNode | null = null;
 	private pcmChunks: Float32Array[] = [];
 	private pcmSampleRate = 0;
 	private listeners = new Set<AudioRecorderStateCallback>();
@@ -94,7 +96,7 @@ export class AudioRecorder {
 		// If recording is already active but level monitoring was deferred because
 		// no listeners existed at start() time, bootstrap it now.
 		if (this.state === 'recording' && !this.analyser && !this.levelFrame) {
-			this.bootstrapLevelMonitoring();
+			void this.bootstrapLevelMonitoring();
 		}
 		return () => this.levelListeners.delete(callback);
 	}
@@ -299,7 +301,7 @@ export class AudioRecorder {
 		this.durationTimer = window.setInterval(() => this.emitDuration(Date.now() - this.startedAt), 250);
 		// Always bootstrap level monitoring so peakLevel is available for the
 		// silence guard — even when no UI listeners are registered yet.
-		this.bootstrapLevelMonitoring();
+		void this.bootstrapLevelMonitoring();
 	}
 
 	/**
@@ -307,7 +309,7 @@ export class AudioRecorder {
 	 * Called when recording starts with pre-registered listeners, or lazily when
 	 * the first listener is added via onAudioLevel() during an active recording.
 	 */
-	private bootstrapLevelMonitoring(): void {
+	private async bootstrapLevelMonitoring(): Promise<void> {
 		if (this.analyser || this.levelFrame || this.state !== 'recording' || !this.stream) return;
 		if (typeof AudioContext === 'undefined' || typeof window.requestAnimationFrame === 'undefined') return;
 		try {
@@ -324,27 +326,6 @@ export class AudioRecorder {
 			this.analyser.fftSize = 256;
 			const source = this.audioContext.createMediaStreamSource(this.stream);
 			source.connect(this.analyser);
-			// Tap raw PCM from the same graph for the WAV fallback.
-			try {
-				this.pcmSampleRate = this.audioContext.sampleRate;
-				this.pcmChunks = [];
-				const bufferSize = 4096;
-				const processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
-				processor.onaudioprocess = (event): void => {
-					if (this.state !== 'recording') return;
-					const input = event.inputBuffer.getChannelData(0);
-					this.pcmChunks.push(new Float32Array(input));
-				};
-				source.connect(processor);
-				// Connect to destination so the graph is pulled; gain 0 keeps it silent.
-				const mute = this.audioContext.createGain();
-				mute.gain.value = 0;
-				processor.connect(mute).connect(this.audioContext.destination);
-				this.pcmNode = processor;
-			} catch (error) {
-				console.debug('[CC] PCM capture unavailable, falling back to MediaRecorder blob:', error);
-				this.pcmNode = null;
-			}
 			const samples = new Uint8Array(this.analyser.fftSize);
 			const sampleLevel = (): void => {
 				if (!this.analyser || this.state !== 'recording') return;
@@ -361,7 +342,46 @@ export class AudioRecorder {
 				}
 				this.levelFrame = window.requestAnimationFrame(sampleLevel);
 			};
+			// Start the level meter and set the re-entrancy guard before the async
+			// worklet setup so a concurrent onAudioLevel() call no-ops.
 			this.levelFrame = window.requestAnimationFrame(sampleLevel);
+			// Tap raw PCM from the same graph for the WAV fallback via an AudioWorklet
+			// (ScriptProcessorNode is deprecated). The processor runs off the main
+			// thread and ships each input block here via its MessagePort; we keep the
+			// transferred Float32Array as-is.
+			try {
+				this.pcmSampleRate = this.audioContext.sampleRate;
+				this.pcmChunks = [];
+				const workletSource = `class PcmCaptureProcessor extends AudioWorkletProcessor {
+\tprocess(inputs) {
+\t\tconst channel = inputs[0] && inputs[0][0];
+\t\tif (channel) {
+\t\t\tconst copy = new Float32Array(channel);
+\t\t\tthis.port.postMessage(copy, [copy.buffer]);
+\t\t}
+\t\treturn true;
+\t}
+}
+registerProcessor('pcm-capture-processor', PcmCaptureProcessor);`;
+				const blob = new Blob([workletSource], { type: 'application/javascript' });
+				const workletUrl = URL.createObjectURL(blob);
+				await this.audioContext.audioWorklet.addModule(workletUrl);
+				URL.revokeObjectURL(workletUrl);
+				const processor = new AudioWorkletNode(this.audioContext, 'pcm-capture-processor');
+				processor.port.onmessage = (event): void => {
+					if (this.state !== 'recording') return;
+					this.pcmChunks.push(event.data as Float32Array);
+				};
+				source.connect(processor);
+				// Connect to destination so the graph is pulled; gain 0 keeps it silent.
+				const mute = this.audioContext.createGain();
+				mute.gain.value = 0;
+				processor.connect(mute).connect(this.audioContext.destination);
+				this.pcmNode = processor;
+			} catch (error) {
+				console.debug('[CC] PCM capture unavailable, falling back to MediaRecorder blob:', error);
+				this.pcmNode = null;
+			}
 		} catch {
 			// Duration updates remain available when Web Audio metering is unavailable.
 			this.analyser = null;
@@ -384,7 +404,7 @@ export class AudioRecorder {
 		this.levelFrame = null;
 		this.analyser = null;
 		if (this.pcmNode) {
-			try { this.pcmNode.onaudioprocess = null; this.pcmNode.disconnect(); } catch { /* node already torn down */ }
+			try { this.pcmNode.port.onmessage = null; this.pcmNode.disconnect(); } catch { /* node already torn down */ }
 			this.pcmNode = null;
 		}
 		const context = this.audioContext;

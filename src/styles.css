@@ -1429,12 +1429,6 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 
 /* ─── Custom cards (Principle 3: Markdown-backed extensibility) ───────── */
 
-/* The mount point itself must not affect layout: the dashboard grid reparents
-   each card section out of it, so a visible wrapper would leave a gap. */
-.cc-custom-card-host {
-	display: contents;
-}
-
 .cc-custom-card .cc-custom-card-icon {
 	display: inline-flex;
 	align-items: center;
@@ -1625,8 +1619,7 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 	flex-direction: column;
 }
 
-.cc-browser-panel-viewport webview.cc-browser-panel-frame,
-.cc-browser-panel-viewport iframe.cc-browser-panel-frame {
+.cc-browser-panel-viewport .cc-browser-panel-frame {
 	display: flex;
 	flex: 1 1 auto;
 	width: 100%;
@@ -1721,7 +1714,7 @@ pre:hover .cc-copy-code, .cc-copy-code:focus-visible { opacity: 1; }
 	border: 1px solid var(--background-modifier-border);
 }
 .cc-chatbox-message.is-error .cc-chatbox-bubble,
-.cc-chatbox-bubble:has(.cc-chatbox-typing) { color: var(--text-muted); }
+.cc-chatbox-bubble.is-typing { color: var(--text-muted); }
 .cc-chatbox-message.is-error .cc-chatbox-bubble { color: var(--text-error); }
 .cc-chatbox-message.is-welcome .cc-chatbox-bubble {
 	font-style: italic; color: var(--text-muted); background: transparent; border: 0; max-width: 100%;
