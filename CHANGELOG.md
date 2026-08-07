@@ -4,6 +4,14 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-08-06
+
+### Fixed
+- **Release assets lacked artifact attestations** (`.github/workflows/release.yml`): the 1.9.0 Release workflow failed after four runner-acquisition attempts (a transient GitHub hosted-runner capacity error), and the release was subsequently published manually, bypassing the `actions/attest` provenance step. As a result `main.js`, `styles.css`, and `manifest.json` on the 1.9.0 GitHub release shipped without Sigstore build-provenance attestations (`gh attestation verify` returned HTTP 404). 1.9.1 is cut through the automated release workflow so attestations are generated and cryptographically verified for every asset, as on 1.8.0 and earlier. Release automation must not be bypassed by a manual `gh release create` — if the workflow fails, re-run it until it is green before publishing.
+
+### Documentation
+- **Troubleshooting section refreshed** (`README.md`): added a “Release assets and artifact attestations” entry explaining how to verify any published asset with `gh attestation verify`, how to tell a workflow-built release (`github-actions[bot]` author, signed) from a manual one (`scrunchds` author, unsigned), and the requirement that releases be published only by the automated workflow. Corrected the onboarding command name to match the registered `Start setup / onboarding interview` command.
+
 ## [1.9.0] - 2026-08-06
 
 ### Added

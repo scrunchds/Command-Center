@@ -750,10 +750,10 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		new Setting(body)
 			.setName('Time format')
-			.setDesc('How times render across the clock and schedule widgets. “System” inherits your OS locale’s 12h/24h preference; override it to force one style.')
+			.setDesc('How times render across the clock and schedule widgets. “system” inherits your os locale’s 12h/24h preference; override it to force one style.')
 			.addDropdown(dropdown => {
 				dropdown.addOption('system', 'System default');
-				dropdown.addOption('12h', '12-hour (AM/PM)');
+				dropdown.addOption('12h', '12-hour (am/pm)');
 				dropdown.addOption('24h', '24-hour');
 				dropdown.setValue(this.plugin.settings.timeFormat);
 				dropdown.onChange(value => {
@@ -776,8 +776,8 @@ export class PluginSettingsTab extends PluginSettingTab {
 			.setName('Clock — date format')
 			.setDesc('Verbosity of the date line beneath the clock.')
 			.addDropdown(dropdown => {
-				dropdown.addOption('long', 'Long (Monday, August 6, 2026)');
-				dropdown.addOption('short', 'Short (Mon, Aug 6)');
+				dropdown.addOption('long', 'Long (monday, august 6, 2026)');
+				dropdown.addOption('short', 'Short (mon, aug 6)');
 				dropdown.addOption('numeric', 'Numeric (2026-08-06)');
 				dropdown.setValue(this.plugin.settings.clockDateFormat);
 				dropdown.onChange(value => this.saveSetting('clockDateFormat', value as 'long' | 'short' | 'numeric'));
@@ -787,14 +787,14 @@ export class PluginSettingsTab extends PluginSettingTab {
 		new Setting(body)
 			.setName('Clock — label')
 			.setDesc('Optional text shown above the clock, such as a timezone name or office. Leave blank for none.')
-			.addText(text => text.setPlaceholder('e.g. Home office').setValue(this.plugin.settings.clockLabel).onChange(value => this.saveSetting('clockLabel', value.trim())));
+			.addText(text => text.setPlaceholder('E.g. Home office').setValue(this.plugin.settings.clockLabel).onChange(value => this.saveSetting('clockLabel', value.trim())));
 
 		new Setting(body)
 			.setName('Workflow file format')
-			.setDesc('Markdown writes human-editable frontmatter you can modify by hand and re-run. JSON writes the raw agent-bound DAG contract.')
+			.setDesc('Markdown writes human-editable frontmatter you can modify by hand and re-run. JSON writes the raw agent-bound dag contract.')
 			.addDropdown(dropdown => {
 				dropdown.addOption('md', 'Markdown (.md)');
-				dropdown.addOption('json', 'JSON (.json)');
+				dropdown.addOption('json', 'JSON (.JSON)');
 				dropdown.setValue(this.plugin.settings.workflowFormat);
 				dropdown.onChange(value => {
 					void this.plugin.updateAssetPaths({ workflowFormat: value as 'md' | 'json' });
@@ -2149,7 +2149,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		body.createDiv({ cls: 'cc-subsection-title', text: 'Happening now \u2014 cards' });
 		body.createEl('p', {
 			cls: 'cc-settings-description',
-			text: 'Reorder, show, or hide the four intelligence cards. The Action items card renders its own Kanban-style lanes (configured below).',
+			text: 'Reorder, show, or hide the four intelligence cards. The action items card renders its own kanban-style lanes (configured below).',
 		});
 		const cards = resolveIntelligenceCards(this.plugin.settings.intelligenceCards);
 		const cardLabels: Record<IntelligenceCardId, string> = {
@@ -2189,7 +2189,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		body.createDiv({ cls: 'cc-subsection-title', text: 'Action items \u2014 Kanban lanes' });
 		body.createEl('p', {
 			cls: 'cc-settings-description',
-			text: 'Define the lanes (columns) shown on the Action items card. Each lane filters tasks deterministically from vault metadata \u2014 no methodology is imposed. Lanes render in order; set \u201cHide when empty\u201d to collapse empty columns.',
+			text: 'Define the lanes (columns) shown on the action items card. Each lane filters tasks deterministically from vault metadata \u2014 no methodology is imposed. Lanes render in order; set \u201chide when empty\u201d to collapse empty columns.',
 		});
 		const lanes = resolveActionLanes(this.plugin.settings.actionLanes);
 		const filterLabels: Record<ActionLaneFilter, string> = {
@@ -2239,7 +2239,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 		}
 		const addLaneRow = new Setting(body).setName('Add lane');
 		addLaneRow.addButton(btn => {
-			btn.setButtonText('+ New lane');
+			btn.setButtonText('+ new lane');
 			btn.onClick(() => this.addActionLane());
 		});
 		const resetLanes = body.createEl('button', { text: 'Reset lanes' });
