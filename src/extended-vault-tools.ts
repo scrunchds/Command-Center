@@ -159,12 +159,39 @@ export function createCreateFolderTool(app: App): ToolDefinition {
 				const [ok, path] = sanitizePath(params.path);
 				if (!ok) return errRsp(path);
 				const existing = app.vault.getAbstractFileByPath(path);
-				if (existing) return errRsp('Folder already exists.');
-				await app.vault.createFolder(path);
+				if (existing instanceof TFolder) return okRsp('Folder already exists.', { path });
+				if (existing) return errRsp(`A file blocks folder creation at ${path}.`);
+				await ensureFolder(app, path);
 				return okRsp('Folder created.', { path });
 			} catch (err) { return errRsp(sanitizeError(err)); }
 		},
 	};
+}
+
+/** Recursively create a folder and any missing parents, mirroring the
+ * tool's documented "parent folders are created automatically" contract.
+ * Obsidian's vault.createFolder throws when the parent is absent, so the
+ * agent would otherwise loop on nested managed-folder paths during onboarding. */
+async function ensureFolder(app: App, path: string): Promise<void> {
+	const normalized = normalizePath(path);
+	if (!normalized || normalized === '.') return;
+	const entry = app.vault.getAbstractFileByPath(normalized);
+	if (entry instanceof TFolder) return;
+	if (entry) throw new Error(`A file blocks folder creation at ${normalized}.`);
+	const parent = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : '';
+	if (parent) await ensureFolder(app, parent);
+	await app.vault.createFolder(normalized);
+}
+
+/** Create the parent folder chain for a target file/folder path before a
+ * renameFile call. Obsidian's renameFile fails when the destination parent
+ * folder does not exist, so an agent renaming or moving into a proposed
+ * (but not yet created) folder would otherwise fail and retry in a loop. */
+async function ensureParentOf(app: App, path: string): Promise<void> {
+	const normalized = normalizePath(path);
+	const at = normalized.lastIndexOf('/');
+	if (at <= 0) return;
+	await ensureFolder(app, normalized.slice(0, at));
 }
 
 /* ─── delete_folder ─────────────────────────────────────── */
@@ -224,6 +251,7 @@ export function createRenameNoteTool(app: App): ToolDefinition {
 				if (!ok2) return errRsp(newPath);
 				const file = app.vault.getAbstractFileByPath(path);
 				if (!file || (!(file instanceof TFile) && !(file instanceof TFolder))) return errRsp('File or folder not found.');
+				await ensureParentOf(app, newPath);
 				await app.fileManager.renameFile(file, newPath);
 				return okRsp('Renamed successfully.', { path, newPath });
 			} catch (err) { return errRsp(sanitizeError(err)); }
@@ -263,6 +291,7 @@ export function createMoveNoteTool(app: App): ToolDefinition {
 				if (!file || (!(file instanceof TFile) && !(file instanceof TFolder))) return errRsp('File or folder not found.');
 				const fileName = path.split('/').pop() ?? path;
 				const newPath = dest.endsWith('/') ? dest + fileName : dest + '/' + fileName;
+				await ensureFolder(app, dest.endsWith('/') ? dest.slice(0, -1) : dest);
 				await app.fileManager.renameFile(file, newPath);
 				return okRsp('Moved successfully.', { path, newPath });
 			} catch (err) { return errRsp(sanitizeError(err)); }

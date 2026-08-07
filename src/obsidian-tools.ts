@@ -190,6 +190,7 @@ async function executeNoteWrite(app: App, params: Record<string, unknown>) {
 					await app.vault.modify(file, content);
 				}
 			} else {
+				await ensureParentFolder(app, path);
 				await app.vault.create(path, content);
 			}
 			return okRsp(`Successfully ${file && file instanceof TFile ? 'updated' : 'created'} note.`, { path });
@@ -330,6 +331,25 @@ function getActiveNote(app: App): ToolDefinition {
 }
 
 /* ─── Helpers ────────────────────────────────────────────── */
+
+/** Recursively create the parent folder chain for a note path before
+ * vault.create(). Obsidian throws "parent folder does not exist" when an
+ * intermediate folder is missing, so an agent writing a note into a proposed
+ * (but not yet created) folder would otherwise fail and retry in a loop. */
+async function ensureParentFolder(app: App, path: string): Promise<void> {
+	const normalized = normalizePath(path);
+	const at = normalized.lastIndexOf('/');
+	if (at <= 0) return; // root or no parent; root always exists.
+	const parent = normalized.slice(0, at);
+	let current = '';
+	for (const segment of parent.split('/')) {
+		current = normalizePath(current ? `${current}/${segment}` : segment);
+		const entry = app.vault.getAbstractFileByPath(current);
+		if (entry instanceof TFolder) continue;
+		if (entry) throw new Error(`A file blocks folder creation at ${current}.`);
+		await app.vault.createFolder(current);
+	}
+}
 
 function okRsp(text: string, details: Record<string, unknown> = {}) {
 	return { content: [{ type: 'text' as const, text }], details };

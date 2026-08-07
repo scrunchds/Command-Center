@@ -4,6 +4,11 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-08-07
+
+### Fixed
+- **Vault tools now create parent folders recursively** (`src/extended-vault-tools.ts`, `src/obsidian-tools.ts`): the `create_folder` tool advertised "Parent folders are created automatically" but called `vault.createFolder()` directly, which throws in real Obsidian when an intermediate folder is missing — so onboarding would announce "there was an issue with creating the folders and index files, let's try that again" and loop forever on nested managed-folder paths. `create_folder` now creates each missing parent segment first and treats an already-existing target folder as success rather than an error. The same latent failure mode was fixed across the rest of the write surface so onboarding can place every asset it needs on the first attempt: `write_note`/`append_note` now ensure the note's parent folder chain before `vault.create()`; `rename_note` and `move_note` now ensure the destination parent folder before `fileManager.renameFile()`. A file blocking a folder path produces a clear error instead of a silent retry loop. Read-only tools (`read_note`, `search_vault`, `list_files`, `get_active_note`) and existing-file edits (`edit_note`, which only mutates notes that already exist) needed no change.
+
 ## [1.10.0] - 2026-08-07
 
 ### Added
