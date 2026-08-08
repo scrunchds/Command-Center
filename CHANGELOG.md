@@ -4,6 +4,12 @@ All notable changes to Command Center are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] - 2026-08-07
+
+### Fixed
+- **Core features no longer lock before onboarding completes** (`src/engine/ConfigManager.ts`, `src/main.ts`, `src/ui/command-center-chat-view.ts`, `src/ui/command-center-view.ts`, `src/cli/command-bridge.ts`): the dashboard and chat were documented as available without the interview, but `requireInitialized()` guards and `requireStyleGuide()` callbacks still threw `Command Center is uninitialized` for chat, workflow synthesis/execution, ReAct task execution, and CLI/URI workflow runs. A new non-throwing `ConfigManager.getStyleGuide()` returns an empty default style guide when the interview has not been run, and the throwing callbacks/early guards were removed from those code paths so they fall back gracefully. Onboarding remains required only for operations that genuinely depend on interview-derived config — daily-note assembly (`morning`), index refresh (`indexes`), capacity metrics, and reflection questions — which keep their `requireConfig()`/`requireStyleGuide()` guards.
+- **Reranker settings copy now follows sentence case** (`src/settings/PluginSettingsTab.ts`): the reranker mode description, the `(Provider default)` placeholder, and the manual model-id field label/description were capitalized inconsistently with the rest of the settings UI, producing four lint warnings. They now match the sentence-case convention used everywhere else.
+
 ## [1.11.0] - 2026-08-07
 
 ### Added

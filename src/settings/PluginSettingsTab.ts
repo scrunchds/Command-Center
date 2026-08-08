@@ -719,7 +719,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Reranker mode')
-			.setDesc('Re-rank retrieved chunks with a dedicated rerank model. API mode uses a native rerank endpoint (Cohere, Jina, Voyage); LLM mode asks a chat model to score candidates; none keeps the built-in reciprocal rank fusion and graph scoring.')
+			.setDesc('Re-rank retrieved chunks with a dedicated rerank model. API mode uses a native rerank endpoint (cohere, jina, voyage); LLM mode asks a chat model to score candidates; none keeps the built-in reciprocal rank fusion and graph scoring.')
 			.addDropdown(dropdown => dropdown
 				.addOption('none', 'None (built-in scoring)')
 				.addOption('api', 'API (dedicated rerank endpoint)')
@@ -757,7 +757,7 @@ export class PluginSettingsTab extends PluginSettingTab {
 				? 'Discovered rerank models from this provider are listed first.'
 				: 'No rerank models discovered for this provider. Type a model id (e.g. rerank-english-v3.0, jina-reranker-v2-base-multilingual).')
 			.addDropdown(dropdown => {
-				dropdown.addOption('', '(provider default)');
+				dropdown.addOption('', '(Provider default)');
 				for (const model of rerankModels) dropdown.addOption(model.id, model.label);
 				dropdown.setValue(reranker.model).onChange((value: string) => {
 					reranker.model = value;
@@ -766,8 +766,8 @@ export class PluginSettingsTab extends PluginSettingTab {
 			});
 			if (!rerankModels.length) {
 				new Setting(containerEl)
-					.setName('Reranker model id')
-					.setDesc('Manual model id when no rerank models were auto-discovered.')
+					.setName('Reranker model ID')
+					.setDesc('Manual model ID when no rerank models were auto-discovered.')
 					.addText(text => text
 						.setPlaceholder('rerank-english-v3.0')
 						.setValue(reranker.model)

@@ -1,7 +1,7 @@
 {
 	"id": "command-center",
 	"name": "Command Center",
-	"version": "1.11.0",
+	"version": "1.11.1",
 	"minAppVersion": "1.13.0",
 	"description": "An operational hub for your vault: zero-token dashboard cards, calendar, vault search, embedded browser, and Markdown-backed custom cards. Orchestrates AI agents, retrieval, and memory across 13 providers behind an absolute write gate.",
 	"author": "Dustin Stringer",

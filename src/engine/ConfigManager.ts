@@ -29,6 +29,15 @@ export class ConfigManager {
 	validate(value: unknown): OnboardingConfig { return this.serializer.validate(value); }
 	requireConfig(): OnboardingConfig { if (!this.config) throw new Error('Command Center is uninitialized. Complete the conversational interview first.'); return this.config; }
 	requireStyleGuide(): string { if (!this.styleGuide) throw new Error('Command Center style guide is unavailable. Complete the conversational interview first.'); return this.styleGuide; }
+
+	/**
+	 * Non-throwing style-guide accessor for features that stay usable before
+	 * onboarding completes (chat, workflows, task execution). Returns an empty
+	 * style guide when the interview has not been run, so prompt builders get
+	 * a safe default instead of an 'uninitialized' error. Use `requireStyleGuide()`
+	 * only for features that genuinely cannot operate without a style guide.
+	 */
+	getStyleGuide(): string { return this.styleGuide ?? ''; }
 	getComputeEndpoints(tier?: ComputeEndpointConfig['tier']): ComputeEndpointConfig[] {
 		const endpoints = this.requireConfig().compute.endpoints.filter(endpoint => endpoint.enabled);
 		return endpoints.filter(endpoint => !tier || endpoint.tier === tier).map(endpoint => ({ ...endpoint }));

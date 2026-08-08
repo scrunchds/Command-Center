@@ -1599,7 +1599,6 @@ export class CommandCenterView extends ItemView {
 		onStream: (delta: string) => void,
 	): Promise<{ content: string; error?: string }> {
 		try {
-			this.plugin.requireInitialized();
 			const result = await this.plugin.router.route({
 				id: crypto.randomUUID(),
 				workerProfile: 'orchestrator',
@@ -1627,7 +1626,6 @@ export class CommandCenterView extends ItemView {
 	): Promise<void> {
 		const prompt = this.chatInputEl?.value.trim() ?? '';
 		if (!prompt) return;
-		this.plugin.requireInitialized();
 		if (this.chatInputEl) this.chatInputEl.value = '';
 		this.resizeOrchestratorInput();
 		this.appendChatMessage('user', prompt);

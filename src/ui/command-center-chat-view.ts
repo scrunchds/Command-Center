@@ -1098,7 +1098,6 @@ export class CommandCenterChatView extends ItemView {
 	}
 
 	private async runTask(prompt: string, assistant: ChatMessageElements): Promise<void> {
-		this.plugin.requireInitialized();
 		if (this.mode === 'react') {
 			await this.runReActTask(prompt, assistant);
 			return;
@@ -1188,7 +1187,6 @@ export class CommandCenterChatView extends ItemView {
 	}
 
 	private async runWorkflow(prompt: string, assistant: ChatMessageElements): Promise<void> {
-		this.plugin.requireInitialized();
 		const file = this.contextFile ?? this.plugin.app.workspace.getActiveFile();
 		if (!file || (file.extension !== 'md' && file.extension !== 'canvas' && file.extension !== 'base')) {
 			throw new Error('Attach or open a Markdown, Canvas, or Base workflow first.');

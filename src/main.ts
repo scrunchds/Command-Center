@@ -280,7 +280,7 @@ export default class CommandCenterPlugin extends Plugin {
 			this.agentMemory,
 			this.hybridRetriever,
 			contextCharLimit,
-			() => this.configManager.requireStyleGuide(),
+			() => this.configManager.getStyleGuide(),
 		);
 
 		// ── Multi-Provider Subsystem ──────────────────
@@ -385,17 +385,16 @@ export default class CommandCenterPlugin extends Plugin {
 		);
 		this.workflowSynthesizer = new WorkflowSynthesizer(
 			this.dispatcher,
-			() => this.configManager.requireStyleGuide(),
+			() => this.configManager.getStyleGuide(),
 		);
 		this.workflowEngine = new WorkflowEngine(
 			this.dispatcher,
 			this.router,
-			() => this.configManager.requireStyleGuide(),
+			() => this.configManager.getStyleGuide(),
 			this.createAgenticStepExecutor(),
 		);
 		const executor: TaskExecutor = {
 			execute: async (task: Task): Promise<TaskResult> => {
-				this.requireInitialized();
 				if (task.prompt.length > TOKEN_LIMITS.MAX_PROMPT_CHARS) {
 					throw new Error(
 						`Prompt too large (${task.prompt.length} chars, max ${TOKEN_LIMITS.MAX_PROMPT_CHARS})`,
@@ -433,7 +432,7 @@ export default class CommandCenterPlugin extends Plugin {
 				const normalized = await this.executionRouter.execute({
 					resolution,
 					request: {
-						systemPrompt: withGlobalChatInteractionStyle(this.configManager.requireStyleGuide()),
+						systemPrompt: withGlobalChatInteractionStyle(this.configManager.getStyleGuide()),
 						userPrompt: task.prompt,
 						taskId: task.id,
 						onStream: task.onStream,
@@ -1446,7 +1445,6 @@ export default class CommandCenterPlugin extends Plugin {
 	private createAgenticStepExecutor(): WorkflowAgenticExecutor {
 		return {
 			executeStep: async (step: WorkflowStep, prompt: string, targetPath, onStream) => {
-				this.requireInitialized();
 				const ready = await this.ensureDaemonRunning();
 				if (!ready) throw new Error(`Pi daemon failed to start: ${this.daemon.startError ?? 'unknown error'}`);
 				const taskId = `${step.id}:${targetPath ?? 'single'}:${Date.now()}`;
@@ -1490,7 +1488,6 @@ export default class CommandCenterPlugin extends Plugin {
 	 * step runs as an autonomous tool-calling sub-agent behind the gate.
 	 */
 	async synthesizeAndRunWorkflow(goal: string): Promise<WorkflowExecutionContext | null> {
-		this.requireInitialized();
 		const trimmed = goal.trim();
 		if (!trimmed) throw new Error('Workflow goal is empty.');
 
@@ -1539,7 +1536,6 @@ export default class CommandCenterPlugin extends Plugin {
 		inputs: Record<string, unknown>,
 		targetFile?: TFile,
 	): Promise<WorkflowExecutionContext> {
-		this.requireInitialized();
 		await this.activateCommandCenterView();
 		const streamId = `workflow:${definition.id}:${Date.now()}`;
 		const view = this.getCommandCenterView();

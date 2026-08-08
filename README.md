@@ -783,7 +783,7 @@ obsidian://command-center?operation=morning
 obsidian://command-center?operation=indexes
 ```
 
-The URI and CLI boundaries reject credential arguments, unsafe vault paths, malformed/oversized JSON, and execution before onboarding is complete.
+The URI and CLI boundaries reject credential arguments, unsafe vault paths, malformed/oversized JSON, and any action that requires onboarding-derived config (`morning`, `indexes`) before the interview is complete. Workflow execution via URI/CLI does not require onboarding.
 
 ## Privacy and security model
 
@@ -929,7 +929,7 @@ CI runs on Windows, macOS, and Linux across Node 20, 22, and 24 with:
 7. Production package validation
 8. Clean release-surface verification
 
-Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.11.0`, with Obsidian 1.13.0 as the minimum supported app version.
+Release automation repeats the validation, builds a clean three-file plugin package, attests artifact provenance with **Sigstore attestations**, verifies each published asset cryptographically, and creates a GitHub release. The package metadata and manifest version are currently `1.11.1`, with Obsidian 1.13.0 as the minimum supported app version.
 
 The local community-plugin validator currently passes with **0 errors**.
 
@@ -955,7 +955,7 @@ Then use **Settings → Command Center → Core** → *Pi harness path* and clic
 
 ### Command Center says the vault is uninitialized
 
-Run **Command Center: Start setup / onboarding interview** and complete confirmation/synthesis. Both `.command-center/config.json` and `.command-center/style-guide.md` must validate before operational services start.
+Onboarding is optional: chat, workflows, and task execution work without it, falling back to a neutral default style guide. Only the daily-note and index operations (`morning`, `indexes`) require the interview-derived config. If you see an "uninitialized" error from one of those, run **Command Center: Start setup / onboarding interview** and complete confirmation/synthesis so both `.command-center/config.json` and `.command-center/style-guide.md` validate.
 
 ### A workflow does not run
 

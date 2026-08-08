@@ -78,7 +78,6 @@ export class CommandCenterCommandBridge {
 		const startedAt = new Date(started).toISOString();
 		try {
 			this.rejectCredentialArguments(params);
-			this.plugin.requireInitialized();
 			const result = await this.operationLocks.withLock(`.command-center/cli/${action}`, async () => {
 				if (action === 'morning') return this.runMorning(params);
 				if (action === 'workflow') return this.runWorkflow(params);
