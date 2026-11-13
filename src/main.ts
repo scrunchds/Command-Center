@@ -1098,28 +1098,29 @@ export default class CommandCenterPlugin extends Plugin {
 	}
 
 	async refreshExternalCapabilities(): Promise<void> {
-		if (!this.settings.mcpEnabled || !this.settings.mcpServers?.length) {
-			this.mcpToolManager?.dispose();
-			this.mcpToolManager = null;
-			return;
-		}
 		if (this.capabilityRefreshPromise) return this.capabilityRefreshPromise;
 		this.capabilityRefreshPromise = (async () => {
 			const registry = getCapabilityRegistry();
+			const mcpActive = this.settings.mcpEnabled && !!this.settings.mcpServers?.length;
 			// Remove stale MCP registrations before replacing the discovered
 			// snapshot. Built-in capabilities are never touched.
 			for (const id of registry.ids.filter(value => value.startsWith('mcp:'))) registry.unregister(id);
 			this.mcpToolManager?.dispose();
-			const manager = new MCPToolManager({ servers: this.settings.mcpServers });
-			const tools = await manager.discoverTools();
-			this.mcpToolManager = manager;
-			if (tools.length) {
-				this.daemon.registerTools(tools);
-				for (const server of this.settings.mcpServers.filter(item => item.enabled)) {
-					const serverTools = tools.filter(tool => tool.name.startsWith(`${server.id}:`));
-					ingestMcpCapabilities(server.id, server.label, serverTools);
+			this.mcpToolManager = null;
+			if (mcpActive) {
+				const manager = new MCPToolManager({ servers: this.settings.mcpServers });
+				const tools = await manager.discoverTools();
+				this.mcpToolManager = manager;
+				if (tools.length) {
+					this.daemon.registerTools(tools);
+					for (const server of this.settings.mcpServers.filter(item => item.enabled)) {
+						const serverTools = tools.filter(tool => tool.name.startsWith(`${server.id}:`));
+						ingestMcpCapabilities(server.id, server.label, serverTools);
+					}
 				}
 			}
+			// API connectors are independent of MCP and must register even when
+			// no MCP server is configured.
 			for (const id of registry.ids.filter(value => value.startsWith('api:'))) registry.unregister(id);
 			this.apiConnectorManager?.dispose();
 			this.apiConnectorManager = new ApiConnectorManager({
@@ -1136,7 +1137,9 @@ export default class CommandCenterPlugin extends Plugin {
 					confirmationPolicy: tool.confirmation ? 'always' : 'never', requiresVault: false,
 				});
 			}
-			console.debug('[CC] External capabilities refreshed:', [...tools.map(tool => tool.name), ...this.apiConnectorManager.getTools().map(tool => tool.name)]);
+			console.debug('[CC] External capabilities refreshed:', [
+				...registry.ids.filter(id => id.startsWith('mcp:') || id.startsWith('api:')),
+			]);
 		})().catch(error => {
 			console.warn('[CC] External capability refresh failed:', error);
 		}).finally(() => { this.capabilityRefreshPromise = null; });
