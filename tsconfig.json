@@ -14,7 +14,7 @@
 		"forceConsistentCasingInFileNames": true,
 		"allowSyntheticDefaultImports": true,
 		"types": ["node", "obsidian"],
-		"lib": ["ES2021", "DOM"]
+		"lib": ["ES2022", "DOM"]
 	},
 	"include": ["src/**/*.ts"]
 }
