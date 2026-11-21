@@ -37,6 +37,7 @@ export default defineConfig(
 	},
 	...obsidianmd.configs.recommended,
 	{
+		files: ['**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}'],
 		rules: {
 			'@typescript-eslint/no-misused-promises': ['error', {
 				checksVoidReturn: {
@@ -48,6 +49,10 @@ export default defineConfig(
 					inheritedMethods: false,
 				},
 			}],
+			// obsidianmd >= 0.5 gates on this by default; our flagged call sites
+			// are scrollHeight-driven auto-resizes (CSS classes cannot express
+			// runtime-measured heights), so keep the signal but do not gate.
+			'obsidianmd/no-static-styles-assignment': 'warn',
 			'@typescript-eslint/no-unsafe-call': 'error',
 			'@typescript-eslint/no-unsafe-member-access': 'error',
 			'@typescript-eslint/no-unnecessary-type-assertion': 'error',
